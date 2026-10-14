@@ -11,3 +11,6 @@ skill/household.md
 
 # The spec and build notes stay on this machine
 SPEC.md
+
+# Where deploy/ssh-deploy.sh ships to by default
+deploy/local.env
