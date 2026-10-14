@@ -1,0 +1,94 @@
+@import 'tailwindcss';
+
+/* Material 3 color roles generated from the Almanac green seed. */
+:root {
+  color-scheme: light;
+  --md-primary: #2e6a57;
+  --md-on-primary: #ffffff;
+  --md-primary-container: #b6efd8;
+  --md-on-primary-container: #002117;
+  --md-secondary: #4c635a;
+  --md-secondary-container: #cee9dc;
+  --md-on-secondary-container: #082017;
+  --md-warm: #8b4f1e;
+  --md-warm-container: #ffdcc1;
+  --md-on-warm-container: #2f1500;
+  --md-error: #ba1a1a;
+  --md-surface: #f4fbf7;
+  --md-surface-lowest: #ffffff;
+  --md-surface-low: #eef5f1;
+  --md-surface-container: #e8f0ec;
+  --md-surface-high: #e3eae6;
+  --md-surface-highest: #dde4e0;
+  --md-on-surface: #171d1a;
+  --md-on-surface-variant: #404944;
+  --md-outline: #707973;
+  --md-outline-variant: #bfc9c3;
+  --md-scrim: rgb(0 0 0 / 0.32);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --md-primary: #9ad3bc;
+    --md-on-primary: #003829;
+    --md-primary-container: #0f5140;
+    --md-on-primary-container: #b6efd8;
+    --md-secondary: #b2ccc1;
+    --md-secondary-container: #344b43;
+    --md-on-secondary-container: #cee9dc;
+    --md-warm: #ffb68a;
+    --md-warm-container: #6c3a0a;
+    --md-on-warm-container: #ffdcc1;
+    --md-error: #ffb4ab;
+    --md-surface: #0f1512;
+    --md-surface-lowest: #0a0f0d;
+    --md-surface-low: #171d1a;
+    --md-surface-container: #1b211e;
+    --md-surface-high: #252b28;
+    --md-surface-highest: #303633;
+    --md-on-surface: #dee4e0;
+    --md-on-surface-variant: #bfc9c3;
+    --md-outline: #89938d;
+    --md-outline-variant: #404944;
+  }
+}
+
+@theme inline {
+  --color-primary: var(--md-primary);
+  --color-on-primary: var(--md-on-primary);
+  --color-primary-container: var(--md-primary-container);
+  --color-on-primary-container: var(--md-on-primary-container);
+  --color-secondary: var(--md-secondary);
+  --color-secondary-container: var(--md-secondary-container);
+  --color-on-secondary-container: var(--md-on-secondary-container);
+  --color-warm: var(--md-warm);
+  --color-warm-container: var(--md-warm-container);
+  --color-on-warm-container: var(--md-on-warm-container);
+  --color-error: var(--md-error);
+  --color-surface: var(--md-surface);
+  --color-surface-lowest: var(--md-surface-lowest);
+  --color-surface-low: var(--md-surface-low);
+  --color-surface-container: var(--md-surface-container);
+  --color-surface-high: var(--md-surface-high);
+  --color-surface-highest: var(--md-surface-highest);
+  --color-on-surface: var(--md-on-surface);
+  --color-on-surface-variant: var(--md-on-surface-variant);
+  --color-outline: var(--md-outline);
+  --color-outline-variant: var(--md-outline-variant);
+  --font-sans: 'Google Sans Flex Variable', system-ui, sans-serif;
+}
+
+html,
+body {
+  background: var(--md-surface);
+  color: var(--md-on-surface);
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Expressive headlines lean on the font's roundness axis. */
+.display {
+  font-variation-settings: 'ROND' 100;
+  letter-spacing: -0.01em;
+}

@@ -1,0 +1,9 @@
+node_modules
+dist
+data
+secrets
+design
+.env
+.git
+.claude
+*.log

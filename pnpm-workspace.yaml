@@ -1,0 +1,10 @@
+allowBuilds:
+  esbuild: true
+minimumReleaseAgeExclude:
+  - '@hono/node-server@2.1.5'
+  - '@tanstack/react-router@1.170.44'
+  - '@tanstack/router-core@1.171.37'
+  - framer-motion@14.2.0
+  - motion-dom@14.2.0
+  - motion-utils@14.1.1
+  - motion@14.2.0

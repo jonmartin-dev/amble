@@ -1,0 +1,124 @@
+import { sql } from 'drizzle-orm';
+import { index, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+
+const id = () =>
+  text('id')
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID());
+const createdAt = () =>
+  integer('created_at', { mode: 'timestamp_ms' })
+    .notNull()
+    .default(sql`(unixepoch('subsec') * 1000)`);
+
+export const members = sqliteTable('members', {
+  id: id(),
+  email: text('email').notNull().unique(),
+  name: text('name').notNull(),
+  avatarUrl: text('avatar_url'),
+  color: text('color').notNull().default('green'),
+  role: text('role', { enum: ['admin', 'member'] }).notNull().default('member'),
+  timezone: text('timezone').notNull(),
+  dayCutoffHour: integer('day_cutoff_hour').notNull().default(4),
+  // Appearance preferences (mode, seed color, scheme style, contrast); follows the member across devices.
+  theme: text('theme', { mode: 'json' }).$type<Record<string, unknown>>(),
+  createdAt: createdAt(),
+  lastLoginAt: integer('last_login_at', { mode: 'timestamp_ms' }),
+});
+
+export const sessions = sqliteTable(
+  'sessions',
+  {
+    id: id(),
+    tokenHash: text('token_hash').notNull().unique(),
+    memberId: text('member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade' }),
+    userAgent: text('user_agent'),
+    createdAt: createdAt(),
+    lastSeenAt: integer('last_seen_at', { mode: 'timestamp_ms' }).notNull(),
+    expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [index('sessions_member_idx').on(t.memberId)],
+);
+
+export const groups = sqliteTable('groups', {
+  id: id(),
+  name: text('name').notNull(),
+  icon: text('icon').notNull().default('folder'),
+  color: text('color').notNull().default('green'),
+  kind: text('kind', { enum: ['tasks', 'list'] }).notNull().default('tasks'),
+  template: text('template'),
+  privateTo: text('private_to').references(() => members.id, { onDelete: 'cascade' }),
+  sortOrder: integer('sort_order').notNull().default(0),
+  archivedAt: integer('archived_at', { mode: 'timestamp_ms' }),
+  createdAt: createdAt(),
+});
+
+export const tasks = sqliteTable(
+  'tasks',
+  {
+    id: id(),
+    title: text('title').notNull(),
+    notes: text('notes'),
+    groupId: text('group_id').references(() => groups.id, { onDelete: 'set null' }),
+    assigneeId: text('assignee_id').references(() => members.id, { onDelete: 'set null' }),
+    createdById: text('created_by_id').references(() => members.id, { onDelete: 'set null' }),
+    // Calendar dates are stored as YYYY-MM-DD in the household timezone.
+    dueDate: text('due_date'),
+    plannedDate: text('planned_date'),
+    timeOfDay: text('time_of_day', { enum: ['morning', 'afternoon', 'evening'] }),
+    mustDo: integer('must_do', { mode: 'boolean' }).notNull().default(false),
+    estimateMinutes: integer('estimate_minutes'),
+    estimateSource: text('estimate_source', { enum: ['ai', 'user', 'learned'] }),
+    status: text('status', { enum: ['open', 'done', 'archived'] }).notNull().default('open'),
+    completedAt: integer('completed_at', { mode: 'timestamp_ms' }),
+    completedById: text('completed_by_id').references(() => members.id, { onDelete: 'set null' }),
+    handedBackNote: text('handed_back_note'),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [
+    index('tasks_status_planned_idx').on(t.status, t.plannedDate),
+    index('tasks_group_idx').on(t.groupId),
+    index('tasks_assignee_idx').on(t.assigneeId),
+  ],
+);
+
+export const subtasks = sqliteTable('subtasks', {
+  id: id(),
+  taskId: text('task_id')
+    .notNull()
+    .references(() => tasks.id, { onDelete: 'cascade' }),
+  title: text('title').notNull(),
+  done: integer('done', { mode: 'boolean' }).notNull().default(false),
+  sortOrder: integer('sort_order').notNull().default(0),
+});
+
+export const taskLinks = sqliteTable('task_links', {
+  id: id(),
+  taskId: text('task_id')
+    .notNull()
+    .references(() => tasks.id, { onDelete: 'cascade' }),
+  url: text('url').notNull(),
+  title: text('title'),
+  createdAt: createdAt(),
+});
+
+export const activity = sqliteTable(
+  'activity',
+  {
+    id: id(),
+    memberId: text('member_id').references(() => members.id, { onDelete: 'set null' }),
+    via: text('via', { enum: ['app', 'claude', 'system'] }).notNull().default('app'),
+    action: text('action').notNull(),
+    taskId: text('task_id'),
+    detail: text('detail', { mode: 'json' }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('activity_created_idx').on(t.createdAt)],
+);
+
+export type Member = typeof members.$inferSelect;
+export type Group = typeof groups.$inferSelect;
+export type Task = typeof tasks.$inferSelect;
