@@ -1,12 +1,18 @@
-// Quick add from the + button. The text box sits at the bottom of the sheet, right on the
-// keyboard, with one row of option chips above it. With smart add on, what's typed goes to Haiku
-// and comes back as proposals to review; otherwise each line is added as typed.
+// Quick add from the + button. What's typed comes first, in large type; under it one row of chips
+// sets the day, group, person and so on, and a chip's choices open in that same row. With smart
+// add on, what's typed goes to Haiku and comes back as proposals to review; otherwise each line is
+// added as typed.
 import { useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import Sparkle from '~icons/material-symbols/auto-awesome-rounded';
 import ArrowUp from '~icons/material-symbols/arrow-upward-rounded';
+import Close from '~icons/material-symbols/close-rounded';
 import Flag from '~icons/material-symbols/flag-rounded';
+import Person from '~icons/material-symbols/person-outline-rounded';
+import Schedule from '~icons/material-symbols/schedule-outline-rounded';
+import TodayIcon from '~icons/material-symbols/today-outline-rounded';
+import Folder from '~icons/material-symbols/folder-outline-rounded';
 import type { AddHints } from '../../../shared/proposals.ts';
 import { api, ApiError, type Proposal, type SmartAddResponse, type TimeOfDay } from '../lib/api.ts';
 import { dayLabel, firstName, todayIso } from '../lib/dates.ts';
@@ -16,7 +22,8 @@ import { useSend, useTaskActions } from '../lib/mutations.ts';
 import { useAi, useGroups, useMe, useMembers } from '../lib/queries.ts';
 import { useSnackbar } from '../lib/snackbar.tsx';
 import { useSyncState } from '../lib/sync.ts';
-import { ChipRow, DateChip, GroupChips, PersonChips, TimeChips, WhenChips } from './fields.tsx';
+import { DateChip, GroupChips, PersonChips, TimeChips, WhenChips } from './fields.tsx';
+import { GroupIcon } from './icons.tsx';
 import { ProposalCard, type Draft } from './ProposalCard.tsx';
 import { Sheet } from './ui.tsx';
 
@@ -49,66 +56,68 @@ function appliedMessage(r: Applied) {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-/** A compact chip in the options row. Pressing it doesn't take focus, so the keyboard stays up. */
-function OptionChip({ on, open, onClick, children }: { on?: boolean; open?: boolean; onClick: () => void; children: ReactNode }) {
+// Tapping a chip mustn't take focus from the text box, or the phone's keyboard drops. The date
+// input is the exception: it needs focus to open its picker.
+const keepKeyboard = (e: React.PointerEvent) => {
+  if (!(e.target as HTMLElement).closest('label')) e.preventDefault();
+};
+
+/** One option in the row under the text: set (tonal) once picked, outlined until then. */
+function OptionChip({ on, icon, onClick, children, label }: { on?: boolean; icon: ReactNode; onClick: () => void; children: ReactNode; label?: string }) {
   return (
     <button
       type="button"
-      onPointerDown={(e) => e.preventDefault()}
       onClick={onClick}
-      aria-expanded={open}
-      className={`press flex h-8 shrink-0 items-center gap-1 rounded-lg px-2.5 text-sm ${
-        open ? 'bg-primary text-on-primary' : on ? 'bg-secondary-container text-on-secondary-container' : 'border border-outline-variant text-on-surface-variant'
+      aria-label={label}
+      className={`press flex h-9 shrink-0 items-center gap-1.5 rounded-full pr-3.5 pl-2.5 text-sm ${
+        on ? 'bg-secondary-container text-on-secondary-container' : 'border border-outline-variant text-on-surface-variant'
       }`}
     >
+      {icon}
       {children}
     </button>
   );
 }
 
-/** M3 Expressive-style loading shape: a soft blob that morphs and turns while Haiku reads. */
+/** M3 Expressive loading shape: a soft blob that morphs and turns while Haiku reads. */
 function MorphingShape() {
   return (
-    <span className="relative grid size-11 shrink-0 place-items-center" aria-hidden>
-      <motion.span
-        className="absolute inset-0 bg-primary-container"
-        animate={{
-          rotate: [0, 120, 240, 360],
-          borderRadius: ['42% 58% 55% 45% / 45% 45% 55% 55%', '30%', '58% 42% 38% 62% / 55% 60% 40% 45%', '42% 58% 55% 45% / 45% 45% 55% 55%'],
-          scale: [1, 0.92, 1.04, 1],
-        }}
-        transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
-      />
-      <Sparkle className="relative size-5 text-on-primary-container" />
-    </span>
+    <motion.span
+      aria-hidden
+      className="absolute inset-1.5 bg-on-primary/25"
+      animate={{
+        rotate: [0, 120, 240, 360],
+        borderRadius: ['42% 58% 55% 45% / 45% 45% 55% 55%', '30%', '58% 42% 38% 62% / 55% 60% 40% 45%', '42% 58% 55% 45% / 45% 45% 55% 55%'],
+        scale: [1, 0.86, 1.02, 1],
+      }}
+      transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
+    />
   );
 }
 
-function Thinking({ text, onCancel }: { text: string; onCancel: () => void }) {
+/**
+ * Send: a quiet circle until there's something to send, then a filled rounded square (an M3
+ * Expressive shape change). While Haiku reads, a shape turns inside it.
+ */
+function SendButton({ ready, thinking, smart }: { ready: boolean; thinking: boolean; smart: boolean }) {
+  const active = ready || thinking;
   return (
-    <div className="rounded-3xl bg-surface-high/60 p-4">
-      <div className="flex items-center gap-3">
-        <MorphingShape />
-        <div className="min-w-0 flex-1">
-          <p className="font-medium text-primary">Reading that…</p>
-          {/* A light sweeps across what they typed while it's being read. */}
-          <motion.p
-            className="line-clamp-3 bg-clip-text text-transparent"
-            style={{
-              backgroundImage: 'linear-gradient(100deg, var(--md-on-surface-variant) 35%, var(--md-primary) 50%, var(--md-on-surface-variant) 65%)',
-              backgroundSize: '250% 100%',
-            }}
-            animate={{ backgroundPosition: ['100% 0%', '0% 0%'] }}
-            transition={{ duration: 1.8, repeat: Infinity, ease: 'linear' }}
-          >
-            {text}
-          </motion.p>
-        </div>
-      </div>
-      <button type="button" onClick={onCancel} className="mt-3 rounded-full px-3 py-1.5 text-sm font-medium text-primary hover:bg-surface-high">
-        Cancel
-      </button>
-    </div>
+    <motion.button
+      type="submit"
+      onPointerDown={(e) => e.preventDefault()}
+      disabled={!ready || thinking}
+      aria-label={thinking ? 'Reading it' : smart ? 'Read it' : 'Add'}
+      initial={false}
+      animate={{ borderRadius: active ? 18 : 28 }}
+      whileTap={{ scale: 0.9, borderRadius: 14 }}
+      transition={expressive.fastSpatial}
+      className={`relative grid size-14 shrink-0 place-items-center overflow-hidden transition-colors duration-200 ${
+        active ? 'bg-primary text-on-primary' : 'bg-surface-highest text-on-surface-variant'
+      }`}
+    >
+      {thinking && <MorphingShape />}
+      {smart ? <Sparkle className="relative size-6" aria-hidden /> : <ArrowUp className="relative size-6" aria-hidden />}
+    </motion.button>
   );
 }
 
@@ -149,6 +158,17 @@ const phaseMotion = {
   exit: { opacity: 0, y: -10, scale: 0.98 },
   transition: expressive.defaultSpatial,
 };
+
+// The chip row and a chip's choices slide past each other in the same place.
+const rowMotion = (forward: boolean) => ({
+  initial: { opacity: 0, x: forward ? 24 : -24 },
+  animate: { opacity: 1, x: 0 },
+  exit: { opacity: 0, x: forward ? -24 : 24 },
+  transition: expressive.fastSpatial,
+});
+
+// Browsers without `field-sizing` (Safari, for now) get the text box grown by hand.
+const sizesItself = typeof CSS !== 'undefined' && CSS.supports('field-sizing', 'content');
 
 export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; onClose: () => void; plannedByDefault: boolean }) {
   const me = useMe();
@@ -208,12 +228,11 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
     if (open) input.current?.focus({ preventScroll: true });
   }, [open]);
 
-  // The text box grows with what's typed, up to about five lines.
   useLayoutEffect(() => {
     const el = input.current;
-    if (!el) return;
+    if (sizesItself || !el) return;
     el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, 140)}px`;
+    el.style.height = `${Math.min(el.scrollHeight, 168)}px`;
   }, [text, phase]);
 
   const pick = <T,>(key: HintKey, set: (v: T) => void) => (v: T) => {
@@ -325,66 +344,60 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
       .finally(() => setApplying(false));
   };
 
-  const groupName = groups.find((g) => g.id === groupId)?.name;
+  const group = groups.find((g) => g.id === groupId);
   const person = assignee === undefined ? 'Me' : assignee === null ? 'Anyone' : firstName(members.find((m) => m.id === assignee)?.name ?? '');
   const ctx = { today, me: me?.id ?? '', groups, members };
+  const toggle = (p: Exclude<Picker, null>) => () => setPicker(picker === p ? null : p);
+  const icon = 'size-[1.125rem]';
 
-  const options = (
-    <>
-      <AnimatePresence initial={false}>
-        {picker && (
-          <motion.div
-            key={picker}
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={expressive.fastSpatial}
-            className="overflow-hidden"
-            onPointerDown={(e) => {
-              // Keep the keyboard up while picking, except on the date picker, which needs focus.
-              if (!(e.target as HTMLElement).closest('label')) e.preventDefault();
-            }}
-          >
-            <ChipRow>
-              {picker === 'when' && <WhenChips value={planned} today={today} onChange={pick('plannedDate', setPlanned)} />}
-              {picker === 'group' && <GroupChips groups={groups} value={groupId} onChange={pick('groupId', setGroupId)} />}
-              {picker === 'for' && (
-                <PersonChips
-                  members={members}
-                  me={me?.id ?? ''}
-                  value={assignee === undefined ? (me?.id ?? null) : assignee}
-                  onChange={pick('assigneeId', (v: string | null) => setAssignee(v === me?.id ? undefined : v))}
-                />
-              )}
-              {picker === 'time' && <TimeChips value={time} onChange={pick('timeOfDay', setTime)} />}
-            </ChipRow>
-          </motion.div>
-        )}
-      </AnimatePresence>
-      <div className="-mx-5 mt-1 flex gap-1.5 overflow-x-auto px-5 pb-2 [scrollbar-width:none]">
-        <OptionChip on={planned !== null} open={picker === 'when'} onClick={() => setPicker(picker === 'when' ? null : 'when')}>
-          {planned ? dayLabel(planned, today) : 'Someday'}
+  // The row under the text: the options, or one option's choices in their place.
+  const chips = (
+    <div className="flex gap-1.5 overflow-x-auto pr-6 [scrollbar-width:none] [mask-image:linear-gradient(to_right,black_calc(100%-1.5rem),transparent)]">
+      <OptionChip on={planned !== null} icon={<TodayIcon className={icon} aria-hidden />} onClick={toggle('when')}>
+        {planned ? dayLabel(planned, today) : 'Someday'}
+      </OptionChip>
+      <OptionChip on={!!group} icon={group ? <GroupIcon name={group.icon} className={icon} /> : <Folder className={icon} aria-hidden />} onClick={toggle('group')}>
+        {group?.name ?? 'Group'}
+      </OptionChip>
+      {members.length > 1 && (
+        <OptionChip on={assignee !== undefined} icon={<Person className={icon} aria-hidden />} onClick={toggle('for')}>
+          {person}
         </OptionChip>
-        <OptionChip on={!!groupId} open={picker === 'group'} onClick={() => setPicker(picker === 'group' ? null : 'group')}>
-          {groupName ?? 'Group'}
-        </OptionChip>
-        {members.length > 1 && (
-          <OptionChip on={assignee !== undefined} open={picker === 'for'} onClick={() => setPicker(picker === 'for' ? null : 'for')}>
-            For {person}
-          </OptionChip>
-        )}
-        <OptionChip on={!!time} open={picker === 'time'} onClick={() => setPicker(picker === 'time' ? null : 'time')}>
-          {time ? <span className="capitalize">{time}</span> : 'Any time'}
-        </OptionChip>
-        <OptionChip on={mustDo} onClick={() => pick('mustDo', setMustDo)(!mustDo)}>
-          <Flag className="size-4" aria-hidden />
-          Must do
-        </OptionChip>
-        <DateChip keepFocus value={due} min={today} label={due ? `Due ${dayLabel(due, today, true)}` : 'Due'} onPick={pick('dueDate', setDue)} />
-      </div>
-    </>
+      )}
+      <OptionChip on={!!time} icon={<Schedule className={icon} aria-hidden />} onClick={toggle('time')}>
+        {time ? <span className="capitalize">{time}</span> : 'Any time'}
+      </OptionChip>
+      <OptionChip on={mustDo} icon={<Flag className={icon} aria-hidden />} onClick={() => pick('mustDo', setMustDo)(!mustDo)}>
+        Must do
+      </OptionChip>
+      <DateChip keepFocus value={due} min={today} label={due ? `Due ${dayLabel(due, today, true)}` : 'Due'} onPick={pick('dueDate', setDue)} />
+    </div>
+  );
+  const choices = picker && (
+    <div className="flex gap-1.5 overflow-x-auto pr-6 [scrollbar-width:none] [mask-image:linear-gradient(to_right,black_calc(100%-1.5rem),transparent)]">
+      <button
+        type="button"
+        onClick={() => setPicker(null)}
+        aria-label="Back to the options"
+        className="press grid size-9 shrink-0 place-items-center rounded-full bg-surface-highest text-on-surface-variant"
+      >
+        <Close className="size-5" aria-hidden />
+      </button>
+      {picker === 'when' && <WhenChips value={planned} today={today} onChange={pick('plannedDate', setPlanned)} />}
+      {picker === 'group' && <GroupChips groups={groups} value={groupId} onChange={pick('groupId', setGroupId)} />}
+      {picker === 'for' && (
+        <PersonChips
+          members={members}
+          me={me?.id ?? ''}
+          value={assignee === undefined ? (me?.id ?? null) : assignee}
+          onChange={pick('assigneeId', (v: string | null) => setAssignee(v === me?.id ? undefined : v))}
+        />
+      )}
+      {picker === 'time' && <TimeChips value={time} onChange={pick('timeOfDay', setTime)} />}
+    </div>
   );
 
+  const thinking = phase === 'thinking';
   const composer = (
     <form
       onSubmit={(e) => {
@@ -392,8 +405,7 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
         void submit();
       }}
     >
-      {options}
-      <div className="flex items-end gap-2">
+      <div className="relative">
         <textarea
           ref={input}
           rows={1}
@@ -405,21 +417,52 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
               void submit();
             }
           }}
-          placeholder={smart ? 'Type anything to add' : 'What needs doing?'}
+          placeholder={smart ? 'Call Mom Friday, out of eggs…' : 'What needs doing?'}
           aria-label={smart ? 'What to add' : 'Task'}
           enterKeyHint="send"
-          disabled={phase === 'thinking'}
-          className="max-h-[140px] min-h-12 min-w-0 flex-1 resize-none rounded-3xl bg-surface-high px-4 py-3 text-base leading-6 outline-none placeholder:text-on-surface-variant disabled:opacity-60"
+          readOnly={thinking}
+          className={`field-sizing-content block max-h-42 min-h-14 w-full resize-none bg-transparent px-1 pt-1 text-[1.375rem] leading-8 outline-none placeholder:text-on-surface-variant/70 ${
+            thinking ? 'text-transparent' : ''
+          }`}
         />
-        <button
-          type="submit"
-          onPointerDown={(e) => e.preventDefault()}
-          disabled={!text.trim() || phase === 'thinking'}
-          aria-label={smart ? 'Read it' : 'Add'}
-          className="press grid size-12 shrink-0 place-items-center rounded-full bg-primary text-on-primary disabled:opacity-40"
-        >
-          {smart ? <Sparkle className="size-5" aria-hidden /> : <ArrowUp className="size-6" aria-hidden />}
-        </button>
+        {/* While Haiku reads, a light sweeps across what they typed. */}
+        {thinking && (
+          <motion.p
+            aria-hidden
+            className="pointer-events-none absolute inset-0 overflow-hidden bg-clip-text px-1 pt-1 text-[1.375rem] leading-8 whitespace-pre-wrap text-transparent"
+            style={{
+              backgroundImage: 'linear-gradient(100deg, var(--md-on-surface-variant) 35%, var(--md-primary) 50%, var(--md-on-surface-variant) 65%)',
+              backgroundSize: '250% 100%',
+            }}
+            animate={{ backgroundPosition: ['100% 0%', '0% 0%'] }}
+            transition={{ duration: 1.8, repeat: Infinity, ease: 'linear' }}
+          >
+            {text}
+          </motion.p>
+        )}
+      </div>
+      <div className="mt-3 flex items-center gap-2">
+        <div className="relative min-w-0 flex-1 overflow-hidden" onPointerDown={keepKeyboard}>
+          <AnimatePresence mode="popLayout" initial={false}>
+            {thinking ? (
+              <motion.div key="thinking" {...rowMotion(true)} className="flex h-9 items-center gap-3">
+                <span className="text-sm font-medium text-primary">Reading that…</span>
+                <button type="button" onClick={cancelThinking} className="rounded-full px-3 py-1.5 text-sm font-medium text-on-surface-variant hover:bg-surface-high">
+                  Cancel
+                </button>
+              </motion.div>
+            ) : picker ? (
+              <motion.div key={picker} {...rowMotion(true)}>
+                {choices}
+              </motion.div>
+            ) : (
+              <motion.div key="options" {...rowMotion(false)}>
+                {chips}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+        <SendButton ready={!!text.trim()} thinking={thinking} smart={smart} />
       </div>
     </form>
   );
@@ -435,7 +478,7 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
           // The text box comes back on the next frame; focus it once it exists.
           requestAnimationFrame(() => input.current?.focus({ preventScroll: true }));
         }}
-        className="h-12 flex-1 rounded-full bg-surface-high font-medium"
+        className="press h-14 flex-1 rounded-full bg-surface-highest font-medium"
       >
         Edit text
       </button>
@@ -443,31 +486,26 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
         type="button"
         onClick={apply}
         disabled={!chosen.length || !valid || applying}
-        className="press h-12 flex-[1.4] rounded-full bg-primary font-medium text-on-primary disabled:opacity-40"
+        className="press h-14 flex-[1.4] rounded-full bg-primary font-medium text-on-primary disabled:opacity-40"
       >
         {applying ? 'Adding…' : chosen.length === drafts.length && chosen.length > 1 ? `Add all ${chosen.length}` : chosen.length ? `Add ${chosen.length}` : 'Nothing picked'}
       </button>
     </div>
   );
 
-  const header = (
-    <div className="flex items-center gap-1.5 pb-1 text-sm text-on-surface-variant">
-      {smart && <Sparkle className="size-4 text-primary" aria-hidden />}
-      {phase === 'done'
-        ? 'Saved'
-        : phase === 'review'
-          ? "Here's what I got. Tap one to change it."
-          : smart
-            ? 'Tasks, groceries, plans: type it however you say it'
-            : smartOffline
-              ? "Add a task. You're offline, so it goes in as typed."
-              : 'Add a task'}
-    </div>
-  );
+  // Only what's worth saying: what came back, or why it's adding things as typed.
+  const header =
+    phase === 'review' ? (
+      <p className="flex items-center gap-1.5 pb-1 text-sm text-on-surface-variant">
+        <Sparkle className="size-4 text-primary" aria-hidden />
+        Here's what I got. Tap one to change it.
+      </p>
+    ) : phase === 'compose' && smartOffline ? (
+      <p className="pb-1 text-sm text-on-surface-variant">You're offline, so it goes in as typed.</p>
+    ) : null;
 
   let body: ReactNode = null;
   if (phase === 'done') body = <Done message={doneMessage} />;
-  else if (phase === 'thinking') body = <Thinking text={text} onCancel={cancelThinking} />;
   else if (phase === 'review') {
     body = (
       <>
@@ -492,11 +530,11 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
       </>
     );
   } else if (notice) {
-    body = <p className="px-1 pb-1 text-sm text-on-surface-variant">{notice}</p>;
+    body = <p className="rounded-2xl bg-surface-high px-3.5 py-2.5 text-sm text-on-surface-variant">{notice}</p>;
   }
 
   // Each phase crossfades into the next while the sheet glides to its new height.
-  const bodyKey = phase === 'compose' ? `compose-${notice ?? ''}` : phase;
+  const bodyKey = phase === 'compose' || phase === 'thinking' ? `compose-${notice ?? ''}` : phase;
   const footer = phase === 'done' ? null : phase === 'review' ? reviewFooter : composer;
   return (
     <Sheet
