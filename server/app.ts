@@ -11,14 +11,14 @@ import { allowedEmails, isAllowed, upsertMember } from './auth/members.ts';
 import type { Oidc } from './auth/oidc.ts';
 import { createSession, deleteSession, resolveSession, SESSION_COOKIE, SESSION_TTL_MS } from './auth/sessions.ts';
 import type { Config } from './config.ts';
+import { registerConnector } from './connector.ts';
 import type { Db } from './db/index.ts';
+import type { Env } from './env.ts';
 import { z } from 'zod';
-import { groups, members, type Member } from './db/schema.ts';
+import { groups, members } from './db/schema.ts';
 
 const STATE_COOKIE = 'almanac_auth_state';
 const webDist = fileURLToPath(new URL('../dist/web', import.meta.url));
-
-type Env = { Variables: { member: Member | null } };
 
 /** Only allow same-app relative paths as post-login destinations. */
 function safeReturnTo(value: string | undefined) {
@@ -26,7 +26,18 @@ function safeReturnTo(value: string | undefined) {
   return value;
 }
 
-export function createApp({ db, config, oidc }: { db: Db; config: Config; oidc: Oidc }) {
+export function createApp({
+  db,
+  config,
+  oidc,
+  fetchImpl,
+}: {
+  db: Db;
+  config: Config;
+  oidc: Oidc;
+  /** For fetching client metadata documents; tests swap it out. */
+  fetchImpl?: typeof fetch;
+}) {
   const base = config.basePath;
   const cookiePath = base || '/';
   const appUrl = (p: string) => `${base}${p}`;
@@ -67,7 +78,7 @@ export function createApp({ db, config, oidc }: { db: Db; config: Config; oidc: 
   app.get('/auth/login', async (c) => {
     const returnTo = safeReturnTo(c.req.query('return'));
     if (!oidc.enabled) {
-      if (config.devLogin) return c.redirect(appUrl('/signin'));
+      if (config.devLogin) return c.redirect(appUrl(`/signin?return=${encodeURIComponent(returnTo)}`));
       return c.text('Sign-in is not configured. Set OIDC_CLIENT_ID and OIDC_CLIENT_SECRET.', 503);
     }
     const { url, state } = await oidc.begin(returnTo);
@@ -106,7 +117,7 @@ export function createApp({ db, config, oidc }: { db: Db; config: Config; oidc: 
     if (!config.devLogin || !isAllowed(config, email)) return c.notFound();
     const member = upsertMember(db, config, { email });
     startSession(c, member.id);
-    return c.redirect(appUrl('/'));
+    return c.redirect(appUrl(safeReturnTo(c.req.query('return'))));
   });
 
   app.post('/auth/logout', (c) => {
@@ -115,6 +126,9 @@ export function createApp({ db, config, oidc }: { db: Db; config: Config; oidc: 
     deleteCookie(c, SESSION_COOKIE, { path: cookiePath });
     return c.body(null, 204);
   });
+
+  // OAuth, discovery and /mcp for the Claude connector. Its signed-in API goes in below the guard.
+  const registerConnectorApi = registerConnector(app, { db, config, fetchImpl });
 
   app.get('/api/session', (c) =>
     c.json({
@@ -163,6 +177,8 @@ export function createApp({ db, config, oidc }: { db: Db; config: Config; oidc: 
       .all();
     return c.json({ groups: rows });
   });
+
+  registerConnectorApi(app);
 
   app.all('/api/*', (c) => c.json({ error: 'Not found.' }, 404));
 

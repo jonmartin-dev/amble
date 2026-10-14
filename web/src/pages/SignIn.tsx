@@ -1,6 +1,6 @@
 import { motion } from 'motion/react';
 import ErrorIcon from '~icons/material-symbols/error-outline-rounded';
-import { appUrl } from '../lib/api.ts';
+import { appUrl, basePath } from '../lib/api.ts';
 import { expressive } from '../lib/motion.ts';
 import { useSession } from '../lib/queries.ts';
 
@@ -12,8 +12,13 @@ const errors: Record<string, string> = {
 
 export function SignIn() {
   const { data } = useSession();
-  const error = new URLSearchParams(window.location.search).get('error');
+  const params = new URLSearchParams(window.location.search);
+  const error = params.get('error');
   const auth = data?.auth;
+  // Where to land after signing in: an explicit ?return, or the page that asked for sign-in.
+  const here = window.location.pathname.slice(basePath.length) + window.location.search;
+  const returnTo = params.get('return') ?? (here.startsWith('/signin') ? null : here);
+  const withReturn = (path: string) => (returnTo ? `${path}${path.includes('?') ? '&' : '?'}return=${encodeURIComponent(returnTo)}` : path);
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-6 py-12">
@@ -38,7 +43,7 @@ export function SignIn() {
       <div className="mt-10 flex flex-col gap-3">
         {auth?.oidc && (
           <a
-            href={appUrl('/auth/login')}
+            href={appUrl(withReturn('/auth/login'))}
             className="rounded-full bg-primary px-6 py-4 text-center text-lg font-medium text-on-primary transition-transform active:scale-[0.97]"
           >
             Continue with {auth.provider}
@@ -47,7 +52,7 @@ export function SignIn() {
         {auth?.devEmails.map((email) => (
           <a
             key={email}
-            href={appUrl(`/auth/dev?email=${encodeURIComponent(email)}`)}
+            href={appUrl(withReturn(`/auth/dev?email=${encodeURIComponent(email)}`))}
             className="rounded-full bg-surface-high px-6 py-4 text-center transition-transform active:scale-[0.97]"
           >
             Dev sign-in as {email}

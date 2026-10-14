@@ -139,7 +139,58 @@ export const listItems = sqliteTable(
   (t) => [index('list_items_group_idx').on(t.groupId, t.checkedAt)],
 );
 
+// Apps allowed to act for a member through the remote Claude connector (OAuth 2.1).
+// `metadata` clients are identified by a Client ID Metadata Document URL, which is how Claude
+// connects; `registered` ones came through dynamic client registration.
+export const oauthClients = sqliteTable('oauth_clients', {
+  id: text('id').primaryKey(),
+  kind: text('kind', { enum: ['metadata', 'registered'] }).notNull(),
+  name: text('name'),
+  redirectUris: text('redirect_uris', { mode: 'json' }).$type<string[]>().notNull(),
+  fetchedAt: integer('fetched_at', { mode: 'timestamp_ms' }),
+  createdAt: createdAt(),
+});
+
+// One approved connection: a member let a client act for them. Deleting it revokes every token.
+export const oauthGrants = sqliteTable(
+  'oauth_grants',
+  {
+    id: id(),
+    memberId: text('member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade' }),
+    clientId: text('client_id')
+      .notNull()
+      .references(() => oauthClients.id, { onDelete: 'cascade' }),
+    clientName: text('client_name').notNull(),
+    scope: text('scope').notNull(),
+    resource: text('resource').notNull(),
+    createdAt: createdAt(),
+    lastUsedAt: integer('last_used_at', { mode: 'timestamp_ms' }),
+  },
+  (t) => [index('oauth_grants_member_idx').on(t.memberId)],
+);
+
+export const oauthTokens = sqliteTable(
+  'oauth_tokens',
+  {
+    id: id(),
+    grantId: text('grant_id')
+      .notNull()
+      .references(() => oauthGrants.id, { onDelete: 'cascade' }),
+    kind: text('kind', { enum: ['access', 'refresh'] }).notNull(),
+    tokenHash: text('token_hash').notNull().unique(),
+    expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+    // Set when a refresh token has been exchanged for a newer one.
+    rotatedAt: integer('rotated_at', { mode: 'timestamp_ms' }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('oauth_tokens_grant_idx').on(t.grantId)],
+);
+
 export type Member = typeof members.$inferSelect;
 export type Group = typeof groups.$inferSelect;
 export type Task = typeof tasks.$inferSelect;
 export type ListItem = typeof listItems.$inferSelect;
+
+export type OAuthClient = typeof oauthClients.$inferSelect;

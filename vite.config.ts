@@ -28,6 +28,9 @@ export default defineConfig({
       '/api': server,
       '/auth': server,
       '/healthz': server,
+      '/oauth': server,
+      '/mcp': server,
+      '/.well-known': server,
     },
   },
 });

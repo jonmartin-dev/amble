@@ -30,6 +30,12 @@ export function Privacy() {
           When the household turns AI features on, task titles and related details are sent to Anthropic's API to estimate effort and
           suggest plans. Anthropic does not use API data to train its models.
         </p>
+        <h2>Claude connector</h2>
+        <p>
+          If you connect Claude to Almanac, Claude can read and change your tasks, lists and plans when you ask it to, acting as you.
+          What it reads becomes part of your Claude conversation and is handled under your Claude account's privacy settings. You can
+          disconnect it at any time from Connect Claude in Almanac.
+        </p>
         <h2>Sharing</h2>
         <p>Almanac never sells your data or shares it with anyone besides the services named above. There are no ads or trackers.</p>
         <h2>Removing your data</h2>

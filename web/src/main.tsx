@@ -7,6 +7,7 @@ import {
   createRouter,
   Outlet,
   RouterProvider,
+  useParams,
   useRouterState,
 } from '@tanstack/react-router';
 import { MotionConfig } from 'motion/react';
@@ -22,6 +23,8 @@ import { Appearance } from './pages/Appearance.tsx';
 import { Backlog } from './pages/Backlog.tsx';
 import { Privacy } from './pages/Privacy.tsx';
 import { Calendar } from './pages/Calendar.tsx';
+import { Connect } from './pages/Connect.tsx';
+import { ConnectionsPage } from './pages/Connections.tsx';
 import { SignIn } from './pages/SignIn.tsx';
 import { Stats } from './pages/Stats.tsx';
 import { Today } from './pages/Today.tsx';
@@ -35,6 +38,8 @@ function Root() {
   if (pathname === '/privacy') return <Privacy />;
   if (session.isPending) return <div className="min-h-dvh" />;
   if (!session.data?.member || pathname === '/signin') return <SignIn />;
+  // The consent page stands alone, without the app's toolbar.
+  if (pathname.startsWith('/connect/')) return <Outlet />;
 
   return (
     <div className="min-h-dvh">
@@ -54,6 +59,15 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/calendar', component: Calendar }),
   createRoute({ getParentRoute: () => rootRoute, path: '/stats', component: Stats }),
   createRoute({ getParentRoute: () => rootRoute, path: '/appearance', component: Appearance }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/connections', component: ConnectionsPage }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/connect/$requestId',
+    component: function ConnectRoute() {
+      const { requestId } = useParams({ strict: false });
+      return <Connect requestId={requestId ?? ''} />;
+    },
+  }),
   createRoute({ getParentRoute: () => rootRoute, path: '/signin', component: SignIn }),
   createRoute({ getParentRoute: () => rootRoute, path: '/privacy', component: Privacy }),
 ]);

@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import Logout from '~icons/material-symbols/logout-rounded';
 import Palette from '~icons/material-symbols/palette-outline-rounded';
+import Sparkle from '~icons/material-symbols/auto-awesome-outline-rounded';
 import { signOut } from '../lib/api.ts';
 import { expressive } from '../lib/motion.ts';
 import { useMe } from '../lib/queries.ts';
@@ -60,6 +61,14 @@ export function PageHeader({ eyebrow, title }: { eyebrow?: ReactNode; title: Rea
                 >
                   <Palette className="size-5" aria-hidden />
                   Appearance
+                </Link>
+                <Link
+                  to="/connections"
+                  onClick={() => setOpen(false)}
+                  className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left hover:bg-surface-highest"
+                >
+                  <Sparkle className="size-5" aria-hidden />
+                  Connect Claude
                 </Link>
                 <button
                   type="button"

@@ -7,7 +7,7 @@ import { chromium } from 'playwright-core';
 const base = process.env.ALMANAC_URL ?? 'http://localhost:5173';
 const email = process.argv[2] ?? 'dev@almanac.local';
 const out = 'design/screens';
-const routes = ['/', '/backlog', '/calendar', '/stats', '/appearance'];
+const routes = ['/', '/backlog', '/calendar', '/stats', '/appearance', '/connections'];
 const variants = [
   { name: 'light', mode: 'light', seed: '#2e6a57', style: 'tonal' },
   { name: 'dark', mode: 'dark', seed: '#2e6a57', style: 'tonal' },
@@ -50,6 +50,20 @@ for (const v of variants) {
     await page.screenshot({ path: file, fullPage: true });
     console.log(file);
   }
+  // The connector consent page, as Claude's sign-in would open it (never approved here).
+  const consent = new URLSearchParams({
+    response_type: 'code',
+    client_id: 'https://claude.ai/oauth/mcp-oauth-client-metadata',
+    redirect_uri: 'https://claude.ai/api/mcp/auth_callback',
+    code_challenge: 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM',
+    code_challenge_method: 'S256',
+  });
+  await page.goto(`${base}/oauth/authorize?${consent}`);
+  await page.waitForLoadState('networkidle');
+  await page.waitForTimeout(900);
+  await page.screenshot({ path: `${out}/${v.name}-consent.png`, fullPage: true });
+  console.log(`${out}/${v.name}-consent.png`);
+
   if (v === variants.at(-1)) {
     await page.request.patch(`${base}/api/me`, { data: { theme: originalTheme } });
   }
