@@ -1,5 +1,7 @@
 // The app's JSON API over the task layer. Every route here runs behind the sign-in guard and
 // logs changes as made "via app".
+import fs from 'node:fs';
+import { Readable } from 'node:stream';
 import { count, eq, isNull } from 'drizzle-orm';
 import type { Context, Hono } from 'hono';
 import { z } from 'zod';
@@ -12,10 +14,21 @@ import type { CalendarSync } from './calendar/sync.ts';
 import { inviteMember } from './auth/members.ts';
 import type { Config } from './config.ts';
 import type { Db } from './db/index.ts';
-import { listItems, members, tasks, type Member } from './db/schema.ts';
+import { listItems, members, tasks, type Attachment, type Member } from './db/schema.ts';
 import type { Env } from './env.ts';
 import { listActivity } from './domain/activity.ts';
 import { listEvents } from './domain/events.ts';
+import {
+  addAttachment,
+  cleanName,
+  fileType,
+  FileTooBig,
+  getAttachment,
+  removeAttachment,
+  servedAs,
+  setPreview,
+  type FileStore,
+} from './domain/files.ts';
 import {
   archiveGroup,
   archivedGroups,
@@ -34,6 +47,7 @@ import {
 import { addListItems, checkListItems, getListItems, listHistory, resetList, updateListItem } from './domain/lists.ts';
 import { defaultCapacity, findGap, getLoad, learnedCapacity } from './domain/load.ts';
 import { dismissSuggestion, findGaps, getBriefing, markBriefingSeen } from './domain/planner.ts';
+import { snoozeReminder, upcomingReminders } from './domain/reminders.ts';
 import { repeatSchema } from './domain/repeat.ts';
 import { getStats } from './domain/stats.ts';
 import {
@@ -49,9 +63,12 @@ import {
   updateTask,
 } from './domain/tasks.ts';
 import { addDays, planningDate } from './lib/dates.ts';
+import type { Push } from './notify/push.ts';
 import { madeAt } from './requests.ts';
 
 const date = z.iso.date();
+// A moment, as the app's toISOString() gives it.
+const instant = z.iso.datetime({ offset: true });
 const timeOfDay = z.enum(['morning', 'afternoon', 'evening']);
 const link = z.object({ id: z.uuid().optional(), url: z.string().max(2000), title: z.string().max(300).nullable().optional() });
 // A step's title, or an id and title when the app made it offline and may change it before it syncs.
@@ -71,6 +88,7 @@ const newTask = z.object({
   subtasks: z.array(newSubtask).max(50).optional(),
   links: z.array(link).max(20).optional(),
   repeat: repeatSchema.nullable().optional(),
+  remindAt: instant.nullable().optional(),
 });
 
 const taskPatch = z.object({
@@ -90,7 +108,26 @@ const taskPatch = z.object({
   removeLinks: z.array(z.string()).optional(),
   repeat: repeatSchema.nullable().optional(),
   pausedUntil: date.nullable().optional(),
+  remindAt: instant.nullable().optional(),
 });
+
+/** A reminder time from the app as a Date; null clears it and undefined leaves it alone. */
+const when = (value: string | null | undefined) => (value == null ? value : new Date(value));
+
+// The smaller copy of a photo the app makes when adding it.
+const PREVIEW_TYPES = ['image/webp', 'image/jpeg', 'image/png'];
+const PREVIEW_MAX_BYTES = 3 * 1024 * 1024;
+
+/** What kind of image a preview is, from its first bytes. */
+function imageType(file: string) {
+  const fd = fs.openSync(file, 'r');
+  const head = Buffer.alloc(12);
+  fs.readSync(fd, head, 0, 12, 0);
+  fs.closeSync(fd);
+  if (head.toString('ascii', 0, 4) === 'RIFF' && head.toString('ascii', 8, 12) === 'WEBP') return 'image/webp';
+  if (head[0] === 0x89 && head.toString('ascii', 1, 4) === 'PNG') return 'image/png';
+  return 'image/jpeg';
+}
 
 /** Parses a JSON body, answering 400 with a readable message when it doesn't fit. */
 async function body<T extends z.ZodType>(c: Context<Env>, schema: T): Promise<z.output<T>> {
@@ -113,6 +150,7 @@ const proposedTask = z.object({
   subtasks: z.array(z.string().max(300)).max(50),
   links: z.array(z.string().max(2000)).max(20),
   repeat: repeatSchema.nullable(),
+  remindAt: instant.nullable().optional(),
 });
 
 const proposal = z.discriminatedUnion('kind', [
@@ -141,6 +179,7 @@ const proposal = z.discriminatedUnion('kind', [
       estimateMinutes: z.number().int().min(1).max(1440).nullable().optional(),
       addSubtasks: z.array(z.string().max(300)).max(50).optional(),
       repeat: repeatSchema.nullable().optional(),
+      remindAt: instant.nullable().optional(),
     }),
   }),
   z.object({ kind: z.literal('complete'), taskId: z.string(), title: z.string() }),
@@ -178,7 +217,10 @@ function within<T>(ms: number, work: Promise<T>, fallback: T): Promise<T> {
   return Promise.race([work, late]).finally(() => clearTimeout(timer));
 }
 
-export function registerApi(app: Hono<Env>, { db, config, ai, calendar }: { db: Db; config: Config; ai: Ai; calendar: CalendarSync }) {
+export function registerApi(
+  app: Hono<Env>,
+  { db, config, ai, calendar, push, files }: { db: Db; config: Config; ai: Ai; calendar: CalendarSync; push: Push; files: FileStore },
+) {
   const me = (c: Context<Env>) => c.get('member')!;
   // A change the app queued offline says how long ago it was made.
   const actor = (c: Context<Env>): Actor => {
@@ -363,7 +405,12 @@ export function registerApi(app: Hono<Env>, { db, config, ai, calendar }: { db: 
     const input = await body(c, newTask);
     const viewer = me(c);
     const [task] = createTasks(db, actor(c), [
-      { ...input, groupId: groupId(viewer, input.groupId), assigneeId: memberId(viewer, input.assigneeId) },
+      {
+        ...input,
+        groupId: groupId(viewer, input.groupId),
+        assigneeId: memberId(viewer, input.assigneeId),
+        remindAt: when(input.remindAt),
+      },
     ]);
     return c.json({ task }, 201);
   });
@@ -390,7 +437,7 @@ export function registerApi(app: Hono<Env>, { db, config, ai, calendar }: { db: 
 
   app.patch('/api/tasks/:id', async (c) => {
     const input = await body(c, taskPatch);
-    const task = updateTask(db, actor(c), c.req.param('id'), { ...input, groupId: groupId(me(c), input.groupId) });
+    const task = updateTask(db, actor(c), c.req.param('id'), { ...input, groupId: groupId(me(c), input.groupId), remindAt: when(input.remindAt) });
     return c.json({ task });
   });
 
@@ -419,6 +466,136 @@ export function registerApi(app: Hono<Env>, { db, config, ai, calendar }: { db: 
     const { restore } = await body(c, z.object({ restore: z.boolean().optional() }));
     const [task] = archiveTasks(db, actor(c), [c.req.param('id')], restore);
     return c.json({ task });
+  });
+
+  // ---- reminders and notifications ----------------------------------------------------------
+
+  // The key the app subscribes with, and the devices where this person turned notifications on.
+  app.get('/api/push', (c) => c.json({ publicKey: push.publicKey, devices: push.devices(me(c)) }));
+
+  app.post('/api/push/subscriptions', async (c) => {
+    const sub = await body(
+      c,
+      z.object({ endpoint: z.string().max(2000), keys: z.object({ p256dh: z.string().min(1).max(200), auth: z.string().min(1).max(100) }) }),
+    );
+    push.subscribe(me(c), sub, c.req.header('user-agent'));
+    return c.body(null, 204);
+  });
+
+  app.post('/api/push/unsubscribe', async (c) => {
+    const { endpoint } = await body(c, z.object({ endpoint: z.string().max(2000) }));
+    push.unsubscribe(me(c), endpoint);
+    return c.body(null, 204);
+  });
+
+  app.delete('/api/push/devices/:id', (c) => {
+    push.removeDevice(me(c), c.req.param('id'));
+    return c.body(null, 204);
+  });
+
+  app.post('/api/push/test', async (c) => {
+    const result = await push.sendTo(me(c).id, {
+      title: 'Notifications are on',
+      body: "This is how Almanac's reminders will look.",
+      tag: 'almanac-test',
+      url: `${config.basePath}/settings/notifications`,
+    });
+    return c.json(result);
+  });
+
+  app.get('/api/reminders', (c) => c.json({ reminders: upcomingReminders(db, me(c)) }));
+
+  app.post('/api/reminders/:id/snooze', async (c) => {
+    const { minutes } = await body(c, z.object({ minutes: z.number().int().min(5).max(7 * 24 * 60) }));
+    const taskId = snoozeReminder(db, me(c), c.req.param('id'), minutes);
+    return c.json({ task: getTask(db, me(c), taskId) });
+  });
+
+  // ---- files --------------------------------------------------------------------------------
+
+  /** A file on a task this person can see, or null. */
+  const visibleFile = (c: Context<Env>): Attachment | null => {
+    const file = getAttachment(db, c.req.param('id') ?? '');
+    if (!file) return null;
+    try {
+      getTask(db, me(c), file.taskId);
+    } catch {
+      return null;
+    }
+    return file;
+  };
+  const gone = (c: Context<Env>) => c.json({ error: 'That file is gone.' }, 404);
+  const tooBig = () => `Files can be up to ${Math.round(config.maxFileBytes / 1024 / 1024)} MB.`;
+
+  /** Streams stored bytes back. They never change, so browsers can keep them. */
+  const sendFile = (c: Context<Env>, sha256: string, type: string, inline: boolean, name: string) => {
+    const file = files.pathOf(sha256);
+    if (!fs.existsSync(file)) return gone(c);
+    if (c.req.header('if-none-match') === `"${sha256}"`) return c.body(null, 304);
+    const ascii = name.replace(/[^\x20-\x7e]|["\\]/g, '_');
+    return c.body(Readable.toWeb(fs.createReadStream(file)) as ReadableStream, 200, {
+      'Content-Type': type,
+      'Content-Length': String(fs.statSync(file).size),
+      'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name)}`,
+      'Cache-Control': 'private, max-age=31536000, immutable',
+      ETag: `"${sha256}"`,
+      // Opened on its own, a file can show itself but never run anything. Chrome's PDF viewer
+      // won't open in a sandbox, and a PDF can't run the page's scripts anyway.
+      'Content-Security-Policy': `default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'${type === 'application/pdf' ? '' : '; sandbox'}`,
+    });
+  };
+
+  // The body is the file itself, streamed to disk; its name comes in the query string.
+  app.post('/api/tasks/:id/files', async (c) => {
+    const task = getTask(db, me(c), c.req.param('id'));
+    if (Number(c.req.header('content-length')) > config.maxFileBytes) return c.json({ error: tooBig() }, 413);
+    const name = cleanName(c.req.query('name'));
+    const mime = fileType(c.req.header('content-type'), name);
+    try {
+      const saved = await files.save(c.req.raw.body, config.maxFileBytes);
+      return c.json({ file: addAttachment(db, actor(c), task.id, { name, mime, ...saved }) }, 201);
+    } catch (err) {
+      if (err instanceof FileTooBig) return c.json({ error: tooBig() }, 413);
+      throw err;
+    }
+  });
+
+  app.post('/api/files/:id/preview', async (c) => {
+    const file = visibleFile(c);
+    if (!file) return gone(c);
+    if (!PREVIEW_TYPES.includes((c.req.header('content-type') ?? '').split(';')[0]!.trim())) {
+      throw new DomainError('A preview has to be a WebP, JPEG or PNG image.');
+    }
+    const saved = await files.save(c.req.raw.body, PREVIEW_MAX_BYTES);
+    setPreview(db, file.id, saved.sha256);
+    return c.body(null, 204);
+  });
+
+  app.get('/api/files/:id', (c) => {
+    const file = visibleFile(c);
+    if (!file || file.removedAt) return gone(c);
+    const { type, inline } = servedAs(file.mime);
+    return sendFile(c, file.sha256, type, inline && c.req.query('download') !== '1', file.name);
+  });
+
+  app.get('/api/files/:id/preview', (c) => {
+    const file = visibleFile(c);
+    if (!file || file.removedAt || !file.previewSha256) return gone(c);
+    return sendFile(c, file.previewSha256, imageType(files.pathOf(file.previewSha256)), true, file.name);
+  });
+
+  app.delete('/api/files/:id', (c) => {
+    const file = visibleFile(c);
+    if (!file) return gone(c);
+    removeAttachment(db, actor(c), file);
+    return c.body(null, 204);
+  });
+
+  app.post('/api/files/:id/restore', (c) => {
+    const file = visibleFile(c);
+    if (!file) return gone(c);
+    removeAttachment(db, actor(c), file, true);
+    return c.body(null, 204);
   });
 
   // ---- lists --------------------------------------------------------------------------------

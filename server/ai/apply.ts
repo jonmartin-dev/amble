@@ -32,6 +32,7 @@ export function applyProposals(db: Db, actor: Actor, proposals: Proposal[]): App
           groupId: group(t.groupId),
           assigneeId: person(t.assigneeId) ?? null,
           links: t.links.map((url) => ({ url })),
+          remindAt: t.remindAt ? new Date(t.remindAt) : null,
         })),
       );
       result.added = created.length;
@@ -39,8 +40,12 @@ export function applyProposals(db: Db, actor: Actor, proposals: Proposal[]): App
     }
     for (const p of proposals) {
       if (p.kind === 'update') {
-        const { assigneeId, ...changes } = p.changes;
-        updateTask(db, actor, p.taskId, { ...changes, groupId: group(changes.groupId) });
+        const { assigneeId, remindAt, ...changes } = p.changes;
+        updateTask(db, actor, p.taskId, {
+          ...changes,
+          groupId: group(changes.groupId),
+          remindAt: remindAt === undefined ? undefined : remindAt ? new Date(remindAt) : null,
+        });
         // Handing it over goes through the same path as the app's Assign, so it's logged as one.
         if (assigneeId !== undefined && getTask(db, me, p.taskId).assigneeId !== (person(assigneeId) ?? null)) {
           assignTask(db, actor, p.taskId, person(assigneeId) ?? null);

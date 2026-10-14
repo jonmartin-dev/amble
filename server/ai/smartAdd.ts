@@ -9,6 +9,7 @@ import type { Db } from '../db/index.ts';
 import { listItems, tasks, type Member } from '../db/schema.ts';
 import { firstName, listMembers, visibleGroups } from '../domain/household.ts';
 import { getLoad } from '../domain/load.ts';
+import { parseReminderTime } from '../domain/reminders.ts';
 import { cleanRepeat } from '../domain/repeat.ts';
 import { listTasks } from '../domain/tasks.ts';
 import { addDays, planningDate, weekday } from '../lib/dates.ts';
@@ -50,6 +51,7 @@ const TaskOut = z.object({
   steps: z.array(z.string()),
   links: z.array(z.string()),
   repeat: RepeatOut,
+  remind: z.string().describe('YYYY-MM-DDTHH:MM, their local time, only when they ask to be reminded; or ""'),
 });
 
 const Item = z.discriminatedUnion('kind', [
@@ -76,6 +78,7 @@ const Item = z.discriminatedUnion('kind', [
     estimate_minutes: z.number().int().describe('0 to keep'),
     add_steps: z.array(z.string()),
     repeat: RepeatOut.describe('mode "none" to keep'),
+    remind: z.string().describe('YYYY-MM-DDTHH:MM to remind them, "none" to clear, "" to keep'),
   }),
   z.object({ kind: z.literal('complete_task'), task: z.string().describe('An open task ref like t3') }),
   z.object({ kind: z.literal('check_off'), list: z.string(), item: z.string().describe('An item ref like i4 from what is on the list now') }),
@@ -114,6 +117,7 @@ Fields (every field is always present; "" or 0 or an empty list means not set, a
 - group: the group that fits, judging by what's already in each group. "" when none fits.
 - estimate_minutes: always, for every task. A realistic time for doing the task itself, matching this household's own estimates when similar tasks are listed. Quick calls and messages 5-15, small chores 15-30, errands 30-60, bigger jobs 60-240.
 - repeat: only when they say it repeats ("every Sunday", "weekly", "on the 1st of each month", "every other Tuesday", "every 3 months"). Use mode "schedule" for calendar rhythms. Use mode "after" for maintenance whose clock restarts when it's done (filters, haircuts, oil changes) unless they tie it to calendar dates. Add months for seasonal ones ("mow every Saturday from April to October"). Don't set planned on a repeating task unless they said when to start.
+- remind: only when they ask to be reminded or nudged ("remind me", "ping me", "nudge me", "alert me"). It's a phone notification for the person typing, in their local time, and it has to be later than now. A day with no clock time means 09:00; "tonight" or "this evening" 18:00; "this afternoon" 14:00; "in an hour" or "in 20 minutes" counts from now. Plan the task for the reminder's day too, unless they gave another day for doing it. "Don't forget" alone is must_do, not a reminder.
 
 List items:
 - name: the item alone, as this household names it. When the list's history has the household's own version of what they said, use that: "milk" is their "Oat milk", "bread" their "Sourdough bread". Otherwise use their words. Capitalize the first letter.
@@ -158,8 +162,9 @@ export function buildContext(db: Db, me: Member, hints: AddHints = {}) {
     refs.members.set(`m${i + 1}`, m);
     ref.set(m.id, `m${i + 1}`);
   });
+  const now = Temporal.Now.zonedDateTimeISO(me.timezone);
   out.push(
-    `Today is ${weekday(today)} ${today}. The day turns over at ${me.dayCutoffHour}am, ${me.timezone}. ${firstName(me)} (${ref.get(me.id)}) is typing.`,
+    `Today is ${weekday(today)} ${today}, and it's ${now.toPlainDateTime().toString({ smallestUnit: 'minute' })} now. The day turns over at ${me.dayCutoffHour}am, ${me.timezone}. ${firstName(me)} (${ref.get(me.id)}) is typing.`,
   );
   out.push('', 'People:', ...people.map((m) => `${ref.get(m.id)} ${m.name}${m.id === me.id ? ' (typing)' : ''}`));
 
@@ -282,6 +287,17 @@ const steps = (list: Maybe<string[]>) =>
     .filter((s): s is string => !!s)
     .slice(0, 50);
 
+/** A reminder time Haiku gave, as an instant, if it's a real time still to come. */
+function reminderAt(value: Maybe<string>, timeZone: string): string | null {
+  if (!value || value === 'none') return null;
+  try {
+    const at = parseReminderTime(value, timeZone);
+    return at.getTime() > Date.now() ? at.toISOString() : null;
+  } catch {
+    return null;
+  }
+}
+
 function repeatOf(r: z.infer<typeof RepeatOut>) {
   if (r.mode === 'none') return null;
   try {
@@ -329,6 +345,7 @@ export function toProposals(output: Output, refs: Refs, me: Member, today: strin
         subtasks: steps(t.steps),
         links: urls(t.links),
         repeat: repeatOf(t.repeat),
+        remindAt: reminderAt(t.remind, me.timezone),
       };
       proposals.push({ kind: 'task', task });
     } else if (item.kind === 'add_to_list') {
@@ -356,6 +373,8 @@ export function toProposals(output: Output, refs: Refs, me: Member, today: strin
       if (item.add_steps?.length) changes.addSubtasks = steps(item.add_steps);
       const repeat = repeatOf(item.repeat);
       if (repeat) changes.repeat = repeat;
+      if (item.remind === 'none') changes.remindAt = null;
+      else if (item.remind) changes.remindAt = reminderAt(item.remind, me.timezone) ?? undefined;
       for (const k of Object.keys(changes) as (keyof TaskChanges)[]) if (changes[k] === undefined) delete changes[k];
       if (Object.keys(changes).length) proposals.push({ kind: 'update', taskId: task.id, title: task.title, changes });
     } else if (item.kind === 'complete_task') {

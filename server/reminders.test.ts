@@ -1,0 +1,289 @@
+import { eq } from 'drizzle-orm';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { createAi } from './ai/client.ts';
+import { createApp } from './app.ts';
+import { createOidc } from './auth/oidc.ts';
+import { createSession } from './auth/sessions.ts';
+import { config, type Config } from './config.ts';
+import { openDatabase, type Db } from './db/index.ts';
+import { activity, members, pushSubscriptions, reminders, type Member } from './db/schema.ts';
+import { seedStarterGroups } from './db/seed.ts';
+import { parseReminderTime } from './domain/reminders.ts';
+import { completeTasks, createTasks, getTask, skipTask } from './domain/tasks.ts';
+import { addDays, planningDate } from './lib/dates.ts';
+import { createPush, deviceName } from './notify/push.ts';
+import { createReminderSender, reminderBody } from './notify/reminders.ts';
+
+const ORIGIN = 'https://almanac.test';
+const testConfig: Config = {
+  ...config,
+  production: false,
+  publicUrl: ORIGIN,
+  basePath: '/almanac',
+  publicOrigin: ORIGIN,
+  adminEmails: ['jon@example.com'],
+  allowedEmails: ['jon@example.com', 'alex@example.com'],
+  devLogin: false,
+  oidc: { ...config.oidc, clientId: '', clientSecret: '' },
+  ai: { ...config.ai, apiKey: '' },
+};
+
+const ENDPOINT = 'https://fcm.googleapis.com/fcm/send/device-1';
+const KEYS = { p256dh: 'BPublicKeyOfTheDevice', auth: 'secret' };
+
+let db: Db;
+let app: ReturnType<typeof createApp>;
+let push: ReturnType<typeof createPush>;
+let jon: Member;
+let alex: Member;
+let today: string;
+/** What the fake push service was asked to deliver, and how it answers. */
+let delivered: { endpoint: string; payload: Record<string, unknown>; options: Record<string, unknown> }[];
+let answer: (endpoint: string) => number;
+const cookies = new Map<string, string>();
+
+function as(member: Member) {
+  if (!cookies.has(member.id)) cookies.set(member.id, `almanac_session=${createSession(db, member.id, 'test')}`);
+  const call = async (method: string, path: string, data?: unknown, headers: Record<string, string> = {}) => {
+    const res = await app.request(`${ORIGIN}/almanac/api${path}`, {
+      method,
+      headers: {
+        cookie: cookies.get(member.id)!,
+        origin: ORIGIN,
+        'content-type': 'application/json',
+        'user-agent': 'Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Mobile Safari/537.36',
+        ...headers,
+      },
+      body: data === undefined ? undefined : JSON.stringify(data),
+    });
+    return { status: res.status, json: res.status === 204 ? null : await res.json() };
+  };
+  return {
+    get: (path: string) => call('GET', path),
+    post: (path: string, data: unknown = {}, headers?: Record<string, string>) => call('POST', path, data, headers),
+    patch: (path: string, data: unknown, headers?: Record<string, string>) => call('PATCH', path, data, headers),
+    del: (path: string) => call('DELETE', path),
+  };
+}
+
+const inMinutes = (m: number) => new Date(Date.now() + m * 60_000);
+
+beforeEach(() => {
+  db = openDatabase(':memory:');
+  seedStarterGroups(db);
+  cookies.clear();
+  jon = db.insert(members).values({ email: 'jon@example.com', name: 'Jon Martin', timezone: 'America/Chicago', role: 'admin' }).returning().get();
+  alex = db.insert(members).values({ email: 'alex@example.com', name: 'Alex Martin', timezone: 'America/Chicago' }).returning().get();
+  delivered = [];
+  answer = () => 201;
+  push = createPush(db, testConfig, async (sub, payload, options) => {
+    const status = answer(sub.endpoint);
+    if (status >= 300) throw Object.assign(new Error(`Push failed (${status})`), { statusCode: status });
+    delivered.push({ endpoint: sub.endpoint, payload: JSON.parse(payload as string), options: options as Record<string, unknown> });
+  });
+  app = createApp({ db, config: testConfig, oidc: createOidc(testConfig), ai: createAi(testConfig), push });
+  today = planningDate(jon);
+});
+
+describe('setting reminders', () => {
+  it("keeps each person's reminder to themselves and out of the household's activity", async () => {
+    const { json } = await as(jon).post('/tasks', { title: 'Call the vet', remindAt: inMinutes(90).toISOString() });
+    const id = json.task.id;
+    expect(json.task.reminder).toMatchObject({ sentAt: null });
+    expect(new Date(json.task.reminder.at).getTime()).toBeCloseTo(inMinutes(90).getTime(), -4);
+
+    // Alex sees the task but not Jon's reminder, and sets her own.
+    expect((await as(alex).get(`/tasks/${id}`)).json.task.reminder).toBeNull();
+    await as(alex).patch(`/tasks/${id}`, { remindAt: inMinutes(30).toISOString() });
+    expect(db.select().from(reminders).all()).toHaveLength(2);
+
+    // Moving it is a reminder change only, so nothing shows in Activity.
+    await as(jon).patch(`/tasks/${id}`, { remindAt: inMinutes(120).toISOString() });
+    expect(db.select().from(activity).where(eq(activity.action, 'task.updated')).all()).toHaveLength(0);
+
+    const { json: cleared } = await as(jon).patch(`/tasks/${id}`, { remindAt: null });
+    expect(cleared.task.reminder).toBeNull();
+    expect(db.select().from(reminders).all()).toHaveLength(1);
+  });
+
+  it('turns down a time that has passed, unless the change was made offline earlier', async () => {
+    const { json } = await as(jon).post('/tasks', { title: 'Water the herbs' });
+    const past = inMinutes(-30).toISOString();
+    const res = await as(jon).patch(`/tasks/${json.task.id}`, { remindAt: past });
+    expect(res.status).toBe(400);
+    expect(res.json.error).toMatch(/already passed/);
+    // Made an hour ago while offline: kept, and it goes out on the next run.
+    const late = await as(jon).patch(`/tasks/${json.task.id}`, { remindAt: past }, { 'almanac-age': String(60 * 60_000) });
+    expect(late.status).toBe(200);
+    expect(late.json.task.reminder).not.toBeNull();
+  });
+
+  it('lists what is coming up, soonest first, leaving out finished tasks', async () => {
+    const [a, b, c] = createTasks(db, { member: jon, via: 'app' }, [
+      { title: 'Later', remindAt: inMinutes(300) },
+      { title: 'Sooner', remindAt: inMinutes(20) },
+      { title: 'Done already', remindAt: inMinutes(60) },
+    ]);
+    completeTasks(db, { member: jon, via: 'app' }, [c!.id]);
+    const { json } = await as(jon).get('/reminders');
+    expect(json.reminders.map((r: { title: string }) => r.title)).toEqual(['Sooner', 'Later']);
+    expect(json.reminders[0].taskId).toBe(b!.id);
+    expect(a).toBeTruthy();
+  });
+
+  it('reads the times Claude and smart add give in the person’s timezone', () => {
+    expect(parseReminderTime('2026-10-16T18:00', 'America/Chicago').toISOString()).toBe('2026-10-16T23:00:00.000Z');
+    expect(parseReminderTime('2026-10-16 18:00', 'America/Chicago').toISOString()).toBe('2026-10-16T23:00:00.000Z');
+    expect(parseReminderTime('2026-10-16T18:00:00Z', 'America/Chicago').toISOString()).toBe('2026-10-16T18:00:00.000Z');
+    expect(() => parseReminderTime('2026-10-16', 'America/Chicago')).toThrow(/date and a time/);
+    expect(() => parseReminderTime('tomorrow at 6', 'America/Chicago')).toThrow();
+  });
+});
+
+describe('devices', () => {
+  it('signs a device up, names it, and moves it to whoever signs in on it next', async () => {
+    expect((await as(jon).post('/push/subscriptions', { endpoint: ENDPOINT, keys: KEYS })).status).toBe(204);
+    const { json } = await as(jon).get('/push');
+    expect(json.publicKey).toMatch(/^[A-Za-z0-9_-]{80,}$/);
+    expect(json.devices).toEqual([expect.objectContaining({ endpoint: ENDPOINT, device: 'Chrome on Android' })]);
+
+    await as(alex).post('/push/subscriptions', { endpoint: ENDPOINT, keys: KEYS });
+    expect((await as(jon).get('/push')).json.devices).toEqual([]);
+    expect((await as(alex).get('/push')).json.devices).toHaveLength(1);
+
+    await as(alex).post('/push/unsubscribe', { endpoint: ENDPOINT });
+    expect(db.select().from(pushSubscriptions).all()).toEqual([]);
+  });
+
+  it('only sends through real push services', async () => {
+    const res = await as(jon).post('/push/subscriptions', { endpoint: 'https://evil.example.com/hook', keys: KEYS });
+    expect(res.status).toBe(400);
+    expect((await as(jon).post('/push/subscriptions', { endpoint: 'http://fcm.googleapis.com/x', keys: KEYS })).status).toBe(400);
+    expect((await as(jon).post('/push/subscriptions', { endpoint: 'https://web.push.apple.com/abc', keys: KEYS })).status).toBe(204);
+  });
+
+  it('keeps the same keys across restarts', () => {
+    expect(createPush(db, testConfig).publicKey).toBe(push.publicKey);
+  });
+
+  it('names devices from their browser', () => {
+    expect(deviceName('Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1')).toBe('Safari on iPhone');
+    expect(deviceName('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Safari/537.36 Edg/141.0')).toBe('Edge on Windows');
+    expect(deviceName(undefined)).toBeNull();
+  });
+});
+
+describe('sending reminders', () => {
+  const sender = () => createReminderSender(db, push, '/almanac');
+  const soon = async (title = 'Take the bins out', minutes = 1) => {
+    const [task] = createTasks(db, { member: jon, via: 'app' }, [{ title, notes: 'Recycling week\nBlue bin too', remindAt: inMinutes(minutes) }]);
+    return task!;
+  };
+
+  beforeEach(async () => {
+    await as(jon).post('/push/subscriptions', { endpoint: ENDPOINT, keys: KEYS });
+  });
+
+  it('sends one notification when the time comes, with Done and Snooze', async () => {
+    const task = await soon();
+    expect(await sender().run()).toBe(0);
+    expect(await sender().run(inMinutes(2))).toBe(1);
+    expect(delivered).toHaveLength(1);
+    const [{ payload, options }] = delivered as [(typeof delivered)[0]];
+    expect(payload).toMatchObject({
+      title: 'Take the bins out',
+      body: 'Recycling week',
+      url: `/almanac/task/${task.id}`,
+      actions: [{ action: 'done' }, { action: 'snooze' }],
+      data: { kind: 'reminder', taskId: task.id, memberId: jon.id },
+    });
+    expect(options).toMatchObject({ urgency: 'high', TTL: 4 * 60 * 60 });
+    expect(options.topic).toMatch(/^[0-9a-f]{32}$/);
+    // Sent once only.
+    expect(await sender().run(inMinutes(3))).toBe(0);
+    expect(getTask(db, jon, task.id).reminder?.sentAt).toBeInstanceOf(Date);
+  });
+
+  it("skips tasks that were finished first, and moments that passed while the server was down", async () => {
+    const done = await soon('Finished early');
+    completeTasks(db, { member: jon, via: 'app' }, [done.id]);
+    await soon('Long ago');
+    expect(await sender().run(inMinutes(7 * 60))).toBe(0);
+    expect(delivered).toEqual([]);
+    expect(db.select({ outcome: reminders.outcome }).from(reminders).all()).toEqual([{ outcome: 'skipped' }, { outcome: 'skipped' }]);
+  });
+
+  it('forgets devices the push service no longer knows', async () => {
+    await soon();
+    answer = () => 410;
+    await sender().run(inMinutes(2));
+    expect(db.select().from(pushSubscriptions).all()).toEqual([]);
+    expect(db.select({ outcome: reminders.outcome }).from(reminders).get()).toEqual({ outcome: 'no-device' });
+  });
+
+  it('tries again each minute when the push service is down, then gives up', async () => {
+    await soon();
+    answer = () => 503;
+    await sender().run(inMinutes(2));
+    expect(db.select({ sentAt: reminders.sentAt }).from(reminders).get()?.sentAt).toBeNull();
+    answer = () => 201;
+    expect(await sender().run(inMinutes(3))).toBe(1);
+
+    await soon('Another', 1);
+    answer = () => 503;
+    await sender().run(inMinutes(45));
+    expect(db.select({ outcome: reminders.outcome }).from(reminders).all()).toContainEqual({ outcome: 'failed' });
+  });
+
+  it('snoozes for an hour and sends again then', async () => {
+    const task = await soon();
+    await sender().run(inMinutes(2));
+    const id = getTask(db, jon, task.id).reminder!.id;
+    const { json } = await as(jon).post(`/reminders/${id}/snooze`, { minutes: 60 });
+    expect(json.task.reminder.sentAt).toBeNull();
+    expect(await sender().run(inMinutes(30))).toBe(0);
+    expect(await sender().run(inMinutes(62))).toBe(1);
+    expect(delivered).toHaveLength(2);
+    // Someone else can't snooze it.
+    expect((await as(alex).post(`/reminders/${id}/snooze`, { minutes: 60 })).status).toBe(400);
+  });
+
+  it('says when a deadline is close', () => {
+    expect(reminderBody({ dueDate: today, notes: 'x' }, jon)).toBe('Due today');
+    expect(reminderBody({ dueDate: addDays(today, 1), notes: null }, jon)).toBe('Due tomorrow');
+    expect(reminderBody({ dueDate: null, notes: null }, jon)).toBeUndefined();
+  });
+
+  it('sends a test notification to every device', async () => {
+    const { json } = await as(jon).post('/push/test');
+    expect(json).toEqual({ devices: 1, sent: 1, gone: 0, failed: 0 });
+    expect(delivered[0]!.payload.title).toBe('Notifications are on');
+  });
+});
+
+describe('reminders on repeating tasks', () => {
+  const actor = () => ({ member: jon, via: 'app' as const });
+  /** 6pm local on a date, as a Date. */
+  const sixPm = (date: string) => new Date(Temporal.PlainDate.from(date).toZonedDateTime({ timeZone: jon.timezone, plainTime: '18:00' }).epochMilliseconds);
+
+  it('carries the reminder to the next one, the same time before it', () => {
+    const date = addDays(today, 2);
+    const [bins] = createTasks(db, actor(), [
+      { title: 'Bins out', plannedDate: date, repeat: { mode: 'schedule', every: 1, unit: 'week' }, remindAt: sixPm(addDays(date, -1)) },
+    ]);
+    completeTasks(db, actor(), [bins!.id]);
+    const next = db.select().from(reminders).all().find((r) => r.taskId !== bins!.id)!;
+    expect(next.fireAt.toISOString()).toBe(sixPm(addDays(date, 6)).toISOString());
+    // Alex's view of the next one has no reminder of hers.
+    expect(getTask(db, alex, next.taskId).reminder).toBeNull();
+  });
+
+  it('moves the reminder when the next one is skipped', () => {
+    const date = addDays(today, 1);
+    const [plants] = createTasks(db, actor(), [
+      { title: 'Water plants', plannedDate: date, repeat: { mode: 'schedule', every: 1, unit: 'week' }, remindAt: sixPm(date) },
+    ]);
+    skipTask(db, actor(), plants!.id);
+    expect(getTask(db, jon, plants!.id).reminder?.at.toISOString()).toBe(sixPm(addDays(date, 7)).toISOString());
+  });
+});

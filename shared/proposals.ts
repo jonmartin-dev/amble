@@ -20,6 +20,8 @@ export interface ProposedTask {
   subtasks: string[];
   links: string[];
   repeat: Repeat | null;
+  /** A reminder for the person adding it (an ISO time), when they asked for one. */
+  remindAt?: string | null;
 }
 
 export interface TaskChanges {
@@ -34,6 +36,8 @@ export interface TaskChanges {
   estimateMinutes?: number | null;
   addSubtasks?: string[];
   repeat?: Repeat | null;
+  /** Their reminder about it: an ISO time, or null to clear it. */
+  remindAt?: string | null;
 }
 
 export type Proposal =

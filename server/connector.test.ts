@@ -170,7 +170,7 @@ describe('connecting Claude', () => {
     expect(body.access_token).toMatch(/^alm_at_/);
 
     const client = await mcpClient(body.access_token);
-    expect((await client.listTools()).tools).toHaveLength(19);
+    expect((await client.listTools()).tools).toHaveLength(21);
     expect(client.getInstructions()).toContain('acting for Jon Martin');
     const result = (await client.callTool({ name: 'add_tasks', arguments: { tasks: [{ title: 'Renew passport', group: 'Errands' }] } })) as {
       content: { text: string }[];

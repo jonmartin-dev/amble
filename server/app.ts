@@ -10,6 +10,8 @@ import { secureHeaders } from 'hono/secure-headers';
 import { createAi, type Ai } from './ai/client.ts';
 import { createGoogle } from './calendar/google.ts';
 import { ConnectError, createCalendarSync, type CalendarSync } from './calendar/sync.ts';
+import { createFileStore, type FileStore } from './domain/files.ts';
+import { createPush, type Push } from './notify/push.ts';
 import { allowedEmails, isAllowed, upsertMember } from './auth/members.ts';
 import type { Oidc } from './auth/oidc.ts';
 import { createSession, deleteSession, resolveSession, SESSION_COOKIE, SESSION_TTL_MS } from './auth/sessions.ts';
@@ -39,6 +41,8 @@ export function createApp({
   fetchImpl,
   ai = createAi(config),
   calendar = createCalendarSync({ db, config, google: createGoogle(config) }),
+  push = createPush(db, config),
+  files = createFileStore(config.dataDir),
 }: {
   db: Db;
   config: Config;
@@ -47,6 +51,10 @@ export function createApp({
   ai?: Ai;
   /** Google Calendar sync; tests pass one talking to a fake Google. */
   calendar?: CalendarSync;
+  /** Web push for reminders; tests pass one with a fake sender. */
+  push?: Push;
+  /** Where files on tasks are kept; tests pass a temporary folder. */
+  files?: FileStore;
   /** For fetching client metadata documents; tests swap it out. */
   fetchImpl?: typeof fetch;
 }) {
@@ -221,7 +229,7 @@ export function createApp({
     return c.json({ member: updated });
   });
 
-  registerApi(app, { db, config, ai, calendar });
+  registerApi(app, { db, config, ai, calendar, push, files });
   registerConnectorApi(app);
 
   app.all('/api/*', (c) => c.json({ error: 'Not found.' }, 404));

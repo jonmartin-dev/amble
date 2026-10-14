@@ -1,10 +1,13 @@
+import fs from 'node:fs';
 import { McpServer } from '@modelcontextprotocol/server';
-import { count, eq, isNull } from 'drizzle-orm';
+import { and, count, eq, isNull, like } from 'drizzle-orm';
 import { z } from 'zod';
 import { describeRepeat, repeatOn } from '../../shared/repeat.ts';
 import { listTemplate, LIST_TEMPLATES } from '../../shared/templates.ts';
+import { config } from '../config.ts';
 import type { Db } from '../db/index.ts';
-import { listItems, tasks, type Group, type ListItem, type Member } from '../db/schema.ts';
+import { attachments, listItems, pushSubscriptions, tasks, type Group, type ListItem, type Member } from '../db/schema.ts';
+import { createFileStore, type FileStore } from '../domain/files.ts';
 import {
   createGroup,
   DomainError,
@@ -21,6 +24,7 @@ import { addListItems, checkListItems, getListItems } from '../domain/lists.ts';
 import { listEvents, type EventView } from '../domain/events.ts';
 import { findGap, getLoad } from '../domain/load.ts';
 import { daySuggestions, planWeek } from '../domain/planner.ts';
+import { parseReminderTime } from '../domain/reminders.ts';
 import { repeatSchema } from '../domain/repeat.ts';
 import {
   archiveTasks,
@@ -39,9 +43,13 @@ import { addDays, planningDate, weekday } from '../lib/dates.ts';
 
 const VERSION = '0.1.0';
 const NOTES_PREVIEW = 160;
+// Claude can look at a photo up to this big (the app's smaller copy, usually), or read a text file.
+const IMAGE_MAX_BYTES = 4 * 1024 * 1024;
+const TEXT_MAX_BYTES = 200 * 1024;
+const READABLE_IMAGES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 
 /** Builds the Almanac MCP server acting as one member. Changes are logged "via Claude". */
-export function createMcpServer({ db, member }: { db: Db; member: Member }) {
+export function createMcpServer({ db, member, files = createFileStore(config.dataDir) }: { db: Db; member: Member; files?: FileStore }) {
   const actor: Actor = { member, via: 'claude' };
   const today = () => planningDate(member);
 
@@ -64,6 +72,9 @@ export function createMcpServer({ db, member }: { db: Db; member: Member }) {
       return z.NEVER;
     });
   const timeOfDay = z.enum(['morning', 'afternoon', 'evening']);
+  const remindArg = z
+    .string()
+    .describe(`A phone notification for ${firstName(member)} at this local time (${member.timezone}), "YYYY-MM-DDTHH:MM". Only when they ask to be reminded.`);
   const who = z.string().describe('"me", a member\'s name or email, or "anyone" for a shared task');
   const ids = z.array(z.string()).min(1).max(100).describe('Task ids from earlier results');
 
@@ -99,6 +110,8 @@ export function createMcpServer({ db, member }: { db: Db; member: Member }) {
           (t.pausedUntil && t.pausedUntil > today() ? ` (paused until ${t.pausedUntil})` : '')
         : undefined,
       handedBackNote: t.handedBackNote,
+      remindMe: t.reminder && !t.reminder.sentAt ? localDateTime(t.reminder.at, member.timezone) : undefined,
+      files: t.files.length ? t.files.map((f) => `${f.name} (${f.mime}, ${Math.max(1, Math.round(f.size / 1024))} KB, id ${f.id.slice(0, 8)})`) : undefined,
     });
   const presentItem = (i: ListItem) =>
     compact({
@@ -246,7 +259,7 @@ export function createMcpServer({ db, member }: { db: Db; member: Member }) {
     'get_task',
     {
       title: 'Task details',
-      description: 'One task with its full notes, subtasks and links.',
+      description: 'One task with its full notes, subtasks, links and files.',
       inputSchema: z.object({ id: z.string() }),
       annotations: read,
     },
@@ -272,6 +285,7 @@ export function createMcpServer({ db, member }: { db: Db; member: Member }) {
       .describe(
         'Makes it repeat. Finishing one makes the next. "Every Sunday": {mode:"schedule",every:1,unit:"week",weekdays:[7]}. "1st of the month": {mode:"schedule",every:1,unit:"month",day:1}. "Furnace filter every 3 months": {mode:"after",every:3,unit:"month"}. Add months:[4,...,10] for seasonal ones.',
       ),
+    remind_at: remindArg.optional(),
   });
 
   server.registerTool(
@@ -300,6 +314,7 @@ export function createMcpServer({ db, member }: { db: Db; member: Member }) {
           subtasks: t.subtasks,
           links: t.links?.map((url) => ({ url })),
           repeat: t.repeat,
+          remindAt: t.remind_at ? parseReminderTime(t.remind_at, member.timezone) : undefined,
         })),
       ).map((t) => present(t)),
     ),
@@ -354,6 +369,70 @@ export function createMcpServer({ db, member }: { db: Db; member: Member }) {
         });
       return present(a.skip_next ? skipTask(db, actor, updated.id) : updated, true);
     }),
+  );
+
+  server.registerTool(
+    'set_reminder',
+    {
+      title: 'Set a reminder',
+      description: `Remind ${firstName(member)} about a task with one phone notification at a time they choose, or clear it with null. Only when they ask. Reminders are their own: nobody else sees them. A repeating task's reminder carries on to its next one.`,
+      inputSchema: z.object({ id: z.string(), at: remindArg.nullable() }),
+      annotations: { ...write, idempotentHint: true },
+    },
+    run((a: { id: string; at: string | null }) => {
+      const task = updateTask(db, actor, a.id, { remindAt: a.at === null ? null : parseReminderTime(a.at, member.timezone) });
+      const devices = db.select({ n: count() }).from(pushSubscriptions).where(eq(pushSubscriptions.memberId, member.id)).get()?.n ?? 0;
+      return {
+        ...present(task),
+        ...(a.at && !devices && { note: `${firstName(member)} hasn't turned on notifications on any device yet, so it can't reach them. They can in Almanac's Settings, under Notifications.` }),
+      };
+    }),
+  );
+
+  server.registerTool(
+    'read_file',
+    {
+      title: 'Look at a file',
+      description: "Look at a photo or read a text file on a task, by the file id get_task lists. Other kinds of file (PDFs, documents) can't be opened here.",
+      inputSchema: z.object({ id: z.string() }),
+      annotations: read,
+    },
+    async ({ id }: { id: string }) => {
+      const text = (t: string, isError = false) => ({ ...(isError && { isError: true }), content: [{ type: 'text' as const, text: t }] });
+      const ref = id.trim().toLowerCase();
+      if (!/^[0-9a-f-]{6,36}$/.test(ref)) return text(`"${id}" isn't a file id.`, true);
+      const found = db
+        .select()
+        .from(attachments)
+        .where(and(like(attachments.id, `${ref}%`), isNull(attachments.removedAt)))
+        .limit(2)
+        .all()
+        .filter((f) => {
+          try {
+            getTask(db, member, f.taskId);
+            return true;
+          } catch {
+            return false;
+          }
+        });
+      if (found.length !== 1) return text(found.length ? 'More than one file starts with that id. Use more of it.' : `No file with id ${id}.`, true);
+      const file = found[0]!;
+      const sha = file.previewSha256 ?? file.sha256;
+      const path = files.pathOf(sha);
+      if (!fs.existsSync(path)) return text(`${file.name} is missing from the server.`, true);
+      const size = fs.statSync(path).size;
+      if (READABLE_IMAGES.has(file.mime) || file.previewSha256) {
+        if (size > IMAGE_MAX_BYTES) return text(`${file.name} is too big to look at here (${Math.round(size / 1024 / 1024)} MB).`, true);
+        const data = fs.readFileSync(path);
+        const mimeType = file.previewSha256 ? sniffImage(data) : file.mime;
+        return { content: [{ type: 'text' as const, text: file.name }, { type: 'image' as const, data: data.toString('base64'), mimeType }] };
+      }
+      if (file.mime.startsWith('text/') || file.mime === 'application/json') {
+        if (size > TEXT_MAX_BYTES) return text(`${file.name} is too long to read here.`, true);
+        return text(`${file.name}:\n\n${fs.readFileSync(path, 'utf8')}`);
+      }
+      return text(`${file.name} is a ${file.mime} file, which can't be opened through the connector. It's on the task in Almanac.`, true);
+    },
   );
 
   server.registerTool(
@@ -602,10 +681,23 @@ function instructions(db: Db, member: Member) {
 How it fits together:
 - Tasks live in groups (${names('tasks')}). Lists (${names('list')}) hold shopping-style items: use add_to_list for those, not add_tasks.
 - "planned" is the day someone means to do a task, which puts it on that day's list. "due" is a real deadline. A task with no planned date sits in the backlog.
-- New tasks are for ${me} unless you say otherwise; "anyone" makes a task shared. Assigning to someone else puts it on their backlog quietly. Almanac sends no notifications.
+- New tasks are for ${me} unless you say otherwise; "anyone" makes a task shared. Assigning to someone else puts it on their backlog quietly.
+- Almanac's only notifications are reminders someone asks for ("remind me Thursday at 6"): set_reminder, or remind_at on add_tasks. One notification at that time, to ${me} only. Never add one they didn't ask for.
+- Tasks can have files (photos, receipts, manuals). get_task lists them; read_file shows you a photo or a text file.
 - Almanac is deliberately calm. Don't schedule everything: keep each day light, check get_load before adding to a day, and use find_gap for things due later. suggest_day and plan_week give the planner's own picks with reasons.
 - Day load counts each person's Google Calendar once they've connected it in Settings: a day with more on the calendar than usual has less room for tasks.
 - Ids in results are short prefixes. Pass them back exactly as given.`;
+}
+
+/** A moment as the person's local date and time: "2026-10-16T18:00". */
+const localDateTime = (at: Date, timeZone: string) =>
+  Temporal.Instant.fromEpochMilliseconds(at.getTime()).toZonedDateTimeISO(timeZone).toPlainDateTime().toString({ smallestUnit: 'minute' });
+
+/** What kind of image some bytes are: the app's smaller copies are WebP, or JPEG from Safari. */
+function sniffImage(data: Buffer) {
+  if (data.toString('ascii', 0, 4) === 'RIFF' && data.toString('ascii', 8, 12) === 'WEBP') return 'image/webp';
+  if (data[0] === 0x89 && data.toString('ascii', 1, 4) === 'PNG') return 'image/png';
+  return 'image/jpeg';
 }
 
 const localDate = (iso: string, timeZone: string) => Temporal.Instant.from(iso).toZonedDateTimeISO(timeZone).toPlainDate().toString();

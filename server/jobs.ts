@@ -10,6 +10,16 @@ export interface Job {
 const TICK_MS = 60_000;
 const FIRST_TICK_MS = 5000;
 
+/** A job's work at most once per `ms`, for chores that don't need every minute. */
+export function every(ms: number, run: () => unknown): () => Promise<unknown> {
+  let last = 0;
+  return async () => {
+    if (Date.now() - last < ms) return;
+    last = Date.now();
+    return run();
+  };
+}
+
 export function startJobs(jobs: Job[]) {
   let running = false;
   const tick = async () => {

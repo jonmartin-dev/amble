@@ -44,6 +44,7 @@ const task = (fields: Partial<Extract<SmartAddOutput['items'][number], { kind: '
     steps: [],
     links: [],
     repeat: { ...none, weekdays: [], months: [] },
+    remind: '',
     ...fields,
   },
 });
@@ -80,8 +81,8 @@ describe('turning answers into proposals', () => {
           task({ title: 'Yesterday thing', planned: addDays(today, -1), group: 'g99', repeat: { ...none, mode: 'schedule', every: 1, unit: 'week', weekdays: [7], months: [] } }),
           { kind: 'add_to_list', list: 'l1', name: 'chicken thighs', quantity: '2 lbs', section: 'meat & seafood', note: '' },
           { kind: 'add_to_list', list: 'l9', name: 'Nowhere', quantity: '', section: '', note: '' },
-          { kind: 'update_task', task: 't1', title: '', notes: '', group: '', for: '', planned: 'none', due: '', time_of_day: '', must_do: 'yes', estimate_minutes: 0, add_steps: [], repeat: none },
-          { kind: 'update_task', task: 't99', title: 'Ghost', notes: '', group: '', for: '', planned: '', due: '', time_of_day: '', must_do: '', estimate_minutes: 0, add_steps: [], repeat: none },
+          { kind: 'update_task', task: 't1', title: '', notes: '', group: '', for: '', planned: 'none', due: '', time_of_day: '', must_do: 'yes', estimate_minutes: 0, add_steps: [], repeat: none, remind: '' },
+          { kind: 'update_task', task: 't99', title: 'Ghost', notes: '', group: '', for: '', planned: '', due: '', time_of_day: '', must_do: '', estimate_minutes: 0, add_steps: [], repeat: none, remind: '' },
           { kind: 'complete_task', task: 't1' },
           { kind: 'check_off', list: 'l1', item: 'i1' },
         ],
@@ -112,6 +113,39 @@ describe('turning answers into proposals', () => {
       { kind: 'complete', taskId: fence!.id, title: 'Fix the fence gate' },
       { kind: 'check', listId: groceries.id, itemId: expect.any(String), name: 'Bananas' },
     ]);
+  });
+});
+
+describe('reminders in smart add', () => {
+  it('turns a local time into a reminder, and drops times that have passed or make no sense', () => {
+    const [fence] = createTasks(db, asJon, [{ title: 'Fix the fence gate' }]);
+    const { refs } = buildContext(db, jon);
+    const tomorrow = addDays(today, 1);
+    const proposals = toProposals(
+      {
+        items: [
+          task({ title: 'Call mom', planned: tomorrow, remind: `${tomorrow}T18:00` }),
+          task({ title: 'Old', remind: '2020-01-01T09:00' }),
+          task({ title: 'Nonsense', remind: 'soon' }),
+          { kind: 'update_task', task: 't1', title: '', notes: '', group: '', for: '', planned: '', due: '', time_of_day: '', must_do: '', estimate_minutes: 0, add_steps: [], repeat: none, remind: 'none' },
+        ],
+        unclear: '',
+      },
+      refs,
+      jon,
+      today,
+    );
+    const sixPm = Temporal.PlainDateTime.from(`${tomorrow}T18:00`).toZonedDateTime('America/Chicago').toInstant().toString({ smallestUnit: 'millisecond' });
+    expect(proposals.map((p) => (p.kind === 'task' ? p.task.remindAt : p.kind === 'update' ? p.changes : null))).toEqual([sixPm, null, null, { remindAt: null }]);
+
+    applyProposals(db, asJon, [proposals[0]!]);
+    const call = listTasks(db, jon).find((t) => t.title === 'Call mom')!;
+    expect(call.reminder?.at.toISOString()).toBe(sixPm);
+    expect(fence).toBeTruthy();
+  });
+
+  it('tells Haiku the time now, so "in an hour" works', () => {
+    expect(buildContext(db, jon).text).toMatch(/and it's \d{4}-\d{2}-\d{2}T\d{2}:\d{2} now/);
   });
 });
 

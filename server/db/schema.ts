@@ -276,6 +276,76 @@ export const calendarEvents = sqliteTable(
   (t) => [uniqueIndex('calendar_events_source_event_idx').on(t.sourceId, t.eventId), index('calendar_events_member_start_idx').on(t.memberId, t.startAt)],
 );
 
+// Settings Almanac makes for itself on first start, like its web push keys.
+export const serverSettings = sqliteTable('server_settings', {
+  key: text('key').primaryKey(),
+  value: text('value', { mode: 'json' }).$type<unknown>().notNull(),
+  createdAt: createdAt(),
+});
+
+// A device where someone turned on notifications. Their reminders go to every one of them.
+export const pushSubscriptions = sqliteTable(
+  'push_subscriptions',
+  {
+    id: id(),
+    memberId: text('member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade' }),
+    endpoint: text('endpoint').notNull().unique(),
+    p256dh: text('p256dh').notNull(),
+    auth: text('auth').notNull(),
+    // "Chrome on Android", to tell devices apart in Settings.
+    device: text('device'),
+    createdAt: createdAt(),
+    lastSentAt: integer('last_sent_at', { mode: 'timestamp_ms' }),
+  },
+  (t) => [index('push_subscriptions_member_idx').on(t.memberId)],
+);
+
+// A reminder someone asked for: one notification at the time they chose. One per person per task.
+export const reminders = sqliteTable(
+  'reminders',
+  {
+    id: id(),
+    taskId: text('task_id')
+      .notNull()
+      .references(() => tasks.id, { onDelete: 'cascade' }),
+    memberId: text('member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade' }),
+    fireAt: integer('fire_at', { mode: 'timestamp_ms' }).notNull(),
+    sentAt: integer('sent_at', { mode: 'timestamp_ms' }),
+    // How it went once its time came: shown on a device, no device to show it on, or not sent
+    // because the task was done or removed by then.
+    outcome: text('outcome', { enum: ['sent', 'no-device', 'skipped', 'failed'] }),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('reminders_task_member_idx').on(t.taskId, t.memberId), index('reminders_due_idx').on(t.sentAt, t.fireAt)],
+);
+
+// A file on a task. The bytes live on the data volume under files/, named by their SHA-256, so the
+// same file on two tasks (a repeating task's next one) is stored once.
+export const attachments = sqliteTable(
+  'attachments',
+  {
+    id: id(),
+    taskId: text('task_id')
+      .notNull()
+      .references(() => tasks.id, { onDelete: 'cascade' }),
+    addedById: text('added_by_id').references(() => members.id, { onDelete: 'set null' }),
+    name: text('name').notNull(),
+    mime: text('mime').notNull(),
+    size: integer('size').notNull(),
+    sha256: text('sha256').notNull(),
+    // A smaller copy of a photo, made by the app when it was added: for the task page and Claude.
+    previewSha256: text('preview_sha256'),
+    // Removed files can be brought back for a week, then they're deleted for good.
+    removedAt: integer('removed_at', { mode: 'timestamp_ms' }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('attachments_task_idx').on(t.taskId), index('attachments_sha_idx').on(t.sha256)],
+);
+
 export interface StoredSuggestion {
   taskId: string;
   reason: string;
@@ -360,3 +430,6 @@ export type CalendarAccount = typeof calendarAccounts.$inferSelect;
 export type CalendarSource = typeof calendarSources.$inferSelect;
 export type CalendarEvent = typeof calendarEvents.$inferSelect;
 export type DayRecord = typeof dayRecords.$inferSelect;
+export type PushSubscription = typeof pushSubscriptions.$inferSelect;
+export type Reminder = typeof reminders.$inferSelect;
+export type Attachment = typeof attachments.$inferSelect;

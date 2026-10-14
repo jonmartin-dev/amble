@@ -64,15 +64,16 @@ function hiddenGroupCheck(db: Db, me: Member) {
 }
 
 const listItems = (d: Record<string, unknown> | null) => (d?.items as string[] | undefined) ?? (typeof d?.item === 'string' ? [d.item] : []);
+const fileNames = (d: Record<string, unknown> | null) => (d?.names as string[] | undefined) ?? (typeof d?.name === 'string' ? [d.name] : []);
 
 /**
- * Changes that read as one when the same person makes them back to back: edits to one task, and
- * several items added to or checked off one list.
+ * Changes that read as one when the same person makes them back to back: edits to one task,
+ * several files added to one task, and several items added to or checked off one list.
  */
 function mergeable(entry: Entry, row: Row['a'], detail: Record<string, unknown> | null) {
   if (entry.action !== row.action || entry.memberId !== row.memberId || entry.via !== row.via) return false;
   if (entry.oldest.a.createdAt.getTime() - row.createdAt.getTime() > MERGE_WINDOW_MS) return false;
-  if (row.action === 'task.updated') return entry.taskId === row.taskId;
+  if (row.action === 'task.updated' || row.action === 'task.file_added') return entry.taskId === row.taskId;
   if (row.action.startsWith('list.')) return entry.detail?.list === detail?.list;
   return false;
 }
@@ -82,6 +83,8 @@ function merge(entry: Entry, detail: Record<string, unknown> | null) {
   if (entry.action === 'task.updated') {
     const fields = new Set([...((entry.detail?.fields as string[]) ?? []), ...((detail?.fields as string[]) ?? [])]);
     entry.detail = { ...entry.detail, fields: [...fields] };
+  } else if (entry.action === 'task.file_added') {
+    entry.detail = { names: [...fileNames(detail), ...fileNames(entry.detail)] };
   } else {
     // Oldest first, so the list reads in the order things were added.
     const { item: _, outcome: __, ...rest } = entry.detail ?? {};

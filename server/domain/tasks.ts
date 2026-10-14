@@ -4,7 +4,9 @@ import type { Db } from '../db/index.ts';
 import { repeatOn } from '../../shared/repeat.ts';
 import { activity, groups, members, series, subtasks, taskLinks, tasks, type Member, type Task } from '../db/schema.ts';
 import { addDays, dateOf, daysBetween, planningDate, planningDayStart } from '../lib/dates.ts';
+import { attachmentsFor, copyAttachments, type FileView } from './files.ts';
 import { DomainError, logActivity, type Actor } from './household.ts';
+import { carryReminders, remindersFor, setReminder, shiftReminders, type ReminderView } from './reminders.ts';
 import { anchorRule, cleanRepeat, firstOccurrence, nextDate, type Repeat } from './repeat.ts';
 
 export type TimeOfDay = NonNullable<Task['timeOfDay']>;
@@ -18,6 +20,9 @@ export interface TaskDetail extends Task {
   /** How it repeats, if it does. */
   repeat: Repeat | null;
   pausedUntil: string | null;
+  /** The viewer's own reminder about it; other people's stay theirs. */
+  reminder: ReminderView | null;
+  files: FileView[];
 }
 
 export interface TaskFilter {
@@ -120,14 +125,16 @@ export function listTasks(db: Db, me: Member, filter: TaskFilter = {}): TaskDeta
     .orderBy(...order)
     .limit(filter.limit ?? 500)
     .all();
-  return withDetails(db, rows);
+  return withDetails(db, rows, me.id);
 }
 
-function withDetails(db: Db, rows: Row[]): TaskDetail[] {
+function withDetails(db: Db, rows: Row[], viewerId: string): TaskDetail[] {
   const ids = rows.map((r) => r.task.id);
   if (ids.length === 0) return [];
   const subs = db.select().from(subtasks).where(inArray(subtasks.taskId, ids)).orderBy(asc(subtasks.sortOrder)).all();
   const links = db.select().from(taskLinks).where(inArray(taskLinks.taskId, ids)).orderBy(asc(taskLinks.createdAt)).all();
+  const reminders = remindersFor(db, viewerId, ids);
+  const files = attachmentsFor(db, ids);
   return rows.map(({ task, groupName, assigneeName, createdByName, repeat, pausedUntil }) => ({
     ...task,
     groupName,
@@ -137,6 +144,8 @@ function withDetails(db: Db, rows: Row[]): TaskDetail[] {
     pausedUntil: task.seriesId ? pausedUntil : null,
     subtasks: subs.filter((s) => s.taskId === task.id).map(({ id, title, done }) => ({ id, title, done })),
     links: links.filter((l) => l.taskId === task.id).map(({ id, url, title }) => ({ id, url, title })),
+    reminder: reminders.get(task.id) ?? null,
+    files: files.get(task.id) ?? [],
   }));
 }
 
@@ -150,7 +159,7 @@ export function getTask(db: Db, me: Member, ref: string): TaskDetail {
     .all();
   if (rows.length === 0) throw new DomainError(`No task with id ${ref}.`);
   if (rows.length > 1) throw new DomainError(`More than one task starts with ${ref}. Use more of the id.`);
-  return withDetails(db, rows)[0]!;
+  return withDetails(db, rows, me.id)[0]!;
 }
 
 /**
@@ -201,6 +210,8 @@ export interface NewTask {
   subtasks?: NewSubtask[];
   links?: NewLink[];
   repeat?: Repeat | null;
+  /** A reminder for the person adding it. */
+  remindAt?: Date | null;
 }
 
 // ---- changes sent late --------------------------------------------------------------------
@@ -293,6 +304,7 @@ export function createTasks(db: Db, actor: Actor, inputs: NewTask[]): TaskDetail
       }
       addSubtasks(db, task.id, input.subtasks ?? []);
       addLinks(db, task.id, input.links ?? []);
+      if (input.remindAt) setReminder(db, actor.member, task.id, input.remindAt, actor.at != null);
       logActivity(db, actor, 'task.created', task.id, { title });
       return task.id;
     }),
@@ -352,6 +364,8 @@ export interface TaskPatch {
   repeat?: Repeat | null;
   /** Don't bring it back before this date; null ends a pause. */
   pausedUntil?: string | null;
+  /** The actor's own reminder: a time, or null to clear it. */
+  remindAt?: Date | null;
 }
 
 /** Step ids from refs. A late change skips steps that are gone rather than failing. */
@@ -420,7 +434,11 @@ export function updateTask(db: Db, actor: Actor, ref: string, input: TaskPatch):
     }
     if (patch.repeat !== undefined) setRepeat(db, actor, task.id, patch.repeat);
     if (patch.pausedUntil !== undefined) pauseSeries(db, task.id, patch.pausedUntil);
-    const changed = Object.entries(patch).filter(([, v]) => v !== undefined).map(([k]) => k);
+    if (patch.remindAt !== undefined) setReminder(db, actor.member, task.id, patch.remindAt, lenient);
+    // A reminder is the person's own, so it stays out of the household's activity.
+    const changed = Object.entries(patch)
+      .filter(([k, v]) => v !== undefined && k !== 'remindAt')
+      .map(([k]) => k);
     if (changed.length) logActivity(db, actor, 'task.updated', task.id, { fields: changed });
   });
   return getTask(db, actor.member, task.id);
@@ -515,6 +533,9 @@ function spawnNext(db: Db, actor: Actor, task: TaskDetail) {
     task.subtasks.map((st) => st.title),
   );
   for (const link of task.links) db.insert(taskLinks).values({ taskId: next.id, url: link.url, title: link.title }).run();
+  const current = seriesDate(task, s.rule);
+  carryReminders(db, task.id, next.id, current ? daysBetween(current, date) : 0);
+  copyAttachments(db, task.id, next.id);
   return { id: next.id, date };
 }
 
@@ -552,6 +573,7 @@ export function skipTask(db: Db, actor: Actor, ref: string): TaskDetail {
       .set({ ...shiftDates(task, s.rule, date), updatedAt: new Date() })
       .where(eq(tasks.id, task.id))
       .run();
+    if (current) shiftReminders(db, task.id, daysBetween(current, date));
     logActivity(db, actor, 'task.skipped', task.id, { from: current, to: date });
   });
   return getTask(db, actor.member, task.id);
