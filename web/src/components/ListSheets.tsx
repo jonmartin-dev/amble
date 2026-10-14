@@ -10,6 +10,7 @@ import Up from '~icons/material-symbols/keyboard-arrow-up-rounded';
 import Label from '~icons/material-symbols/label-outline-rounded';
 import Cart from '~icons/material-symbols/add-shopping-cart-rounded';
 import { guessAisle } from '../../../shared/aisles.ts';
+import { webLink } from '../../../shared/links.ts';
 import { listSections, type ListTemplate } from '../../../shared/templates.ts';
 import { api, ApiError, type Group, type ListItem } from '../lib/api.ts';
 import { addListItem } from '../lib/local.ts';
@@ -68,13 +69,17 @@ export function ItemSheet({
   const label = template.sections?.label ?? 'Section';
   const allSections = [...new Set([...sections, ...(draft.section && !sections.includes(draft.section) ? [draft.section] : [])])];
   const allStores = [...new Set([...stores, ...(draft.store ? [draft.store] : [])])];
+  // "amazon.com/…" is fine; something that can't be a page is caught here rather than turned down
+  // by the server later, which would lose the rest of the changes with it.
+  const link = webLink(draft.url);
+  const badLink = !!draft.url?.trim() && !link;
 
   const patch = (): Partial<ListItem> => ({
     name: draft.name?.trim(),
     quantity: draft.quantity || null,
     note: draft.note || null,
     section: (newSection?.trim() || draft.section) ?? null,
-    url: draft.url || null,
+    url: link,
     price: draft.price || null,
     ...(template.fields.store && { store: (newStore?.trim() || draft.store) ?? null }),
     ...(template.fields.parts && { parts: partsOf(parts).length ? partsOf(parts) : null }),
@@ -106,7 +111,7 @@ export function ItemSheet({
       footer={
         <button
           type="button"
-          disabled={!draft.name?.trim()}
+          disabled={!draft.name?.trim() || badLink}
           onClick={() => {
             onSave(patch());
             onClose();
@@ -185,7 +190,18 @@ export function ItemSheet({
         </ChipRow>
       )}
       {template.fields.url && (
-        <input value={draft.url ?? ''} onChange={(e) => set({ url: e.target.value })} placeholder="Link" inputMode="url" aria-label="Link" className={`${fieldInput} mt-3`} />
+        <>
+          <input
+            value={draft.url ?? ''}
+            onChange={(e) => set({ url: e.target.value })}
+            placeholder="Link"
+            inputMode="url"
+            aria-label="Link"
+            aria-invalid={badLink}
+            className={`${fieldInput} mt-3 ${badLink ? 'ring-2 ring-error' : ''}`}
+          />
+          {badLink && <p className="mt-1 px-1 text-xs text-error">That doesn't look like a web link.</p>}
+        </>
       )}
       {template.fields.price && (
         <input value={draft.price ?? ''} onChange={(e) => set({ price: e.target.value })} placeholder="Price" aria-label="Price" className={`${fieldInput} mt-3`} />

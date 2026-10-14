@@ -64,7 +64,7 @@ await check('quick add puts a task on today', async (p) => {
   await p.getByRole('main').getByText(TASK).waitFor({ timeout: 5000 });
 });
 
-await check('the add sheet rides on the keyboard, and Back closes it', async (p) => {
+await check('the add sheet rides on the keyboard; Back drops the keyboard, then closes it', async (p) => {
   const url = p.url();
   await p.getByRole('button', { name: 'Add a task' }).click();
   const sheet = p.getByRole('dialog', { name: 'Add' });
@@ -87,6 +87,18 @@ await check('the add sheet rides on the keyboard, and Back closes it', async (p)
   if (Math.abs(bottom - (viewport.height - 300)) > 2) throw new Error(`sheet bottom at ${bottom}, keyboard top at ${viewport.height - 300}`);
   const input = (await p.getByLabel('Task', { exact: true }).boundingBox())!;
   if (input.y + input.height > viewport.height - 300) throw new Error('the text box is under the keyboard');
+  // As in Android apps, Back while typing only lets go of the keyboard; what was typed stays.
+  await p.keyboard.type('Half a thought');
+  await p.goBack();
+  await p.waitForTimeout(400);
+  if (!(await sheet.count())) throw new Error('Back with the keyboard up closed the sheet');
+  if (await p.getByLabel('Task', { exact: true }).evaluate((el) => el === document.activeElement)) throw new Error('the text box kept the keyboard');
+  if ((await p.getByLabel('Task', { exact: true }).inputValue()) !== 'Half a thought') throw new Error('what was typed went');
+  await p.evaluate(() => {
+    const vv = window.visualViewport!;
+    Object.defineProperty(vv, 'height', { get: () => window.innerHeight, configurable: true });
+    vv.dispatchEvent(new Event('resize'));
+  });
   await p.goBack();
   await sheet.waitFor({ state: 'detached', timeout: 5000 });
   if (p.url() !== url) throw new Error(`Back left the page for ${p.url()}`);

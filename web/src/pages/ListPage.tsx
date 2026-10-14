@@ -20,8 +20,8 @@ import { GroupSheet } from '../components/GroupSheet.tsx';
 import { GroupIcon, tone } from '../components/icons.tsx';
 import { ItemSheet, ListMenu, SectionsSheet } from '../components/ListSheets.tsx';
 import { DaySheet } from '../components/MoveSheet.tsx';
-import { Checkbox, Chip } from '../components/ui.tsx';
-import { type ListItem } from '../lib/api.ts';
+import { Checkbox, Chip, useBack } from '../components/ui.tsx';
+import { ApiError, type ListItem } from '../lib/api.ts';
 import { dayLabel, todayIso } from '../lib/dates.ts';
 import { addListItem, checkListItem, editListItem, resetListItems } from '../lib/local.ts';
 import { expressive } from '../lib/motion.ts';
@@ -99,7 +99,7 @@ function ItemRow({ item, template, showStore, onCheck, onOpen }: { item: ListIte
         }}
         className="press-soft flex min-h-14 cursor-pointer touch-pan-y items-center gap-3 rounded-3xl bg-surface-low px-4 py-2.5 select-none"
       >
-        <Checkbox checked={ticked} label={`Check off ${item.name}`} onChange={tick} />
+        <Checkbox checked={ticked} label={`Check off ${item.name}`} onChange={() => !press.current.held && tick()} />
         <span className="min-w-0 flex-1">
           <span className={`block leading-snug transition-colors ${ticked ? 'text-on-surface-variant line-through' : ''}`}>{item.name}</span>
           {details.length > 0 && <span className="block truncate text-sm text-on-surface-variant">{details.join(' · ')}</span>}
@@ -128,7 +128,8 @@ export function ListPage({ groupId }: { groupId: string }) {
   const snack = useSnackbar();
   const send = useSend();
   const actions = useTaskActions();
-  const { data } = useList(groupId);
+  const goBack = useBack('/backlog');
+  const { data, error } = useList(groupId);
   const { data: history = [] } = useListHistory(groupId);
   const { data: groups = [] } = useGroups();
   const { data: openTasks = [] } = useTasks();
@@ -159,6 +160,17 @@ export function ListPage({ groupId }: { groupId: string }) {
   const title = group ? tripTitle(group) : null;
   // Where a meal's ingredients go: the household's groceries list.
   const sendTo = template.fields.parts ? (groups.find((g) => g.kind === 'list' && g.template === 'groceries') ?? null) : null;
+
+  // A store filter or a section being added to lets go once that store or section is gone (edited
+  // away, renamed, removed), rather than hiding items or sending new ones somewhere unseen.
+  useEffect(() => {
+    if (store && !stores.includes(store)) setStore(null);
+  }, [store, stores]);
+  useEffect(() => {
+    if (target && !order.includes(target)) setTarget(null);
+  }, [target, order]);
+  // A day's name, the way its section shows it: today and tomorrow by those words.
+  const dayName = (section: string) => (days ? (['Today', 'Tomorrow'][order.indexOf(section)] ?? section) : section);
 
   useEffect(() => {
     const focus = () => {
@@ -242,14 +254,32 @@ export function ListPage({ groupId }: { groupId: string }) {
     else void navigator.clipboard.writeText(text).then(() => snack({ message: 'Copied the list' }));
   };
 
-  const placeholder = target ? `${template.placeholder} to ${target}` : template.placeholder;
+  // Archived, made private by someone else, or never opened here while offline.
+  if (!data && error) {
+    return (
+      <>
+        <button type="button" onClick={goBack} aria-label="Back" className="-ml-2 grid size-12 shrink-0 place-items-center rounded-full hover:bg-surface-high">
+          <ArrowBack className="size-6" aria-hidden />
+        </button>
+        <p className="mt-10 text-center text-on-surface-variant">
+          {error instanceof ApiError && error.status === 0 ? "You're offline, and this list hasn't been opened on this device yet." : "That list isn't here anymore."}
+        </p>
+      </>
+    );
+  }
+
+  const placeholder = !target
+    ? template.placeholder
+    : days
+      ? `${template.placeholder} for ${order.indexOf(target) < 2 ? dayName(target).toLowerCase() : target}`
+      : `${template.placeholder} to ${target}`;
 
   return (
     <>
       <header className="flex items-center gap-2">
-        <Link to="/backlog" aria-label="Back" className="-ml-2 grid size-12 shrink-0 place-items-center rounded-full hover:bg-surface-high">
+        <button type="button" onClick={goBack} aria-label="Back" className="-ml-2 grid size-12 shrink-0 place-items-center rounded-full hover:bg-surface-high">
           <ArrowBack className="size-6" aria-hidden />
-        </Link>
+        </button>
         {group && (
           <>
             <span className={`grid size-11 shrink-0 place-items-center rounded-[1.1rem] ${tone(group.color)}`}>
@@ -310,10 +340,10 @@ export function ListPage({ groupId }: { groupId: string }) {
           <button
             type="button"
             onClick={() => setTarget(null)}
-            aria-label={`Stop adding to ${target}`}
+            aria-label={`Stop adding to ${dayName(target)}`}
             className="flex h-9 max-w-[40%] shrink-0 items-center gap-1 rounded-full bg-secondary-container pr-2 pl-3 text-sm text-on-secondary-container"
           >
-            <span className="truncate">{days && order.indexOf(target) === 0 ? 'Today' : target}</span>
+            <span className="truncate">{dayName(target)}</span>
             <Close className="size-4 shrink-0" aria-hidden />
           </button>
         ) : (

@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, ne, or, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/sqlite-core';
 import type { Db } from '../db/index.ts';
+import { webLink } from '../../shared/links.ts';
 import { repeatOn } from '../../shared/repeat.ts';
 import { activity, groups, members, series, subtasks, taskLinks, tasks, type Member, type Task } from '../db/schema.ts';
 import { addDays, dateOf, daysBetween, planningDate, planningDayStart } from '../lib/dates.ts';
@@ -344,15 +345,10 @@ function addSubtasks(db: Db, taskId: string, items: NewSubtask[]) {
 
 function addLinks(db: Db, taskId: string, links: NewLink[]) {
   for (const link of links) {
-    let url: URL;
-    try {
-      url = new URL(link.url);
-    } catch {
-      throw new DomainError(`"${link.url}" isn't a valid URL.`);
-    }
-    if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new DomainError('Links must be http or https.');
+    const url = webLink(link.url);
+    if (!url) throw new DomainError(`"${link.url}" isn't a web link.`);
     db.insert(taskLinks)
-      .values({ ...(link.id && { id: link.id }), taskId, url: url.toString(), title: link.title?.trim() || null })
+      .values({ ...(link.id && { id: link.id }), taskId, url, title: link.title?.trim() || null })
       .onConflictDoNothing()
       .run();
   }

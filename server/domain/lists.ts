@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, like, lte, sql } from 'drizzle-orm';
 import type { Db } from '../db/index.ts';
 import { guessAisle } from '../../shared/aisles.ts';
+import { webLink } from '../../shared/links.ts';
 import { listSections, listTemplate, tripTitle } from '../../shared/templates.ts';
 import { activity, groups, listItems, tasks, type Group, type ListItem } from '../db/schema.ts';
 import { DomainError, logActivity, visibleGroups, type Actor } from './household.ts';
@@ -48,8 +49,9 @@ export interface NewListItem {
 
 function cleanUrl(url: string | null | undefined) {
   if (url == null || !url.trim()) return null;
-  if (!URL.canParse(url.trim()) || !/^https?:$/.test(new URL(url.trim()).protocol)) throw new DomainError(`"${url}" isn't a web link.`);
-  return new URL(url.trim()).toString();
+  const link = webLink(url);
+  if (!link) throw new DomainError(`"${url}" isn't a web link.`);
+  return link;
 }
 
 function itemDetails(item: Omit<NewListItem, 'name'>) {
@@ -241,16 +243,23 @@ export function setListSections(db: Db, actor: Actor, group: Group, sections: st
   const clean = [...new Map(sections.map((s) => s.trim()).filter(Boolean).map((s) => [s.toLowerCase(), s])).values()];
   if (clean.length > 40) throw new DomainError('A list can have at most 40 sections.');
   return db.transaction(() => {
+    // What the person was shown to edit: the list's sections and any its open items use. A section
+    // only checked-off items remember (who an old gift was for) wasn't there to remove, so it stays.
+    const before = db.select({ section: listItems.section }).from(listItems).where(and(eq(listItems.groupId, group.id), isNull(listItems.checkedAt))).all();
+    const shown = listSections(group, before.map((i) => i.section));
+    const renamed = new Set<string>();
     for (const { from, to } of renames) {
       if (!to.trim() || from === to) continue;
+      renamed.add(from.toLowerCase());
       db.update(listItems)
         .set({ section: to.trim() })
         .where(and(eq(listItems.groupId, group.id), sql`lower(${listItems.section}) = ${from.toLowerCase()}`))
         .run();
     }
     const kept = new Set(clean.map((s) => s.toLowerCase()));
+    const removed = new Set(shown.map((s) => s.toLowerCase()).filter((s) => !kept.has(s) && !renamed.has(s)));
     const items = db.select({ id: listItems.id, section: listItems.section }).from(listItems).where(eq(listItems.groupId, group.id)).all();
-    const orphans = items.filter((i) => i.section && !kept.has(i.section.toLowerCase())).map((i) => i.id);
+    const orphans = items.filter((i) => i.section && removed.has(i.section.toLowerCase())).map((i) => i.id);
     if (orphans.length) db.update(listItems).set({ section: null }).where(inArray(listItems.id, orphans)).run();
     const updated = db.update(groups).set({ sections: clean }).where(eq(groups.id, group.id)).returning().get();
     logActivity(db, actor, 'list.sections_changed', null, { groupId: group.id, list: group.name });

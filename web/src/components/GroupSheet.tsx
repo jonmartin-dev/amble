@@ -42,7 +42,9 @@ export function GroupSheet({ open, onClose, group }: { open: boolean; onClose: (
     setKit(null);
     setNamed(false);
     setShowLook(editing);
-  }, [open, group, editing]);
+    // Only when it opens or turns to another group: the list page hands over a fresh copy each
+    // time it draws, and that mustn't undo what's being typed.
+  }, [open, group?.id]);
 
   // A template brings its own look, name, kit and privacy; the person can still change them.
   const pickTemplate = (t: ListTemplate) => {

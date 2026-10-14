@@ -182,6 +182,8 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
   const { online } = useSyncState();
   const input = useRef<HTMLTextAreaElement>(null);
   const abort = useRef<AbortController | null>(null);
+  // Shift+Enter on a keyboard starts a new line; any other line break is the send key.
+  const newLine = useRef(false);
   const today = todayIso();
   // Smart add needs Haiku, so offline everything goes in as typed.
   const smart = (ai?.smartAdd ?? false) && online;
@@ -272,8 +274,8 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
     explicit: [...explicit],
   });
 
-  const submit = async () => {
-    const t = text.trim();
+  const submit = async (typed = text) => {
+    const t = typed.trim();
     if (!t || phase === 'thinking') return;
     if (!smart) return addAsTyped(t);
     setPicker(null);
@@ -410,8 +412,24 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
           ref={input}
           rows={1}
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            const el = e.target;
+            const { inputType, data } = e.nativeEvent as InputEvent;
+            // Phone keyboards often send their Enter (here, send) as a typed line break rather
+            // than a key press. Take it out again and send what's there.
+            const lineBreak = inputType === 'insertLineBreak' || inputType === 'insertParagraph' || (inputType?.startsWith('insert') && inputType !== 'insertFromPaste' && data === '\n');
+            if (lineBreak && !newLine.current) {
+              const at = el.selectionStart;
+              const typed = el.value.slice(0, Math.max(0, at - 1)) + el.value.slice(at);
+              setText(typed);
+              void submit(typed);
+              return;
+            }
+            newLine.current = false;
+            setText(el.value);
+          }}
           onKeyDown={(e) => {
+            newLine.current = e.key === 'Enter' && e.shiftKey;
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
               void submit();

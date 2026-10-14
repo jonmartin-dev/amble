@@ -8,13 +8,17 @@ import type { DayLoad } from '../lib/api.ts';
 import { expressive } from '../lib/motion.ts';
 import { useBackToClose, useScrollLock, useVisualViewport } from '../lib/viewport.ts';
 
-/** Header for a page reached from somewhere else: back arrow and title. */
+/**
+ * Header for a page reached from somewhere else: back arrow and title. The arrow goes back the way
+ * the phone's Back does, so the two don't fight; `back` is where it goes when there's nowhere to.
+ */
 export function SubpageHeader({ title, back = '/settings', action }: { title: ReactNode; back?: string; action?: ReactNode }) {
+  const goBack = useBack(back);
   return (
     <header className="mb-2 flex items-center gap-2">
-      <Link to={back} aria-label="Back" className="-ml-2 grid size-12 place-items-center rounded-full hover:bg-surface-high">
+      <button type="button" onClick={goBack} aria-label="Back" className="-ml-2 grid size-12 place-items-center rounded-full hover:bg-surface-high">
         <ArrowBack className="size-6" aria-hidden />
-      </Link>
+      </button>
       <h1 className="display flex-1 text-[1.75rem] font-medium">{title}</h1>
       {action}
     </header>

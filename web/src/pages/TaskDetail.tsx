@@ -106,7 +106,13 @@ function Detail({ task }: { task: Task }) {
         </div>
         <textarea
           value={title.value}
-          onChange={(e) => title.onChange(e.target.value)}
+          onChange={(e) => {
+            // One line. A phone keyboard's Enter arrives as a typed line break, and means done;
+            // pasted lines join up.
+            const v = e.target.value;
+            if (v.includes('\n') && (e.nativeEvent as InputEvent).inputType !== 'insertFromPaste') return e.currentTarget.blur();
+            title.onChange(v.replace(/\s*\n+\s*/g, ' '));
+          }}
           onBlur={title.onBlur}
           onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), e.currentTarget.blur())}
           rows={1}

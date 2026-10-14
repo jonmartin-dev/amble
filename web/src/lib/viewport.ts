@@ -37,6 +37,59 @@ export function useVisualViewport(active: boolean): View {
   return view;
 }
 
+// The phone's Back while typing should drop the keyboard, as it does in Android apps. Chrome hands
+// that Back to the page on some phones, where it would close the sheet being typed in or leave the
+// page. This takes it first: it lets go of the text box and steps forward again, before the router
+// or any sheet sees it. The keyboard counts as up when it covers a good part of the screen at
+// normal zoom, or went down only a moment ago (Chrome may drop it on the way).
+const KEYBOARD_MIN = 80;
+let keyboardUp = false;
+let keyboardDownAt = 0;
+let undoingUntil = 0;
+
+function keyboardShowing() {
+  const vv = window.visualViewport;
+  return !!vv && vv.scale < 1.05 && read().keyboard > KEYBOARD_MIN;
+}
+
+/** The text field being typed in, if any: the thing that raised the keyboard. */
+function typingIn(): HTMLElement | null {
+  const el = document.activeElement;
+  if (!(el instanceof HTMLElement)) return null;
+  const text = el.matches(
+    'textarea, [contenteditable]:not([contenteditable="false"]), input:not([type=checkbox], [type=radio], [type=button], [type=submit], [type=reset], [type=range], [type=color], [type=file], [type=date], [type=time], [type=datetime-local], [type=month], [type=week], [type=hidden])',
+  );
+  return text ? el : null;
+}
+
+if (typeof window !== 'undefined' && window.visualViewport) {
+  window.visualViewport.addEventListener('resize', () => {
+    const up = keyboardShowing();
+    if (keyboardUp && !up) keyboardDownAt = Date.now();
+    keyboardUp = up;
+  });
+  window.addEventListener(
+    'popstate',
+    (e) => {
+      // The step forward again, which nothing else needs to hear about.
+      if (Date.now() < undoingUntil) {
+        undoingUntil = 0;
+        e.stopImmediatePropagation();
+        return;
+      }
+      const field = typingIn();
+      if (!field || !(keyboardUp || keyboardShowing() || Date.now() - keyboardDownAt < 500)) return;
+      e.stopImmediatePropagation();
+      field.blur();
+      keyboardUp = false;
+      undoingUntil = Date.now() + 1000;
+      window.history.go(1);
+    },
+    // Capture listeners on the window run before the plain ones the router and sheets add.
+    { capture: true },
+  );
+}
+
 let locks = 0;
 
 /** Stops the page behind a sheet from scrolling (and rubber-banding on iOS) while it's open. */
@@ -51,6 +104,9 @@ export function useScrollLock(active: boolean) {
   }, [active]);
 }
 
+// A sheet that just closed with a tap, whose history entry is still on top until it takes it off.
+let handingOver: string | null = null;
+
 /**
  * The phone's back button (or back swipe) closes an open sheet instead of leaving the page. The
  * sheet adds a history entry when it opens and removes it when closed some other way.
@@ -63,7 +119,11 @@ export function useBackToClose(open: boolean, onClose: () => void) {
   closeRef.current = onClose;
   useEffect(() => {
     if (!open) return;
-    window.history.pushState({ ...window.history.state, __sheet: id }, '');
+    // One sheet opening another as it closes (a menu's choice) takes over its entry, so a single
+    // Back still leaves for the page.
+    const replace = handingOver != null && window.history.state?.__sheet === handingOver;
+    handingOver = null;
+    window.history[replace ? 'replaceState' : 'pushState']({ ...window.history.state, __sheet: id }, '');
     const onPop = () => {
       if (window.history.state?.__sheet !== id) closeRef.current();
     };
@@ -72,7 +132,9 @@ export function useBackToClose(open: boolean, onClose: () => void) {
       window.removeEventListener('popstate', onPop);
       // Closed by a tap rather than Back: take our entry off again, unless something else
       // (a navigation, another sheet) has already moved on from it.
+      if (window.history.state?.__sheet === id) handingOver = id;
       setTimeout(() => {
+        if (handingOver === id) handingOver = null;
         if (!openRef.current && window.history.state?.__sheet === id) window.history.back();
       }, 0);
     };

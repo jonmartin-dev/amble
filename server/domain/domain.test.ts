@@ -163,8 +163,16 @@ describe('tasks', () => {
   });
 
   it('rejects bad links before saving anything', () => {
-    expect(() => createTasks(db, asJon, [{ title: 'x', links: [{ url: 'javascript:alert(1)' }] }])).toThrow(/http or https/);
+    expect(() => createTasks(db, asJon, [{ title: 'x', links: [{ url: 'javascript:alert(1)' }] }])).toThrow(/isn't a web link/);
     expect(listTasks(db, jon, {})).toHaveLength(0);
+  });
+
+  it('reads a bare address as a web link', () => {
+    const [task] = createTasks(db, asJon, [{ title: 'Order filter', links: [{ url: 'amazon.com/dp/B0123' }] }]);
+    expect(task!.links.map((l) => l.url)).toEqual(['https://amazon.com/dp/B0123']);
+    const groceries = resolveGroup(db, jon, 'Groceries', 'list');
+    const [added] = addListItems(db, asJon, groceries, [{ name: 'Coffee', url: 'www.example.com/beans' }]);
+    expect(added!.item.url).toBe('https://www.example.com/beans');
   });
 });
 
@@ -227,6 +235,21 @@ describe('lists', () => {
     expect(Object.fromEntries(items.map((i) => [i.name, i.section]))).toEqual({ Apples: 'Fruit & veg', 'Ice cream': 'Frozen', Rice: 'Pantry' });
     setListSections(db, asJon, updated, ['Frozen']);
     expect(getListItems(db, updated).open.find((i) => i.name === 'Apples')!.section).toBeNull();
+  });
+
+  it('leaves a section only checked-off items remember, which nobody was shown to remove', () => {
+    const gifts = createGroup(db, asJon, { name: 'Gift ideas', kind: 'list', template: 'gifts' });
+    addListItems(db, asJon, gifts, [
+      { name: 'Socks', section: 'Dad' },
+      { name: 'Vase', section: 'Mom' },
+      { name: 'Kite', section: 'Uncle Bob' },
+    ]);
+    checkListItems(db, asJon, gifts, ['Kite']);
+    // The sheet showed Dad and Mom; Mom was taken off.
+    setListSections(db, asJon, gifts, ['Dad']);
+    const { open, checked } = getListItems(db, gifts, true);
+    expect(open.find((i) => i.name === 'Vase')!.section).toBeNull();
+    expect(checked.find((i) => i.name === 'Kite')!.section).toBe('Uncle Bob');
   });
 
   it("plans a list's trip as one task, and moves it rather than making a second", () => {
