@@ -1,6 +1,9 @@
 import { appUrl } from '../lib/api.ts';
+import { useSession } from '../lib/queries.ts';
 
 export function Privacy() {
+  const auth = useSession().data?.auth;
+  const provider = auth?.provider ?? 'Google';
   return (
     <main className="mx-auto max-w-xl px-6 py-12 leading-relaxed">
       <a href={appUrl('/')} className="text-sm font-medium text-primary">
@@ -11,12 +14,12 @@ export function Privacy() {
 
       <div className="mt-8 flex flex-col gap-5 [&_h2]:display [&_h2]:text-xl [&_h2]:font-medium">
         <p>
-          Almanac is a self-hosted planner. This copy runs on a private home server for one household, and only people the household
-          admin has added can sign in.
+          Almanac is a self-hosted planner. This copy runs on the household's own server, and only people the household admin has
+          added can sign in.
         </p>
         <h2>What Almanac stores</h2>
         <p>
-          Your name, email address and profile picture from your Google account, so you can sign in and so the household can see who
+          Your name, email address and profile picture from your {provider} account, so you can sign in and so the household can see who
           a task belongs to. Everything you put into Almanac (tasks, lists, notes, links and files) is stored on the household's own
           server. Files on a task are visible to everyone who can see that task.
         </p>
@@ -52,8 +55,9 @@ export function Privacy() {
         <p>Almanac never sells your data or shares it with anyone besides the services named above. There are no ads or trackers.</p>
         <h2>Removing your data</h2>
         <p>
-          Ask the household admin to remove your account, or disconnect Almanac from your Google account at
-          myaccount.google.com/connections. Questions: jonmartin721@gmail.com.
+          Ask the household admin to remove your account
+          {provider === 'Google' ? ', or disconnect Almanac from your Google account at myaccount.google.com/connections' : ''}.
+          {auth?.privacyContact ? ` Questions: ${auth.privacyContact}.` : ''}
         </p>
       </div>
     </main>

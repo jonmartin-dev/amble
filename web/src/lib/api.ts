@@ -60,7 +60,7 @@ export interface Member {
 
 export interface Session {
   member: Member | null;
-  auth: { provider: string; oidc: boolean; devEmails: string[] };
+  auth: { provider: string; oidc: boolean; devEmails: string[]; privacyContact: string };
 }
 
 export interface Group {

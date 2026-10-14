@@ -26,7 +26,7 @@ beforeEach(() => {
   qc = new QueryClient();
   qc.setQueryData<Session>(['session'], {
     member: { id: ME, email: 'me@example.com', name: 'Me Person', avatarUrl: null, color: 'green', role: 'admin', theme: null, capacity: null, showStreaks: true, smartAdd: true },
-    auth: { provider: 'Google', oidc: true, devEmails: [] },
+    auth: { provider: 'Google', oidc: true, devEmails: [], privacyContact: '' },
   });
   qc.setQueryData<{ groups: Group[] }>(['groups'], {
     groups: [{ id: 'home', name: 'Home', icon: 'home', color: 'green', kind: 'tasks', template: null, privateTo: null, open: 1 }],

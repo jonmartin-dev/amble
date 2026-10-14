@@ -187,6 +187,7 @@ export function createApp({
       auth: {
         provider: config.oidc.providerName,
         oidc: oidc.enabled,
+        privacyContact: config.privacyContact,
         devEmails: config.devLogin ? allowedEmails(db, config) : [],
       },
     }),

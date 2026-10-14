@@ -45,6 +45,8 @@ export const config = {
   secureCookies: publicUrl.startsWith('https://'),
   dataDir: path.resolve(process.env.ALMANAC_DATA_DIR ?? './data'),
   timezone: process.env.ALMANAC_TIMEZONE ?? 'America/Chicago',
+  // Who to ask about privacy, shown on the public /privacy page. Left out when empty.
+  privacyContact: process.env.ALMANAC_PRIVACY_CONTACT ?? '',
   adminEmails,
   allowedEmails: [...new Set([...adminEmails, ...list(process.env.ALMANAC_ALLOWED_EMAILS)])],
   oidc: {
