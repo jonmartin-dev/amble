@@ -2,6 +2,7 @@
 // registration, consent, tokens and refresh rotation, then real MCP calls over HTTP.
 import { createHash, randomBytes } from 'node:crypto';
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
+import { eq } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from './app.ts';
 import { createSession } from './auth/sessions.ts';
@@ -231,9 +232,9 @@ describe('connecting Claude', () => {
     expect(res.status).toBe(401);
   });
 
-  it('stops working when the member leaves the allowlist', async () => {
+  it('stops working when the member is removed from the household', async () => {
     const issued = (await tokens(await connect())).body;
-    app = createApp({ db, config: { ...testConfig, allowedEmails: ['alex@example.com'], adminEmails: [] }, oidc: createOidc(testConfig), fetchImpl });
+    db.delete(members).where(eq(members.id, jon.id)).run();
     const res = await request('/mcp', { method: 'POST', headers: { authorization: `Bearer ${issued.access_token}`, 'content-type': 'application/json' }, body: '{}' });
     expect(res.status).toBe(401);
   });

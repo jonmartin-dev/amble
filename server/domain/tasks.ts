@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lt, lte, or, sql, type SQL } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/sqlite-core';
 import type { Db } from '../db/index.ts';
 import { groups, members, subtasks, taskLinks, tasks, type Member, type Task } from '../db/schema.ts';
 import { planningDate, planningDayStart } from '../lib/dates.ts';
@@ -9,6 +10,7 @@ export type TimeOfDay = NonNullable<Task['timeOfDay']>;
 export interface TaskDetail extends Task {
   groupName: string | null;
   assigneeName: string | null;
+  createdByName: string | null;
   subtasks: { id: string; title: string; done: boolean }[];
   links: { id: string; url: string; title: string | null }[];
 }
@@ -29,6 +31,19 @@ export interface TaskFilter {
   completedSince?: Date;
   limit?: number;
   order?: 'backlog' | 'recent';
+}
+
+const creators = alias(members, 'creators');
+const columns = { task: tasks, groupName: groups.name, assigneeName: members.name, createdByName: creators.name };
+type Row = { task: Task; groupName: string | null; assigneeName: string | null; createdByName: string | null };
+
+function selectTasks(db: Db) {
+  return db
+    .select(columns)
+    .from(tasks)
+    .leftJoin(groups, eq(tasks.groupId, groups.id))
+    .leftJoin(members, eq(tasks.assigneeId, members.id))
+    .leftJoin(creators, eq(tasks.createdById, creators.id));
 }
 
 /** Tasks in another member's private group are invisible; everything else is shared. */
@@ -80,11 +95,7 @@ export function listTasks(db: Db, me: Member, filter: TaskFilter = {}): TaskDeta
           asc(tasks.sortOrder),
           asc(tasks.createdAt),
         ];
-  const rows = db
-    .select({ task: tasks, groupName: groups.name, assigneeName: members.name })
-    .from(tasks)
-    .leftJoin(groups, eq(tasks.groupId, groups.id))
-    .leftJoin(members, eq(tasks.assigneeId, members.id))
+  const rows = selectTasks(db)
     .where(and(...conditions(me, filter)))
     .orderBy(...order)
     .limit(filter.limit ?? 500)
@@ -92,18 +103,16 @@ export function listTasks(db: Db, me: Member, filter: TaskFilter = {}): TaskDeta
   return withDetails(db, rows);
 }
 
-function withDetails(
-  db: Db,
-  rows: { task: Task; groupName: string | null; assigneeName: string | null }[],
-): TaskDetail[] {
+function withDetails(db: Db, rows: Row[]): TaskDetail[] {
   const ids = rows.map((r) => r.task.id);
   if (ids.length === 0) return [];
   const subs = db.select().from(subtasks).where(inArray(subtasks.taskId, ids)).orderBy(asc(subtasks.sortOrder)).all();
   const links = db.select().from(taskLinks).where(inArray(taskLinks.taskId, ids)).orderBy(asc(taskLinks.createdAt)).all();
-  return rows.map(({ task, groupName, assigneeName }) => ({
+  return rows.map(({ task, groupName, assigneeName, createdByName }) => ({
     ...task,
     groupName,
     assigneeName,
+    createdByName,
     subtasks: subs.filter((s) => s.taskId === task.id).map(({ id, title, done }) => ({ id, title, done })),
     links: links.filter((l) => l.taskId === task.id).map(({ id, url, title }) => ({ id, url, title })),
   }));
@@ -113,11 +122,7 @@ function withDetails(
 export function getTask(db: Db, me: Member, ref: string): TaskDetail {
   if (ref.length < 6 || !/^[0-9a-f-]+$/i.test(ref)) throw new DomainError(`"${ref}" isn't a task id.`);
   const idMatch = ref.length >= 36 ? eq(tasks.id, ref) : sql`${tasks.id} LIKE ${`${ref.toLowerCase()}%`}`;
-  const rows = db
-    .select({ task: tasks, groupName: groups.name, assigneeName: members.name })
-    .from(tasks)
-    .leftJoin(groups, eq(tasks.groupId, groups.id))
-    .leftJoin(members, eq(tasks.assigneeId, members.id))
+  const rows = selectTasks(db)
     .where(and(idMatch, visibleTo(me.id)))
     .limit(2)
     .all();
@@ -126,9 +131,13 @@ export function getTask(db: Db, me: Member, ref: string): TaskDetail {
   return withDetails(db, rows)[0]!;
 }
 
-export function getToday(db: Db, me: Member, scope: 'mine' | 'everyone' = 'mine') {
+/**
+ * A day list as `me` sees it (their planning date): one person's tasks plus shared ones, or
+ * everyone's.
+ */
+export function getToday(db: Db, me: Member, who: Member | 'everyone' = me) {
   const today = planningDate(me);
-  const assignee = scope === 'mine' ? { memberId: me.id, includeShared: true } : undefined;
+  const assignee = who === 'everyone' ? undefined : { memberId: who.id, includeShared: true };
   const planned = listTasks(db, me, { plannedOn: today, assignee });
   const carriedOver = listTasks(db, me, { plannedBefore: today, assignee });
   const due = listTasks(db, me, { dueOnOrBefore: today, assignee }).filter(
@@ -232,6 +241,7 @@ export interface TaskPatch {
   addSubtasks?: string[];
   checkSubtasks?: string[];
   uncheckSubtasks?: string[];
+  removeSubtasks?: string[];
   addLinks?: { url: string; title?: string | null }[];
   removeLinks?: string[];
 }
@@ -279,6 +289,11 @@ export function updateTask(db: Db, actor: Actor, ref: string, patch: TaskPatch):
     };
     check(patch.checkSubtasks, true);
     check(patch.uncheckSubtasks, false);
+    if (patch.removeSubtasks?.length) {
+      db.delete(subtasks)
+        .where(and(eq(subtasks.taskId, task.id), inArray(subtasks.id, subtaskIds(task, patch.removeSubtasks))))
+        .run();
+    }
     addLinks(db, task.id, patch.addLinks ?? []);
     if (patch.removeLinks?.length) {
       const ids = patch.removeLinks.map((ref) => {

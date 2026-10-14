@@ -7,13 +7,20 @@ const memberColors = ['green', 'blue', 'orange', 'violet', 'teal', 'rose'];
 
 export const DEV_FALLBACK_EMAIL = 'dev@almanac.local';
 
-export function allowedEmails(config: Config): string[] {
-  if (config.allowedEmails.length === 0 && config.devLogin) return [DEV_FALLBACK_EMAIL];
-  return config.allowedEmails;
+/**
+ * Who may sign in: the emails in the deployment's config (how the first admin gets in) plus every
+ * member already in the household, including ones an admin added in Settings. Removing someone
+ * means deleting their member row.
+ */
+export function allowedEmails(db: Db, config: Config): string[] {
+  const added = db.select({ email: members.email }).from(members).all().map((m) => m.email);
+  const all = [...new Set([...config.allowedEmails, ...added])];
+  if (all.length === 0 && config.devLogin) return [DEV_FALLBACK_EMAIL];
+  return all;
 }
 
-export function isAllowed(config: Config, email: string) {
-  return allowedEmails(config).includes(email.toLowerCase());
+export function isAllowed(db: Db, config: Config, email: string) {
+  return allowedEmails(db, config).includes(email.toLowerCase());
 }
 
 interface Identity {
@@ -53,6 +60,23 @@ export function upsertMember(db: Db, config: Config, identity: Identity, now = D
       role,
       timezone: config.timezone,
       lastLoginAt: new Date(now),
+    })
+    .returning()
+    .get();
+}
+
+/** Adds someone to the household before they've signed in, so tasks can be handed to them. */
+export function inviteMember(db: Db, config: Config, input: { email: string; name: string }): Member {
+  const email = input.email.trim().toLowerCase();
+  const [row] = db.select({ n: count() }).from(members).all();
+  return db
+    .insert(members)
+    .values({
+      email,
+      name: input.name.trim(),
+      color: memberColors[(row?.n ?? 0) % memberColors.length]!,
+      role: config.adminEmails.includes(email) ? 'admin' : 'member',
+      timezone: config.timezone,
     })
     .returning()
     .get();

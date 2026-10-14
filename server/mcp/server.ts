@@ -161,7 +161,7 @@ export function createMcpServer({ db, member }: { db: Db; member: Member }) {
       annotations: read,
     },
     run(({ scope }: { scope?: 'mine' | 'everyone' }) => {
-      const t = getToday(db, member, scope ?? 'mine');
+      const t = getToday(db, member, scope === 'everyone' ? 'everyone' : member);
       return {
         today: t.today,
         weekday: weekday(t.today),

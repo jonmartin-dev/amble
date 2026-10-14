@@ -104,11 +104,12 @@ describe('tasks', () => {
       { title: 'Shared', plannedDate: today, assigneeId: null },
       { title: 'Someday' },
     ]);
-    const mine = getToday(db, jon, 'mine');
+    const mine = getToday(db, jon);
     expect(mine.planned.map((t) => t.title).sort()).toEqual(['Planned today', 'Shared']);
     expect(mine.carriedOver.map((t) => t.title)).toEqual(['Left from yesterday']);
     expect(mine.due.map((t) => t.title).sort()).toEqual(['Due today, planned next week', 'Due today, unplanned']);
     expect(getToday(db, jon, 'everyone').planned).toHaveLength(3);
+    expect(getToday(db, jon, alex).planned.map((t) => t.title).sort()).toEqual(['Alex only', 'Shared']);
   });
 
   it('finds tasks by short id prefix and by every word of a search', () => {

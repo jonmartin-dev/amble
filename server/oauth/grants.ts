@@ -62,7 +62,7 @@ export function createGrantStore(db: Db, config: Config) {
 
   function memberFor(id: string): Member {
     const member = db.select().from(members).where(eq(members.id, id)).get();
-    if (!member || !isAllowed(config, member.email)) {
+    if (!member || !isAllowed(db, config, member.email)) {
       throw new OAuthFailure('invalid_grant', 'This account can no longer use Almanac.');
     }
     return member;
@@ -190,7 +190,7 @@ export function createGrantStore(db: Db, config: Config) {
         .innerJoin(members, eq(oauthGrants.memberId, members.id))
         .where(and(eq(oauthTokens.tokenHash, hash(token)), eq(oauthTokens.kind, 'access')))
         .get();
-      if (!row || row.token.expiresAt.getTime() < now || !isAllowed(config, row.member.email)) return undefined;
+      if (!row || row.token.expiresAt.getTime() < now || !isAllowed(db, config, row.member.email)) return undefined;
       if (!row.grant.lastUsedAt || now - row.grant.lastUsedAt.getTime() > LAST_USED_EVERY_MS) {
         db.update(oauthGrants).set({ lastUsedAt: new Date(now) }).where(eq(oauthGrants.id, row.grant.id)).run();
       }

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { serveStatic } from '@hono/node-server/serve-static';
-import { and, asc, eq, isNull, or } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { Hono, type Context } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { csrf } from 'hono/csrf';
@@ -11,11 +11,12 @@ import { allowedEmails, isAllowed, upsertMember } from './auth/members.ts';
 import type { Oidc } from './auth/oidc.ts';
 import { createSession, deleteSession, resolveSession, SESSION_COOKIE, SESSION_TTL_MS } from './auth/sessions.ts';
 import type { Config } from './config.ts';
+import { registerApi } from './api.ts';
 import { registerConnector } from './connector.ts';
 import type { Db } from './db/index.ts';
 import type { Env } from './env.ts';
 import { z } from 'zod';
-import { groups, members } from './db/schema.ts';
+import { members } from './db/schema.ts';
 
 const STATE_COOKIE = 'almanac_auth_state';
 const webDist = fileURLToPath(new URL('../dist/web', import.meta.url));
@@ -103,7 +104,7 @@ export function createApp({
       console.warn('Sign-in failed:', err instanceof Error ? err.message : err);
       return c.redirect(appUrl('/signin?error=failed'));
     }
-    if (!isAllowed(config, identity.email)) {
+    if (!isAllowed(db, config, identity.email)) {
       console.warn(`Sign-in refused for ${identity.email}: not on the allowlist`);
       return c.redirect(appUrl('/signin?error=not-allowed'));
     }
@@ -114,7 +115,7 @@ export function createApp({
 
   app.get('/auth/dev', (c) => {
     const email = (c.req.query('email') ?? '').toLowerCase();
-    if (!config.devLogin || !isAllowed(config, email)) return c.notFound();
+    if (!config.devLogin || !isAllowed(db, config, email)) return c.notFound();
     const member = upsertMember(db, config, { email });
     startSession(c, member.id);
     return c.redirect(appUrl(safeReturnTo(c.req.query('return'))));
@@ -136,7 +137,7 @@ export function createApp({
       auth: {
         provider: config.oidc.providerName,
         oidc: oidc.enabled,
-        devEmails: config.devLogin ? allowedEmails(config) : [],
+        devEmails: config.devLogin ? allowedEmails(db, config) : [],
       },
     }),
   );
@@ -167,17 +168,7 @@ export function createApp({
     return c.json({ member: updated });
   });
 
-  app.get('/api/groups', (c) => {
-    const me = c.get('member')!;
-    const rows = db
-      .select()
-      .from(groups)
-      .where(and(isNull(groups.archivedAt), or(isNull(groups.privateTo), eq(groups.privateTo, me.id))))
-      .orderBy(asc(groups.sortOrder))
-      .all();
-    return c.json({ groups: rows });
-  });
-
+  registerApi(app, { db, config });
   registerConnectorApi(app);
 
   app.all('/api/*', (c) => c.json({ error: 'Not found.' }, 404));
