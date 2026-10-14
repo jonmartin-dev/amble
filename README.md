@@ -2,7 +2,7 @@
 
 A calm, shared, self-hosted planner for a household. It knows how full each day already is, from your tasks and your Google Calendar, and suggests what to do today and which day has room for something due later. It never nags.
 
-Status: early but usable. The day list, backlog, task details, smart add, repeating tasks, list templates, handing tasks to each other, the calendar, stats, the activity feed, settings and the Claude connector work, offline too. Capacity is learned from what gets done, Google Calendar shapes how full each day is, and the planner suggests what to do today and where things fit. Reminders, adding to the calendar and files are next (see [SPEC.md](SPEC.md) for the plan and build order).
+Status: early but usable. The day list, backlog, task details, smart add, repeating tasks, list templates, handing tasks to each other, the calendar, stats, the activity feed, settings and the Claude connector work, offline too. Capacity is learned from what gets done, Google Calendar shapes how full each day is, and the planner suggests what to do today and where things fit. Reminders and files on tasks work too. Open-source prep and an Android app are next (see [SPEC.md](SPEC.md) for the plan and build order).
 
 ## Features so far
 
@@ -10,7 +10,9 @@ Status: early but usable. The day list, backlog, task details, smart add, repeat
 - Today: your day list by time of day, a load meter, what carried over and what's due. Swipe right to finish a task, swipe left or long-press to move it, with Undo for both
 - Google Calendar: each person connects their own and picks which calendars count. A day with more on it than usual has less room for tasks, and the calendar shows your events next to your tasks. It only reads
 - Planning help: a task due later shows the day with the most room before it, Plan my week lays out the next seven days around your calendar (tell it "keep Saturday free" and it does), and Tidy up suggests regrouping, merging duplicates and splitting tasks that are really several
-- Backlog in collapsible groups with search, a quick-add sheet, and a task page for notes, steps, links, deadlines, time of day, must-do and estimates
+- Backlog in collapsible groups with search, a quick-add sheet, and a task page for notes, steps, links, files, deadlines, time of day, must-do and estimates
+- Reminders, only when you ask: pick a time on a task (or say "remind me Thursday at 6" in quick add) and get one notification on your phone, with Done and Snooze on it. Nothing else in Almanac ever notifies you
+- Files on tasks: photos, receipts, manuals and PDFs, up to 25 MB each, kept on your own server
 - Moving a task shows the next two weeks with how full each day already is
 - Smart add: type anything into quick add ("call mom tomorrow evening, out of milk and eggs, Alex should mow every Saturday") and Claude Haiku turns it into tasks, list items and changes to existing tasks, using what's already in the household. You review and edit each one before anything is saved. Optional; it needs an Anthropic API key and has a monthly spending cap
 - Repeating tasks: on a schedule (every Sunday, the 1st, the 2nd Thursday, weekdays, seasonal months) or a set time after the last one was done, with skip and pause
@@ -21,7 +23,7 @@ Status: early but usable. The day list, backlog, task details, smart add, repeat
 - Works offline: the app and what you last loaded open without a connection, changes show at once and sync in order when you're back, and if someone changed the same thing in the meantime the later change wins
 - Installable app (PWA) designed in Material 3 Expressive, with its spring motion tokens
 - Material You theming: pick any color and Almanac generates the full Material 3 palette (2025 spec) in five styles and three contrast levels, light, dark or automatic. It's saved per person and follows you across devices.
-- A Claude connector (MCP) with its own OAuth sign-in: Claude can add, plan, complete and hand off tasks, keep shopping lists, check how full each day is, suggest what to do today and draft a week's plan
+- A Claude connector (MCP) with its own OAuth sign-in: Claude can add, plan, complete and hand off tasks, keep shopping lists, check how full each day is, suggest what to do today, draft a week's plan, set reminders you ask for and look at photos on tasks
 
 ## Run it locally
 
@@ -65,7 +67,9 @@ The app listens on `127.0.0.1:18085` (change with `ALMANAC_PORT`); put your reve
 
 For Google sign-in, create an OAuth client of type "Web application" with the redirect URI `<ALMANAC_PUBLIC_URL>/auth/callback`, and set the consent screen's publishing status to "In production" so sessions with Calendar access don't expire after 7 days.
 
-Back up `data/`. `node server/backup.ts` inside the container writes a consistent copy of the database to `data/snapshots/almanac-latest.db` for file-level backups.
+Back up `data/`: it holds the database and `files/`, the files people add to tasks. `node server/backup.ts` inside the container writes a consistent copy of the database to `data/snapshots/almanac-latest.db` for file-level backups.
+
+Reminders reach phones through web push. Almanac makes its push keys on first start and keeps them in the database, so there's nothing to configure; people turn notifications on per device in Settings, Notifications. On iPhone and iPad that works once Almanac is added to the home screen.
 
 ## License
 

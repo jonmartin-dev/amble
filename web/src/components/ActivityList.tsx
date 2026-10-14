@@ -43,6 +43,13 @@ function items(d: Record<string, unknown>) {
   return `${all.slice(0, 2).join(', ')} and ${all.length - 2} more`;
 }
 
+/** "receipt.jpg", or "receipt.jpg and 2 more" for files added together. */
+function files(d: Record<string, unknown>) {
+  const names = (d.names as string[] | undefined) ?? (typeof d.name === 'string' ? [d.name] : []);
+  if (names.length <= 1) return names[0] ?? 'a file';
+  return names.length === 2 ? `${names[0]} and ${names[1]}` : `${names[0]} and ${names.length - 1} more`;
+}
+
 /** The words after someone's name: "finished Buy stamps", "handed Taxes to Alex". */
 function describe(e: ActivityEntry, ctx: Context): { text: ReactNode; note?: string } {
   const d = e.detail ?? {};
@@ -99,6 +106,12 @@ function describe(e: ActivityEntry, ctx: Context): { text: ReactNode; note?: str
       return { text: s('removed', task) };
     case 'task.restored':
       return { text: s('restored', task) };
+    case 'task.file_added':
+      return { text: s(`added ${files(d)} to`, task) };
+    case 'task.file_removed':
+      return { text: s(`removed ${files(d)} from`, task) };
+    case 'task.file_restored':
+      return { text: s(`brought back ${files(d)} on`, task) };
     case 'group.created':
       return { text: s(`made the ${d.name} ${kindWord(d)}`) };
     case 'group.renamed':

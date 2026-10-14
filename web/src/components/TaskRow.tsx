@@ -1,17 +1,19 @@
 import { useNavigate } from '@tanstack/react-router';
 import { animate, motion, useMotionValue, useTransform, type PanInfo } from 'motion/react';
 import { useRef, useState } from 'react';
+import AttachFile from '~icons/material-symbols/attach-file-rounded';
 import Check from '~icons/material-symbols/check-rounded';
 import Checklist from '~icons/material-symbols/checklist-rounded';
 import Event from '~icons/material-symbols/event-outline-rounded';
 import Flag from '~icons/material-symbols/flag-rounded';
 import LinkIcon from '~icons/material-symbols/link-rounded';
 import Notes from '~icons/material-symbols/notes-rounded';
+import Bell from '~icons/material-symbols/notifications-outline-rounded';
 import Person from '~icons/material-symbols/person-outline-rounded';
 import RepeatIcon from '~icons/material-symbols/repeat-rounded';
 import Sun from '~icons/material-symbols/wb-sunny-outline-rounded';
 import type { Task } from '../lib/api.ts';
-import { dayLabel, daysFrom, firstName } from '../lib/dates.ts';
+import { dayLabel, daysFrom, firstName, reminderLabel } from '../lib/dates.ts';
 import { expressive } from '../lib/motion.ts';
 import { useTaskActions } from '../lib/mutations.ts';
 import { Checkbox } from './ui.tsx';
@@ -135,8 +137,15 @@ export function TaskRow({ task, today, meId, onMove, showDay = false, showGroup 
                 {subtasksDone}/{task.subtasks.length}
               </span>
             )}
+            {task.reminder && !task.reminder.sentAt && task.status === 'open' && (
+              <span className="flex items-center gap-1">
+                <Bell className="size-4" aria-label="Reminder" />
+                {reminderLabel(task.reminder.at)}
+              </span>
+            )}
             {task.repeat && <RepeatIcon className="size-4" aria-label="Repeats" />}
             {task.links.length > 0 && <LinkIcon className="size-4" aria-label="Has links" />}
+            {task.files?.length > 0 && <AttachFile className="size-4" aria-label="Has files" />}
             {task.notes && <Notes className="size-4" aria-label="Has notes" />}
             {task.assigneeId !== meId && (
               <span className="flex items-center gap-1">

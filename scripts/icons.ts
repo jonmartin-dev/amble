@@ -1,4 +1,5 @@
-// Renders the PNG app icons from web/public/icon.svg. Run with: node scripts/icons.ts
+// Renders the PNG app icons from web/public/icon.svg, and the notification badge from badge.svg.
+// Run with: node scripts/icons.ts
 import fs from 'node:fs';
 import { Resvg } from '@resvg/resvg-js';
 
@@ -14,6 +15,8 @@ const outputs: [string, string, number][] = [
   ['icon-512.png', svg, 512],
   ['icon-maskable-512.png', maskable, 512],
   ['apple-touch-icon.png', maskable, 180],
+  // Android draws a notification's small icon from its alpha alone, so it's white on clear.
+  ['badge-96.png', fs.readFileSync('web/public/badge.svg', 'utf8'), 96],
 ];
 
 for (const [file, source, size] of outputs) {

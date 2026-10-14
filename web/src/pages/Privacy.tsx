@@ -18,7 +18,14 @@ export function Privacy() {
         <p>
           Your name, email address and profile picture from your Google account, so you can sign in and so the household can see who
           a task belongs to. Everything you put into Almanac (tasks, lists, notes, links and files) is stored on the household's own
-          server.
+          server. Files on a task are visible to everyone who can see that task.
+        </p>
+        <h2>Reminders</h2>
+        <p>
+          Almanac only sends a notification for a reminder you set yourself. It goes to the devices where you turned notifications on,
+          through your browser's push service (Google's for Chrome and Android, Apple's for iPhone). The task's title and a line of its
+          notes travel encrypted for your device, so the push service passes them along without being able to read them. Signing out
+          or turning notifications off in Settings stops them on that device.
         </p>
         <h2>Google Calendar</h2>
         <p>
@@ -36,7 +43,8 @@ export function Privacy() {
         </p>
         <h2>Claude connector</h2>
         <p>
-          If you connect Claude to Almanac, Claude can read and change your tasks, lists and plans when you ask it to, acting as you.
+          If you connect Claude to Almanac, Claude can read and change your tasks, lists and plans when you ask it to, acting as you,
+          and look at photos and text files on tasks.
           What it reads becomes part of your Claude conversation and is handled under your Claude account's privacy settings. You can
           disconnect it at any time from Connect Claude in Almanac.
         </p>

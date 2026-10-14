@@ -8,6 +8,7 @@ import {
   createRouter,
   Outlet,
   RouterProvider,
+  useNavigate,
   useParams,
   useRouterState,
 } from '@tanstack/react-router';
@@ -22,6 +23,7 @@ import { syncCalendarsWhileOpen } from './lib/calendar.ts';
 import { expressive } from './lib/motion.ts';
 import { refreshViews } from './lib/mutations.ts';
 import { CACHE_MAX_AGE_MS, CACHE_VERSION, claimDevice, idbPersister, prefetchForOffline, shouldSave } from './lib/persist.ts';
+import { refreshPush } from './lib/push.ts';
 import { registerServiceWorker } from './lib/pwa.ts';
 import { get, useSession } from './lib/queries.ts';
 import { SnackbarProvider, useSnackbar } from './lib/snackbar.tsx';
@@ -35,6 +37,7 @@ import { Briefing } from './pages/Briefing.tsx';
 import { CalendarsPage } from './pages/Calendars.tsx';
 import { Household } from './pages/Household.tsx';
 import { ListPage } from './pages/ListPage.tsx';
+import { Notifications } from './pages/Notifications.tsx';
 import { Privacy } from './pages/Privacy.tsx';
 import { TaskDetail } from './pages/TaskDetail.tsx';
 import { Calendar } from './pages/Calendar.tsx';
@@ -87,9 +90,24 @@ function Root() {
   const qc = useQueryClient();
   const session = useSession();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const navigate = useNavigate();
   const [adding, setAdding] = useState(false);
   const memberId = session.data?.member?.id;
   useSyncMemberTheme();
+
+  // Notifications follow whoever is signed in here, so tell the server about this device again.
+  useEffect(() => {
+    if (memberId && navigator.onLine) void refreshPush().catch(() => {});
+  }, [memberId]);
+  // Tapping a reminder while the app is open brings it to that task.
+  useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      const data = e.data as { type?: string; path?: string } | null;
+      if (data?.type === 'open' && data.path) void navigate({ to: data.path as '/' });
+    };
+    navigator.serviceWorker?.addEventListener('message', onMessage);
+    return () => navigator.serviceWorker?.removeEventListener('message', onMessage);
+  }, [navigate]);
 
   useEffect(() => {
     if (!memberId) return;
@@ -133,6 +151,7 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/groups', component: GroupsSettings }),
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/capacity', component: Capacity }),
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/calendars', component: CalendarsPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/settings/notifications', component: Notifications }),
   createRoute({ getParentRoute: () => rootRoute, path: '/briefing', component: Briefing }),
   createRoute({ getParentRoute: () => rootRoute, path: '/activity', component: Activity }),
   createRoute({

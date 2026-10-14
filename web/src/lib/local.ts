@@ -232,6 +232,8 @@ export function newTask(qc: QueryClient, fields: Partial<Task> & { id: string; t
     links: [],
     repeat: null,
     pausedUntil: null,
+    reminder: null,
+    files: [],
     sortOrder: 0,
     ...fields,
     assigneeId,

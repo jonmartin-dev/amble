@@ -3,7 +3,8 @@
 //   the background and waits; the app offers a reload rather than swapping code under someone.
 // - Sends changes made offline once the connection is back, even with the app closed (Background
 //   Sync, where the browser has it).
-import { flush } from './lib/outbox.ts';
+// - Shows reminders, and handles their Done and Snooze buttons without opening the app.
+import { addOp, flush } from './lib/outbox.ts';
 
 declare const __ALMANAC_BUILD__: string;
 declare const __ALMANAC_ASSETS__: string[];
@@ -22,14 +23,42 @@ interface SyncEvent extends ExtendableEvent {
 interface MessageEventLike extends ExtendableEvent {
   data: unknown;
 }
+interface PushEvent extends ExtendableEvent {
+  data: { json(): unknown } | null;
+}
+interface NotificationClickEvent extends ExtendableEvent {
+  notification: Notification;
+  action: string;
+}
+interface WindowClient {
+  url: string;
+  focus(): Promise<unknown>;
+  postMessage(message: unknown): void;
+}
 interface ServiceWorkerScope {
-  registration: ServiceWorkerRegistration;
-  clients: { claim(): Promise<void>; matchAll(options?: { type?: string }): Promise<{ postMessage(message: unknown): void }[]> };
+  registration: ServiceWorkerRegistration & { sync?: { register(tag: string): Promise<void> } };
+  clients: {
+    claim(): Promise<void>;
+    matchAll(options?: { type?: string; includeUncontrolled?: boolean }): Promise<WindowClient[]>;
+    openWindow(url: string): Promise<unknown>;
+  };
   skipWaiting(): Promise<void>;
   addEventListener(type: 'install' | 'activate', listener: (e: ExtendableEvent) => void): void;
   addEventListener(type: 'fetch', listener: (e: FetchEvent) => void): void;
   addEventListener(type: 'sync', listener: (e: SyncEvent) => void): void;
   addEventListener(type: 'message', listener: (e: MessageEventLike) => void): void;
+  addEventListener(type: 'push', listener: (e: PushEvent) => void): void;
+  addEventListener(type: 'notificationclick', listener: (e: NotificationClickEvent) => void): void;
+}
+
+/** What the server sends (server/notify/push.ts). */
+interface PushMessage {
+  title: string;
+  body?: string;
+  tag?: string;
+  url?: string;
+  actions?: { action: string; title: string }[];
+  data?: { kind?: string; reminderId?: string; taskId?: string; memberId?: string; snoozeMinutes?: number };
 }
 
 const sw = globalThis as unknown as ServiceWorkerScope;
@@ -93,13 +122,75 @@ sw.addEventListener('fetch', (event) => {
   );
 });
 
+/** Sends the outbox and tells open windows; the result says whether anything is still waiting. */
+async function sendOutbox() {
+  const result = await flush(base);
+  for (const client of await sw.clients.matchAll({ type: 'window' })) client.postMessage({ type: 'outbox-flushed' });
+  return result;
+}
+
 sw.addEventListener('sync', (event) => {
   if (event.tag !== 'almanac-outbox') return;
   event.waitUntil(
-    flush(base).then(async (result) => {
-      for (const client of await sw.clients.matchAll({ type: 'window' })) client.postMessage({ type: 'outbox-flushed' });
+    sendOutbox().then((result) => {
       // Rejecting asks the browser to try again later.
       if (result.blocked === 'offline' || result.blocked === 'server' || result.blocked === 'busy') throw new Error(result.blocked);
     }),
   );
+});
+
+// ---- reminders ------------------------------------------------------------------------------
+
+sw.addEventListener('push', (event) => {
+  let message: PushMessage | null = null;
+  try {
+    message = event.data?.json() as PushMessage;
+  } catch {
+    // Not one of ours; a notification still has to show for every push.
+  }
+  const options: NotificationOptions & { actions?: { action: string; title: string }[]; timestamp?: number } = {
+    body: message?.body,
+    tag: message?.tag,
+    icon: new URL('icon-192.png', scope).href,
+    badge: new URL('badge-96.png', scope).href,
+    actions: message?.actions ?? [],
+    timestamp: Date.now(),
+    data: { url: message?.url, ...message?.data },
+  };
+  event.waitUntil(sw.registration.showNotification(message?.title || 'Almanac', options));
+});
+
+/** Brings the app forward on a page, opening it if it isn't open. */
+async function openApp(url: string | undefined) {
+  const target = new URL(url ?? shell, scope.origin);
+  const windows = await sw.clients.matchAll({ type: 'window', includeUncontrolled: true });
+  const open = windows.find((w) => w.url.startsWith(shell));
+  if (open) {
+    // The app routes itself, so it keeps its state rather than loading again. Told first, so a
+    // browser that won't bring the window forward still lands it on the task.
+    open.postMessage({ type: 'open', path: target.pathname.slice(base.length) || '/' });
+    await open.focus().catch(() => {});
+    return;
+  }
+  await sw.clients.openWindow(target.href);
+}
+
+/** Done and Snooze go through the outbox, so they still count when the phone is offline. */
+async function act(action: 'done' | 'snooze', title: string, data: NonNullable<PushMessage['data']>) {
+  if (!data.memberId || !data.taskId) return;
+  const op =
+    action === 'done'
+      ? { path: `/tasks/${data.taskId}/complete`, body: { done: true }, label: `Finish ${title}` }
+      : { path: `/reminders/${data.reminderId}/snooze`, body: { minutes: data.snoozeMinutes ?? 60 }, label: `Snooze ${title}` };
+  await addOp({ ...op, method: 'POST', memberId: data.memberId, key: crypto.randomUUID(), at: Date.now() });
+  const result = await sendOutbox();
+  if (result.blocked) await sw.registration.sync?.register('almanac-outbox').catch(() => {});
+}
+
+sw.addEventListener('notificationclick', (event) => {
+  const { notification, action } = event;
+  const data = (notification.data ?? {}) as NonNullable<PushMessage['data']> & { url?: string };
+  notification.close();
+  if (action === 'done' || action === 'snooze') event.waitUntil(act(action, notification.title, data));
+  else event.waitUntil(openApp(data.url));
 });

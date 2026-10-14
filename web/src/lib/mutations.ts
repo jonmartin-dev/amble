@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { api, ApiError, type Member, type Repeat, type Session, type Task, type TimeOfDay } from './api.ts';
-import { dayLabel, todayIso } from './dates.ts';
+import { dayLabel, reminderPhrase, todayIso } from './dates.ts';
 import { editTask, findTask, groupName, memberName, newTask, putTask } from './local.ts';
 import { useSnackbar } from './snackbar.tsx';
 import { queue } from './sync.ts';
@@ -26,12 +26,14 @@ export type TaskPatch = Partial<Omit<NewTask, 'assigneeId'>> & {
   removeLinks?: string[];
   repeat?: Repeat | null;
   pausedUntil?: string | null;
+  /** Your reminder: an ISO time, or null to clear it. */
+  remindAt?: string | null;
 };
 
 const post = <T,>(path: string, data: unknown) => api<T>(path, { method: 'POST', body: JSON.stringify(data) });
 
 /** Every view a task change can touch, refreshed from the server once it has the change. */
-export const TASK_VIEWS = ['today', 'tasks', 'task', 'load', 'groups', 'activity', 'stats', 'list', 'session', 'capacity', 'ai', 'briefing', 'gaps'];
+export const TASK_VIEWS = ['today', 'tasks', 'task', 'load', 'groups', 'activity', 'stats', 'list', 'session', 'capacity', 'ai', 'briefing', 'gaps', 'reminders'];
 
 export function refreshViews(qc: QueryClient, keys = TASK_VIEWS) {
   for (const key of keys) void qc.invalidateQueries({ queryKey: [key] });
@@ -72,7 +74,7 @@ export function useSaveMe() {
 /** A patch as it lands on a cached task; new steps and links get ids here so later changes can name them. */
 function patched(qc: QueryClient, t: Task, patch: TaskPatch, steps: { id: string; title: string }[], links: { id: string; url: string }[]): Partial<Task> {
   const scalar = Object.fromEntries(
-    Object.entries(patch).filter(([k]) => !['addSubtasks', 'checkSubtasks', 'uncheckSubtasks', 'removeSubtasks', 'addLinks', 'removeLinks'].includes(k)),
+    Object.entries(patch).filter(([k]) => !['addSubtasks', 'checkSubtasks', 'uncheckSubtasks', 'removeSubtasks', 'addLinks', 'removeLinks', 'remindAt'].includes(k)),
   ) as Partial<Task>;
   const checked = new Set(patch.checkSubtasks ?? []);
   const unchecked = new Set(patch.uncheckSubtasks ?? []);
@@ -82,6 +84,7 @@ function patched(qc: QueryClient, t: Task, patch: TaskPatch, steps: { id: string
     ...scalar,
     ...(patch.groupId !== undefined && { groupName: groupName(qc, patch.groupId) }),
     ...(patch.estimateMinutes !== undefined && { estimateSource: patch.estimateMinutes == null ? null : 'user' }),
+    ...(patch.remindAt !== undefined && { reminder: patch.remindAt ? { id: t.reminder?.id ?? 'pending', at: patch.remindAt, sentAt: null } : null }),
     subtasks: [
       ...t.subtasks
         .filter((s) => !removed.has(s.id))
@@ -117,6 +120,15 @@ export function useTaskActions() {
     const change = editTask(qc, id, (t) => patched(qc, t, patch, steps, links));
     const body = { ...patch, ...(steps.length && { addSubtasks: steps }), ...(links.length && { addLinks: links }) };
     send('PATCH', `/tasks/${id}`, body, `Change ${change?.before.title ?? 'a task'}`);
+  };
+
+  /** Sets or clears your reminder, saying when it'll come. */
+  const remind = (task: Task, at: Date | null) => {
+    update(task.id, { remindAt: at ? at.toISOString() : null });
+    snack({
+      message: at ? `I'll remind you ${reminderPhrase(at)}` : 'Reminder cleared',
+      action: { label: 'Undo', run: () => update(task.id, { remindAt: task.reminder && !task.reminder.sentAt ? task.reminder.at : null }) },
+    });
   };
 
   const assign = (id: string, assigneeId: string | null, note?: string | null) => {
@@ -189,6 +201,7 @@ export function useTaskActions() {
   return {
     create,
     update,
+    remind,
     assign,
     complete,
     move: (task: Task, plannedDate: string | null, today: string) => moveAll([task], plannedDate, today),

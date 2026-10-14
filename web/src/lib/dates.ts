@@ -115,3 +115,34 @@ export function weekdayName(day: number, style: 'short' | 'long' | 'narrow' = 's
 export function timeLabel(at: string | Date) {
   return new Date(at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 }
+
+/** "6 PM", or "6:30 PM" when it isn't on the hour. */
+export function clockLabel(at: string | Date) {
+  const d = new Date(at);
+  return d.toLocaleTimeString(undefined, { hour: 'numeric', ...(d.getMinutes() ? { minute: '2-digit' } : {}) });
+}
+
+/** When a reminder goes off: "Today 6 PM", "Tomorrow 9 AM", "Thu 6 PM", "Oct 21, 9 AM". Plain calendar days, not planning days. */
+export function reminderLabel(at: string | Date) {
+  const d = new Date(at);
+  const diff = daysFrom(isoDate(new Date()), isoDate(d));
+  const day =
+    diff === 0
+      ? 'Today'
+      : diff === 1
+        ? 'Tomorrow'
+        : diff > 1 && diff < 7
+          ? d.toLocaleDateString(undefined, { weekday: 'short' })
+          : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', ...(d.getFullYear() !== new Date().getFullYear() && { year: 'numeric' }) });
+  return `${day}${diff > 1 && diff < 7 ? '' : diff < 0 || diff >= 7 ? ',' : ''} ${clockLabel(d)}`;
+}
+
+/** A moment as a datetime-local input wants it: "2026-10-16T18:00", in this device's time. */
+export function localInputValue(d: Date) {
+  return `${isoDate(d)}T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/** A reminder time inside a sentence: "today 6 PM", "tomorrow 9 AM", "Thu 6 PM". */
+export function reminderPhrase(at: string | Date) {
+  return reminderLabel(at).replace(/^(Today|Tomorrow)/, (w) => w.toLowerCase());
+}

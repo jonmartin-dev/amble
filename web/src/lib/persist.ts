@@ -4,6 +4,7 @@ import type { Query, QueryClient } from '@tanstack/react-query';
 import type { PersistedClient, Persister } from '@tanstack/react-query-persist-client';
 import { appUrl, type Group } from './api.ts';
 import { kvDel, kvGet, kvSet } from './idb.ts';
+import { disablePush } from './push.ts';
 import { discardQueue, syncState } from './sync.ts';
 
 const CACHE_KEY = 'query-cache';
@@ -13,7 +14,7 @@ const WRITE_EVERY_MS = 1000;
 const SETTLE_MS = 50;
 
 /** Bump when a saved response's shape changes, so an old copy isn't read as a new one. */
-export const CACHE_VERSION = '1';
+export const CACHE_VERSION = '2';
 /**
  * How long a saved copy stays usable after the app last ran. Queries stay in memory as long, so it
  * must stay under setTimeout's limit (about 24.8 days): past that the timer fires at once and every
@@ -96,6 +97,8 @@ export async function signOut(qc?: QueryClient) {
   if (waiting && !confirm(`${waiting} ${waiting === 1 ? "change hasn't" : "changes haven't"} synced yet. Sign out anyway and lose ${waiting === 1 ? 'it' : 'them'}?`)) {
     return;
   }
+  // Reminders stop coming to this device; whoever signs in next turns them on for themselves.
+  await disablePush().catch(() => {});
   await Promise.all([discardQueue(), kvDel(CACHE_KEY), kvDel(OWNER_KEY)]).catch(() => {});
   qc?.clear();
   await fetch(appUrl('/auth/logout'), { method: 'POST' }).catch(() => {});

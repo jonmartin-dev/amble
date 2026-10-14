@@ -14,10 +14,12 @@ import {
   type HouseholdMember,
   type ListHistoryItem,
   type ListItem,
+  type PushDevice,
   type Session,
   type Stats,
   type Task,
   type Today,
+  type UpcomingReminder,
 } from './api.ts';
 import { weekStartDay } from './dates.ts';
 import { findTask } from './local.ts';
@@ -176,4 +178,14 @@ export function useTaskGap(id: string, enabled = true) {
 
 export function useCapacity() {
   return useQuery({ queryKey: ['capacity'], queryFn: () => get<{ days: CapacityDay[] }>('/capacity'), select: (d) => d.days });
+}
+
+/** The server's push key and the devices where you turned notifications on. */
+export function usePushDevices() {
+  return useQuery({ queryKey: ['push'], queryFn: () => get<{ publicKey: string; devices: PushDevice[] }>('/push') });
+}
+
+/** Your reminders still to come, soonest first. */
+export function useReminders() {
+  return useQuery({ queryKey: ['reminders'], queryFn: () => get<{ reminders: UpcomingReminder[] }>('/reminders'), select: (d) => d.reminders });
 }

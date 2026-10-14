@@ -9,6 +9,7 @@ import EventBusy from '~icons/material-symbols/event-busy-outline-rounded';
 import Flag from '~icons/material-symbols/flag-outline-rounded';
 import Folder from '~icons/material-symbols/folder-outline-rounded';
 import LinkIcon from '~icons/material-symbols/link-rounded';
+import Bell from '~icons/material-symbols/notifications-outline-rounded';
 import OpenInNew from '~icons/material-symbols/open-in-new-rounded';
 import Person from '~icons/material-symbols/person-outline-rounded';
 import RepeatIcon from '~icons/material-symbols/repeat-rounded';
@@ -18,7 +19,9 @@ import Timer from '~icons/material-symbols/timer-outline-rounded';
 import { ActivityRow } from '../components/ActivityList.tsx';
 import { GroupIcon } from '../components/icons.tsx';
 import { MoveSheet } from '../components/MoveSheet.tsx';
+import { ReminderField, ReminderSheet } from '../components/ReminderSheet.tsx';
 import { RepeatSheet } from '../components/RepeatSheet.tsx';
+import { TaskFiles } from '../components/TaskFiles.tsx';
 import { describeRepeat, repeatOn } from '../../../shared/repeat.ts';
 import { Checkbox, Chip, minutesLabel, SectionTitle } from '../components/ui.tsx';
 import type { Task, TimeOfDay } from '../lib/api.ts';
@@ -61,6 +64,7 @@ function Detail({ task }: { task: Task }) {
   const today = todayIso();
   const [moving, setMoving] = useState(false);
   const [repeating, setRepeating] = useState(false);
+  const [reminding, setReminding] = useState(false);
   const [handOff, setHandOff] = useState<{ id: string | null; note: string } | null>(null);
   const [newSubtask, setNewSubtask] = useState('');
   const [newLink, setNewLink] = useState('');
@@ -189,6 +193,10 @@ function Detail({ task }: { task: Task }) {
               </button>
             )}
           </div>
+        </Field>
+
+        <Field icon={<Bell className="size-5" />} label="Remind me">
+          <ReminderField task={task} onMore={() => setReminding(true)} />
         </Field>
 
         <Field icon={<RepeatIcon className="size-5" />} label="Repeats">
@@ -389,8 +397,12 @@ function Detail({ task }: { task: Task }) {
         </li>
       </ul>
 
+      <SectionTitle>Files</SectionTitle>
+      <TaskFiles task={task} />
+
       <History task={task} />
 
+      <ReminderSheet task={task} open={reminding} onClose={() => setReminding(false)} />
       <MoveSheet task={moving ? task : null} today={today} onClose={() => setMoving(false)} />
       <RepeatSheet
         open={repeating}

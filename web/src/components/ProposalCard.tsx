@@ -7,12 +7,13 @@ import CheckCircle from '~icons/material-symbols/check-circle-outline-rounded';
 import Close from '~icons/material-symbols/close-rounded';
 import Edit from '~icons/material-symbols/edit-outline-rounded';
 import Flag from '~icons/material-symbols/flag-rounded';
+import Bell from '~icons/material-symbols/notifications-outline-rounded';
 import Repeat from '~icons/material-symbols/repeat-rounded';
 import TaskIcon from '~icons/material-symbols/task-alt-rounded';
 import { describeRepeat, repeatOn } from '../../../shared/repeat.ts';
 import { listTemplate } from '../../../shared/templates.ts';
 import type { Group, HouseholdMember, Proposal } from '../lib/api.ts';
-import { dayLabel, firstName } from '../lib/dates.ts';
+import { dayLabel, firstName, reminderLabel, reminderPhrase } from '../lib/dates.ts';
 import { expressive } from '../lib/motion.ts';
 import { ChipRow, DateChip, EstimateChips, estimateLabel, GroupChips, MustDoChip, PersonChips, TimeChips, WhenChips } from './fields.tsx';
 import { Checkbox, Chip } from './ui.tsx';
@@ -63,6 +64,12 @@ function summary(p: Proposal, ctx: Ctx): { icon: ReactNode; title: string; meta:
             {describeRepeat(t.repeat, repeatOn(t.repeat) === 'due' ? t.dueDate : t.plannedDate)}
           </Meta>
         ),
+        t.remindAt && (
+          <Meta key="n">
+            <Bell className="size-3.5" aria-hidden />
+            {reminderLabel(t.remindAt)}
+          </Meta>
+        ),
         t.mustDo && (
           <Meta key="m" warm>
             <Flag className="size-3.5" aria-hidden />
@@ -96,6 +103,7 @@ function summary(p: Proposal, ctx: Ctx): { icon: ReactNode; title: string; meta:
     if (c.notes) parts.push('add a note');
     if (c.addSubtasks?.length) parts.push(`add ${c.addSubtasks.length} steps`);
     if (c.repeat) parts.push(describeRepeat(c.repeat).toLowerCase());
+    if (c.remindAt !== undefined) parts.push(c.remindAt ? `remind you ${reminderPhrase(c.remindAt)}` : 'no reminder');
     return { icon: <Edit className="size-5" />, title: p.title, meta: [<Meta key="c">Change: {parts.join(', ')}</Meta>] };
   }
   if (p.kind === 'complete') return { icon: <CheckCircle className="size-5" />, title: p.title, meta: [<Meta key="d">Mark done</Meta>] };
@@ -127,6 +135,13 @@ function TaskEditor({ draft, ctx, onChange }: { draft: Draft & { proposal: { kin
       <ChipRow tight label="How long">
         <EstimateChips value={t.estimateMinutes} onChange={(estimateMinutes) => set({ estimateMinutes, estimateSource: 'user' })} />
       </ChipRow>
+      {t.remindAt && (
+        <ChipRow tight label="Reminder">
+          <Chip selected onClick={() => set({ remindAt: null })} icon={<Close className="size-4" />}>
+            Remind me {reminderPhrase(t.remindAt)}
+          </Chip>
+        </ChipRow>
+      )}
       {t.repeat && (
         <ChipRow tight label="Repeats">
           <Chip selected onClick={() => set({ repeat: null })} icon={<Close className="size-4" />}>

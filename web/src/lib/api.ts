@@ -104,7 +104,43 @@ export interface Task {
   links: { id: string; url: string; title: string | null }[];
   repeat: Repeat | null;
   pausedUntil: string | null;
+  /** Your own reminder about it, if you set one. */
+  reminder: Reminder | null;
+  files: TaskFile[];
   sortOrder?: number;
+}
+
+export interface Reminder {
+  id: string;
+  at: string;
+  /** When it went out; null while it's still to come. */
+  sentAt: string | null;
+}
+
+export interface TaskFile {
+  id: string;
+  name: string;
+  mime: string;
+  size: number;
+  /** A smaller copy of a photo exists. */
+  preview: boolean;
+  addedById: string | null;
+  createdAt: string;
+}
+
+export interface PushDevice {
+  id: string;
+  endpoint: string;
+  device: string | null;
+  createdAt: string;
+  lastSentAt: string | null;
+}
+
+export interface UpcomingReminder {
+  id: string;
+  taskId: string;
+  title: string;
+  at: string;
 }
 
 export interface DayLoad {

@@ -119,6 +119,28 @@ await check('the task page edits steps, links and notes', async (p) => {
   if ((await step.getAttribute('aria-checked')) !== 'true') throw new Error('step did not stay checked');
 });
 
+await check('a reminder set on the task page shows there and is coming up', async (p) => {
+  await p.getByRole('button', { name: 'In an hour' }).click();
+  await until(p, /^I'll remind you /);
+  await p.getByRole('button', { name: /^Today \d|^Tomorrow \d/ }).waitFor({ timeout: 5000 });
+  for (let i = 0; i < 20; i++) {
+    // From the page, like the app asks, rather than a pooled connection the server may have closed.
+    const { reminders } = (await p.evaluate((url) => fetch(url).then((r) => r.json()), `${base}/api/reminders`)) as { reminders: { title: string }[] };
+    if (reminders.some((r) => r.title === TASK)) return;
+    await p.waitForTimeout(250);
+  }
+  throw new Error('the reminder never reached the server');
+});
+
+await check('a photo added to the task shows as a tile and can be removed', async (p) => {
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+  await p.locator('input[type=file]').setInputFiles({ name: `smoke-${run}.png`, mimeType: 'image/png', buffer: png });
+  await p.getByRole('button', { name: `Open smoke-${run}.png` }).waitFor({ timeout: 10000 });
+  await p.getByRole('button', { name: `Remove smoke-${run}.png` }).click();
+  await until(p, `Removed smoke-${run}.png`);
+  await p.getByRole('button', { name: `Open smoke-${run}.png` }).waitFor({ state: 'detached', timeout: 5000 });
+});
+
 await check('moving to tomorrow from the task page', async (p) => {
   await p.getByRole('button', { name: 'Today' }).first().click();
   await p.getByRole('dialog', { name: 'Move task' }).getByText('Tomorrow').click();

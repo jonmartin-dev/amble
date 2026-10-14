@@ -6,6 +6,7 @@ import CalendarMonth from '~icons/material-symbols/calendar-month-outline-rounde
 import Group from '~icons/material-symbols/group-outline-rounded';
 import History from '~icons/material-symbols/history-rounded';
 import Logout from '~icons/material-symbols/logout-rounded';
+import Bell from '~icons/material-symbols/notifications-outline-rounded';
 import Palette from '~icons/material-symbols/palette-outline-rounded';
 import Policy from '~icons/material-symbols/policy-outline-rounded';
 import Timer from '~icons/material-symbols/timer-outline-rounded';
@@ -14,6 +15,8 @@ import { ListGroup, SectionTitle, SubpageHeader, Switch, minutesLabel } from '..
 import { type Member } from '../lib/api.ts';
 import { useSaveMe } from '../lib/mutations.ts';
 import { signOut } from '../lib/persist.ts';
+import { usePushState } from '../lib/push.ts';
+import { notificationSummary } from './Notifications.tsx';
 import { useAi, useCalendars, useGroups, useMe, useMembers } from '../lib/queries.ts';
 
 export function capacitySummary(me: Member | null) {
@@ -34,6 +37,7 @@ export function Settings() {
   const showStreaks = me?.showStreaks ?? true;
   const { data: ai } = useAi();
   const { data: calendars } = useCalendars();
+  const push = usePushState();
   const smartOn = me?.smartAdd ?? true;
   const counted = calendars?.accounts.flatMap((a) => a.calendars.filter((c) => c.counts)).length ?? 0;
   const calendarSummary = !calendars
@@ -56,6 +60,7 @@ export function Settings() {
           { icon: <Palette className="size-6" />, title: 'Appearance', subtitle: 'Color, style, light and dark', to: '/appearance' },
           { icon: <Timer className="size-6" />, title: 'Daily capacity', subtitle: capacitySummary(me), to: '/settings/capacity' },
           { icon: <CalendarMonth className="size-6" />, title: 'Calendars', subtitle: calendarSummary, to: '/settings/calendars' },
+          { icon: <Bell className="size-6" />, title: 'Notifications', subtitle: notificationSummary(push.state), to: '/settings/notifications' },
           ai?.available
             ? {
                 icon: <Sparkle className="size-6" />,
