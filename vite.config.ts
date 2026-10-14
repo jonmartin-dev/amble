@@ -16,6 +16,8 @@ export default defineConfig({
     emptyOutDir: true,
   },
   test: {
+    // Vite's root is web/, but server tests live beside the server code.
+    dir: import.meta.dirname,
     // material-color-utilities has extensionless ESM imports that only a bundler resolves.
     server: { deps: { inline: ['@material/material-color-utilities'] } },
   },

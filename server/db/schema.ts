@@ -119,6 +119,27 @@ export const activity = sqliteTable(
   (t) => [index('activity_created_idx').on(t.createdAt)],
 );
 
+// Items on a `list` group (groceries, packing). Checked items stay as history for re-adding.
+export const listItems = sqliteTable(
+  'list_items',
+  {
+    id: id(),
+    groupId: text('group_id')
+      .notNull()
+      .references(() => groups.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    quantity: text('quantity'),
+    note: text('note'),
+    addedById: text('added_by_id').references(() => members.id, { onDelete: 'set null' }),
+    checkedAt: integer('checked_at', { mode: 'timestamp_ms' }),
+    checkedById: text('checked_by_id').references(() => members.id, { onDelete: 'set null' }),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (t) => [index('list_items_group_idx').on(t.groupId, t.checkedAt)],
+);
+
 export type Member = typeof members.$inferSelect;
 export type Group = typeof groups.$inferSelect;
 export type Task = typeof tasks.$inferSelect;
+export type ListItem = typeof listItems.$inferSelect;

@@ -7,3 +7,4 @@ design
 .git
 .claude
 *.log
+**/*.test.ts
