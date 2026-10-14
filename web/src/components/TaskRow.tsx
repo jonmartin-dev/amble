@@ -27,13 +27,17 @@ interface Props {
   showGroup?: boolean;
   /** Off where a section header already says the time of day. */
   showTime?: boolean;
+  /** The row's own color, so it still stands out on a surface like a sheet. */
+  surface?: string;
 }
 
 /** One task. Swipe right to complete, swipe left or long-press to move it, tap for details. */
-export function TaskRow({ task, today, meId, onMove, showDay = false, showGroup = true, showTime = true }: Props) {
+export function TaskRow({ task, today, meId, onMove, showDay = false, showGroup = true, showTime = true, surface = 'bg-surface-low' }: Props) {
   const navigate = useNavigate();
   const actions = useTaskActions();
-  const [checked, setChecked] = useState(task.status === 'done');
+  // A tap shows right away; once the server's copy of the task changes (done, or undone), it wins.
+  const [tapped, setTapped] = useState<{ done: boolean; version: string } | null>(null);
+  const checked = tapped && tapped.version === task.updatedAt ? tapped.done : task.status === 'done';
   const x = useMotionValue(0);
   const doneOpacity = useTransform(x, [0, SWIPE], [0, 1]);
   const moveOpacity = useTransform(x, [-SWIPE, 0], [1, 0]);
@@ -42,7 +46,7 @@ export function TaskRow({ task, today, meId, onMove, showDay = false, showGroup 
 
   const toggle = () => {
     const next = !checked;
-    setChecked(next);
+    setTapped({ done: next, version: task.updatedAt });
     // Let the check animation play before the row moves to its new section.
     setTimeout(() => actions.complete(task, next), 320);
   };
@@ -97,7 +101,7 @@ export function TaskRow({ task, today, meId, onMove, showDay = false, showGroup 
           void navigate({ to: '/task/$taskId', params: { taskId: task.id } });
         }}
         onContextMenu={(e) => e.preventDefault()}
-        className="relative flex cursor-pointer items-start gap-3 bg-surface-low px-4 py-3.5 select-none"
+        className={`relative flex cursor-pointer items-start gap-3 px-4 py-3.5 select-none ${surface}`}
       >
         <div className="pt-0.5">
           <Checkbox checked={checked} onChange={toggle} label={checked ? `Mark ${task.title} not done` : `Complete ${task.title}`} />

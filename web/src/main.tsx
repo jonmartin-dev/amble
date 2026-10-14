@@ -20,6 +20,7 @@ import { useSession } from './lib/queries.ts';
 import { SnackbarProvider } from './lib/snackbar.tsx';
 import { applyTheme, loadLocalTheme } from './lib/theme.ts';
 import { useSyncMemberTheme } from './lib/useTheme.ts';
+import { Activity } from './pages/Activity.tsx';
 import { Appearance } from './pages/Appearance.tsx';
 import { Backlog } from './pages/Backlog.tsx';
 import { Household } from './pages/Household.tsx';
@@ -27,8 +28,11 @@ import { ListPage } from './pages/ListPage.tsx';
 import { Privacy } from './pages/Privacy.tsx';
 import { TaskDetail } from './pages/TaskDetail.tsx';
 import { Calendar } from './pages/Calendar.tsx';
+import { Capacity } from './pages/Capacity.tsx';
 import { Connect } from './pages/Connect.tsx';
 import { ConnectionsPage } from './pages/Connections.tsx';
+import { GroupsSettings } from './pages/GroupsSettings.tsx';
+import { Settings } from './pages/Settings.tsx';
 import { SignIn } from './pages/SignIn.tsx';
 import { Stats } from './pages/Stats.tsx';
 import { Today } from './pages/Today.tsx';
@@ -65,6 +69,10 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/appearance', component: Appearance }),
   createRoute({ getParentRoute: () => rootRoute, path: '/connections', component: ConnectionsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/household', component: Household }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/settings', component: Settings }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/settings/groups', component: GroupsSettings }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/settings/capacity', component: Capacity }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/activity', component: Activity }),
   createRoute({
     getParentRoute: () => rootRoute,
     path: '/task/$taskId',

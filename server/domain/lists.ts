@@ -80,7 +80,7 @@ export function addListItems(db: Db, actor: Actor, group: Group, items: NewListI
           .returning()
           .get();
       }
-      logActivity(db, actor, 'list.item_added', null, { list: group.name, item: name, outcome });
+      logActivity(db, actor, 'list.item_added', null, { groupId: group.id, list: group.name, item: name, outcome });
       return { item: row, outcome };
     }),
   );
@@ -115,6 +115,7 @@ export function checkListItems(db: Db, actor: Actor, group: Group, refs: string[
       )
       .run();
     logActivity(db, actor, checked ? 'list.items_checked' : 'list.items_unchecked', null, {
+      groupId: group.id,
       list: group.name,
       items: items.map((i) => i.name),
     });

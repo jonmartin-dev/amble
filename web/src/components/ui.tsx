@@ -1,8 +1,156 @@
+import { Link, useRouter } from '@tanstack/react-router';
 import { AnimatePresence, motion, useDragControls, type PanInfo } from 'motion/react';
 import { useEffect, type ReactNode } from 'react';
+import ArrowBack from '~icons/material-symbols/arrow-back-rounded';
 import Check from '~icons/material-symbols/check-rounded';
+import ChevronRight from '~icons/material-symbols/chevron-right-rounded';
 import type { DayLoad } from '../lib/api.ts';
 import { expressive } from '../lib/motion.ts';
+
+/** Header for a page reached from somewhere else: back arrow and title. */
+export function SubpageHeader({ title, back = '/settings', action }: { title: ReactNode; back?: string; action?: ReactNode }) {
+  return (
+    <header className="mb-2 flex items-center gap-2">
+      <Link to={back} aria-label="Back" className="-ml-2 grid size-12 place-items-center rounded-full hover:bg-surface-high">
+        <ArrowBack className="size-6" aria-hidden />
+      </Link>
+      <h1 className="display flex-1 text-[1.75rem] font-medium">{title}</h1>
+      {action}
+    </header>
+  );
+}
+
+/** Back to wherever the person came from, or a fallback when they landed here directly. */
+export function useBack(fallback = '/') {
+  const router = useRouter();
+  return () => (window.history.length > 1 ? router.history.back() : void router.navigate({ to: fallback }));
+}
+
+/** Corners for one item in an M3 Expressive grouped list: round at the ends, tight between. */
+export function segment(i: number, n: number) {
+  if (n === 1) return 'rounded-3xl';
+  if (i === 0) return 'rounded-t-3xl rounded-b-md';
+  if (i === n - 1) return 'rounded-t-md rounded-b-3xl';
+  return 'rounded-md';
+}
+
+export interface RowProps {
+  icon?: ReactNode;
+  title: ReactNode;
+  subtitle?: ReactNode;
+  trailing?: ReactNode;
+  to?: string;
+  onClick?: () => void;
+}
+
+/** A grouped list of rows that link somewhere, open something, or hold a control. */
+export function ListGroup({ rows, label }: { rows: RowProps[]; label?: string }) {
+  return (
+    <ul aria-label={label} className="flex flex-col gap-0.5">
+      {rows.map((r, i) => {
+        const inner = (
+          <>
+            {r.icon && <span className="grid size-10 shrink-0 place-items-center text-on-surface-variant">{r.icon}</span>}
+            <span className="min-w-0 flex-1">
+              <span className="block">{r.title}</span>
+              {r.subtitle && <span className="block text-sm text-on-surface-variant">{r.subtitle}</span>}
+            </span>
+            {r.trailing ?? (r.to ? <ChevronRight className="size-6 shrink-0 text-on-surface-variant" aria-hidden /> : null)}
+          </>
+        );
+        const cls = `flex w-full items-center gap-3 bg-surface-low px-3 py-3 text-left ${segment(i, rows.length)}`;
+        return (
+          <li key={i}>
+            {r.to ? (
+              <Link to={r.to} className={`${cls} transition-colors hover:bg-surface-container`}>
+                {inner}
+              </Link>
+            ) : r.onClick ? (
+              <button type="button" onClick={r.onClick} className={`${cls} transition-colors hover:bg-surface-container`}>
+                {inner}
+              </button>
+            ) : (
+              <div className={cls}>{inner}</div>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/** M3 switch: the handle grows and shows a check when on. */
+export function Switch({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={() => onChange(!checked)}
+      className={`relative h-8 w-13 shrink-0 rounded-full border-2 transition-colors ${
+        checked ? 'border-primary bg-primary' : 'border-outline bg-surface-highest'
+      }`}
+    >
+      <motion.span
+        className={`absolute top-1/2 grid place-items-center rounded-full ${checked ? 'bg-on-primary text-primary' : 'bg-outline'}`}
+        initial={false}
+        animate={{ left: checked ? 22 : 6, width: checked ? 24 : 16, height: checked ? 24 : 16, y: '-50%' }}
+        transition={expressive.fastSpatial}
+      >
+        {checked && <Check className="size-4" aria-hidden />}
+      </motion.span>
+    </button>
+  );
+}
+
+/** M3 Expressive connected button group: the selected segment morphs to a full pill. */
+export function ButtonGroup<T extends string | number>({
+  value,
+  options,
+  onChange,
+  label,
+  size = 'md',
+}: {
+  value: T;
+  options: { value: T; label: string; icon?: ReactNode }[];
+  onChange: (v: T) => void;
+  label: string;
+  size?: 'sm' | 'md';
+}) {
+  return (
+    <div role="radiogroup" aria-label={label} className="flex gap-0.5">
+      {options.map((o, i) => {
+        const on = o.value === value;
+        const first = i === 0;
+        const last = i === options.length - 1;
+        return (
+          <motion.button
+            key={String(o.value)}
+            type="button"
+            role="radio"
+            aria-checked={on}
+            onClick={() => onChange(o.value)}
+            animate={{
+              borderTopLeftRadius: on || first ? 999 : 8,
+              borderBottomLeftRadius: on || first ? 999 : 8,
+              borderTopRightRadius: on || last ? 999 : 8,
+              borderBottomRightRadius: on || last ? 999 : 8,
+            }}
+            transition={expressive.fastSpatial}
+            whileTap={{ scale: 0.96 }}
+            className={`flex flex-1 items-center justify-center gap-2 text-sm font-medium transition-colors ${size === 'sm' ? 'h-10' : 'h-12'} ${
+              on ? 'bg-primary text-on-primary' : 'bg-surface-high text-on-surface'
+            }`}
+          >
+            {on ? <Check className="size-5" aria-hidden /> : o.icon}
+            {o.label}
+          </motion.button>
+        );
+      })}
+    </div>
+  );
+}
 
 /** M3 bottom sheet with a scrim. Drag it down, tap outside, or press Escape to close. */
 export function Sheet({ open, onClose, label, children }: { open: boolean; onClose: () => void; label: string; children: ReactNode }) {
@@ -138,6 +286,12 @@ export function loadWord(load: DayLoad) {
 }
 
 /** How full a day is. Heavy days turn amber. */
+/** How much of a day's capacity is planned, from 0 to 1 (a day off with anything on it is full). */
+export function loadRatio(load: DayLoad) {
+  if (load.capacityMinutes === 0) return load.plannedMinutes > 0 ? 1 : 0;
+  return Math.min(load.plannedMinutes / load.capacityMinutes, 1);
+}
+
 export function LoadBar({
   load,
   className = '',
@@ -149,7 +303,7 @@ export function LoadBar({
   track?: string;
   fill?: string;
 }) {
-  const pct = Math.min(load.plannedMinutes / load.capacityMinutes, 1) * 100;
+  const pct = loadRatio(load) * 100;
   const heavy = load.level === 'full' || load.level === 'over';
   return (
     <div className={`h-3 overflow-hidden rounded-full ${track} ${className}`}>

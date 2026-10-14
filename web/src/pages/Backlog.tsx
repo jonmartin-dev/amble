@@ -7,7 +7,7 @@ import ExpandMore from '~icons/material-symbols/expand-more-rounded';
 import Search from '~icons/material-symbols/search-rounded';
 import { GroupIcon, tone } from '../components/icons.tsx';
 import { MoveSheet } from '../components/MoveSheet.tsx';
-import { NewGroupSheet } from '../components/NewGroupSheet.tsx';
+import { GroupSheet } from '../components/GroupSheet.tsx';
 import { PageHeader } from '../components/PageHeader.tsx';
 import { TaskRow } from '../components/TaskRow.tsx';
 import { Chip, SectionTitle } from '../components/ui.tsx';
@@ -161,7 +161,7 @@ export function Backlog() {
       </button>
 
       <MoveSheet task={moving} today={today} onClose={() => setMoving(null)} />
-      <NewGroupSheet open={creating} onClose={() => setCreating(false)} />
+      <GroupSheet open={creating} onClose={() => setCreating(false)} />
     </>
   );
 }

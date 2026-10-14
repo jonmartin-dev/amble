@@ -21,6 +21,9 @@ export const members = sqliteTable('members', {
   dayCutoffHour: integer('day_cutoff_hour').notNull().default(4),
   // Appearance preferences (mode, seed color, scheme style, contrast); follows the member across devices.
   theme: text('theme', { mode: 'json' }).$type<Record<string, unknown>>(),
+  // Minutes of task time per ISO weekday ("1" is Monday); missing days use the default.
+  capacity: text('capacity', { mode: 'json' }).$type<Partial<Record<string, number>>>(),
+  showStreaks: integer('show_streaks', { mode: 'boolean' }).notNull().default(true),
   createdAt: createdAt(),
   lastLoginAt: integer('last_login_at', { mode: 'timestamp_ms' }),
 });

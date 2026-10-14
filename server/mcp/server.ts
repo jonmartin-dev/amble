@@ -443,7 +443,7 @@ export function createMcpServer({ db, member }: { db: Db; member: Member }) {
     {
       title: 'Day load',
       description:
-        'How full each day is: planned task minutes against that day\'s capacity (about 3 hours on weekdays, 4 on weekends). Tasks without an estimate count as 30 minutes. Calendar events are not counted yet.',
+        'How full each day is: planned task minutes against that day\'s capacity, which each person sets per weekday in Settings (about 3 hours on weekdays and 4 on weekends until they do). Tasks without an estimate count as 30 minutes. Calendar events are not counted yet.',
       inputSchema: z.object({
         start: dateArg.optional().describe('Default today'),
         end: dateArg.optional().describe('Default 6 days after start'),

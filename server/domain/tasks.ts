@@ -304,7 +304,8 @@ export function updateTask(db: Db, actor: Actor, ref: string, patch: TaskPatch):
       });
       db.delete(taskLinks).where(inArray(taskLinks.id, ids)).run();
     }
-    logActivity(db, actor, 'task.updated', task.id, { fields: Object.keys(patch) });
+    const changed = Object.entries(patch).filter(([, v]) => v !== undefined).map(([k]) => k);
+    logActivity(db, actor, 'task.updated', task.id, { fields: changed });
   });
   return getTask(db, actor.member, task.id);
 }

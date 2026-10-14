@@ -1,6 +1,6 @@
-import { and, asc, eq, isNull, or } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import type { Db } from '../db/index.ts';
-import { activity, groups, members, type Group, type Member } from '../db/schema.ts';
+import { activity, groups, members, tasks, type Group, type Member } from '../db/schema.ts';
 
 /** A mistake in what was asked for, worded so the person (or Claude) can fix it and retry. */
 export class DomainError extends Error {}
@@ -101,8 +101,99 @@ export function createGroup(db: Db, actor: Actor, input: NewGroup): Group {
     })
     .returning()
     .get();
-  logActivity(db, actor, 'group.created', null, { name, kind: group.kind });
+  logActivity(db, actor, 'group.created', null, { groupId: group.id, name, kind: group.kind });
   return group;
+}
+
+export interface GroupPatch {
+  name?: string;
+  icon?: (typeof GROUP_ICONS)[number];
+  color?: (typeof GROUP_COLORS)[number];
+}
+
+export function updateGroup(db: Db, actor: Actor, ref: string, patch: GroupPatch): Group {
+  const group = resolveGroup(db, actor.member, ref);
+  const fields: Partial<Group> = {};
+  if (patch.name !== undefined) {
+    const name = patch.name.trim();
+    if (!name) throw new DomainError('A group needs a name.');
+    const clash = visibleGroups(db, actor.member.id).find((g) => g.id !== group.id && norm(g.name) === norm(name));
+    if (clash) throw new DomainError(`There's already a ${clash.kind === 'list' ? 'list' : 'group'} called ${clash.name}.`);
+    fields.name = name;
+  }
+  if (patch.icon) fields.icon = patch.icon;
+  if (patch.color) fields.color = patch.color;
+  const updated = db.update(groups).set(fields).where(eq(groups.id, group.id)).returning().get();
+  if (fields.name && fields.name !== group.name) {
+    logActivity(db, actor, 'group.renamed', null, { groupId: group.id, from: group.name, name: fields.name, kind: group.kind });
+  }
+  return updated;
+}
+
+/** Puts the given groups first, in this order. Groups not named keep their order after them. */
+export function reorderGroups(db: Db, member: Member, ids: string[]) {
+  const visible = visibleGroups(db, member.id);
+  const known = new Set(visible.map((g) => g.id));
+  const unknown = ids.find((id) => !known.has(id));
+  if (unknown) throw new DomainError(`No group with id ${unknown}.`);
+  const order = [...ids, ...visible.map((g) => g.id).filter((id) => !ids.includes(id))];
+  db.transaction(() => {
+    order.forEach((id, i) => db.update(groups).set({ sortOrder: i }).where(eq(groups.id, id)).run());
+  });
+  return visibleGroups(db, member.id);
+}
+
+/** Archived groups this member could see, newest first, for restoring. */
+export function archivedGroups(db: Db, memberId: string) {
+  return db
+    .select()
+    .from(groups)
+    .where(and(isNotNull(groups.archivedAt), or(isNull(groups.privateTo), eq(groups.privateTo, memberId))))
+    .orderBy(desc(groups.archivedAt))
+    .all();
+}
+
+/**
+ * Hides a group from every view. Its open tasks move to no group so they stay in the backlog;
+ * restoring puts back the ones nobody has regrouped since. A list keeps its items.
+ */
+export function archiveGroup(db: Db, actor: Actor, ref: string, restore = false): Group {
+  if (!restore) {
+    const group = resolveGroup(db, actor.member, ref);
+    return db.transaction(() => {
+      const moved = db
+        .update(tasks)
+        .set({ groupId: null, updatedAt: new Date() })
+        .where(and(eq(tasks.groupId, group.id), eq(tasks.status, 'open')))
+        .returning({ id: tasks.id })
+        .all()
+        .map((t) => t.id);
+      const archived = db.update(groups).set({ archivedAt: new Date() }).where(eq(groups.id, group.id)).returning().get();
+      logActivity(db, actor, 'group.archived', null, { groupId: group.id, name: group.name, kind: group.kind, movedTasks: moved });
+      return archived;
+    });
+  }
+  const group = archivedGroups(db, actor.member.id).find((g) => g.id === ref);
+  if (!group) throw new DomainError(`No archived group with id ${ref}.`);
+  return db.transaction(() => {
+    const last = db
+      .select({ detail: activity.detail })
+      .from(activity)
+      .where(and(eq(activity.action, 'group.archived'), sql`json_extract(${activity.detail}, '$.groupId') = ${group.id}`))
+      .orderBy(desc(activity.createdAt))
+      .limit(1)
+      .get();
+    const moved = ((last?.detail as { movedTasks?: string[] } | null)?.movedTasks ?? []).filter(Boolean);
+    if (moved.length) {
+      db.update(tasks)
+        .set({ groupId: group.id, updatedAt: new Date() })
+        .where(and(inArray(tasks.id, moved), isNull(tasks.groupId)))
+        .run();
+    }
+    const restored = db.update(groups).set({ archivedAt: null }).where(eq(groups.id, group.id)).returning().get();
+    logActivity(db, actor, 'group.restored', null, { groupId: group.id, name: group.name, kind: group.kind });
+    return restored;
+  });
 }
 
 export function logActivity(

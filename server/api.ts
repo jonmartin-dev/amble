@@ -8,19 +8,25 @@ import type { Config } from './config.ts';
 import type { Db } from './db/index.ts';
 import { listItems, members, tasks, type Member } from './db/schema.ts';
 import type { Env } from './env.ts';
+import { listActivity } from './domain/activity.ts';
 import {
+  archiveGroup,
+  archivedGroups,
   createGroup,
   DomainError,
   GROUP_COLORS,
   GROUP_ICONS,
   listMembers,
+  reorderGroups,
   resolveGroup,
   resolveMember,
+  updateGroup,
   visibleGroups,
   type Actor,
 } from './domain/household.ts';
 import { addListItems, checkListItems, getListItems } from './domain/lists.ts';
 import { getLoad } from './domain/load.ts';
+import { getStats } from './domain/stats.ts';
 import {
   archiveTasks,
   assignTask,
@@ -82,6 +88,9 @@ export function registerApi(app: Hono<Env>, { db, config }: { db: Db; config: Co
   // Group and member ids come from the app, but still have to be ones this member can use.
   const groupId = (m: Member, id: string | null | undefined) => (id == null ? id : resolveGroup(db, m, id, 'tasks').id);
   const memberId = (m: Member, id: string | null | undefined) => (id == null ? id : resolveMember(db, m, id)?.id ?? null);
+  // Whose day or calendar: "me" (the default), "everyone", or a member id.
+  const whose = (viewer: Member, who: string | undefined): Member | 'everyone' =>
+    !who || who === 'me' ? viewer : who === 'everyone' ? 'everyone' : (resolveMember(db, viewer, who) ?? viewer);
 
   app.onError((err, c) => {
     if (err instanceof DomainError) return c.json({ error: err.message }, 400);
@@ -139,6 +148,7 @@ export function registerApi(app: Hono<Env>, { db, config }: { db: Db; config: Co
   // ---- groups -------------------------------------------------------------------------------
 
   app.get('/api/groups', (c) => {
+    if (c.req.query('archived') === '1') return c.json({ groups: archivedGroups(db, me(c).id).map((g) => ({ ...g, open: 0 })) });
     const openTasks = db
       .select({ groupId: tasks.groupId, n: count() })
       .from(tasks)
@@ -172,12 +182,34 @@ export function registerApi(app: Hono<Env>, { db, config }: { db: Db; config: Co
     return c.json({ group: createGroup(db, actor(c), input) }, 201);
   });
 
+  app.patch('/api/groups/:id', async (c) => {
+    const input = await body(
+      c,
+      z.object({
+        name: z.string().trim().min(1).max(60).optional(),
+        icon: z.enum(GROUP_ICONS).optional(),
+        color: z.enum(GROUP_COLORS).optional(),
+      }),
+    );
+    return c.json({ group: updateGroup(db, actor(c), c.req.param('id'), input) });
+  });
+
+  app.post('/api/groups/order', async (c) => {
+    const { ids } = await body(c, z.object({ ids: z.array(z.string()).max(200) }));
+    reorderGroups(db, me(c), ids);
+    return c.body(null, 204);
+  });
+
+  app.post('/api/groups/:id/archive', async (c) => {
+    const { restore } = await body(c, z.object({ restore: z.boolean().optional() }));
+    return c.json({ group: archiveGroup(db, actor(c), c.req.param('id'), restore) });
+  });
+
   // ---- tasks --------------------------------------------------------------------------------
 
   app.get('/api/today', (c) => {
     const viewer = me(c);
-    const who = c.req.query('who');
-    const person = !who || who === 'me' ? viewer : who === 'everyone' ? 'everyone' : resolveMember(db, viewer, who) ?? viewer;
+    const person = whose(viewer, c.req.query('who'));
     const day = getToday(db, viewer, person);
     const [load] = getLoad(db, viewer, person === 'everyone' ? viewer : person, day.today, day.today);
     return c.json({ ...day, load });
@@ -187,19 +219,32 @@ export function registerApi(app: Hono<Env>, { db, config }: { db: Db; config: Co
     const viewer = me(c);
     const start = date.safeParse(c.req.query('start')).data ?? planningDate(viewer);
     const end = date.safeParse(c.req.query('end')).data ?? addDays(start, 6);
-    return c.json({ days: getLoad(db, viewer, viewer, start, end) });
+    // Everyone's calendar shows the viewer's own load, like Today does.
+    const person = whose(viewer, c.req.query('who'));
+    return c.json({ days: getLoad(db, viewer, person === 'everyone' ? viewer : person, start, end) });
   });
 
   app.get('/api/tasks', (c) => {
     const q = c.req.query();
     const viewer = me(c);
     const status = q.status === 'done' || q.status === 'all' ? q.status : 'open';
+    // `who` matches Today (their tasks plus shared ones); `assignee` is exact.
+    const person = q.who ? whose(viewer, q.who) : undefined;
     const tasks = listTasks(db, viewer, {
       status,
       groupId: q.group || undefined,
       query: q.q || undefined,
       unplanned: q.unplanned === '1',
-      assignee: q.assignee === 'unassigned' ? 'unassigned' : q.assignee ? { memberId: q.assignee, includeShared: false } : undefined,
+      plannedFrom: date.safeParse(q.from).data,
+      plannedTo: date.safeParse(q.to).data,
+      assignee:
+        person && person !== 'everyone'
+          ? { memberId: person.id, includeShared: true }
+          : q.assignee === 'unassigned'
+            ? 'unassigned'
+            : q.assignee
+              ? { memberId: q.assignee, includeShared: false }
+              : undefined,
       order: status === 'done' ? 'recent' : 'backlog',
       limit: Math.min(Number(q.limit) || 500, 1000),
     });
@@ -216,6 +261,24 @@ export function registerApi(app: Hono<Env>, { db, config }: { db: Db; config: Co
   });
 
   app.get('/api/tasks/:id', (c) => c.json({ task: getTask(db, me(c), c.req.param('id')) }));
+
+  app.get('/api/tasks/:id/activity', (c) => {
+    const task = getTask(db, me(c), c.req.param('id'));
+    return c.json(listActivity(db, me(c), { taskId: task.id, limit: 100 }));
+  });
+
+  // ---- activity and stats -------------------------------------------------------------------
+
+  app.get('/api/activity', (c) => {
+    const limit = Number(c.req.query('limit')) || undefined;
+    return c.json(listActivity(db, me(c), { before: c.req.query('before') || undefined, limit }));
+  });
+
+  app.get('/api/stats', (c) => {
+    const weeks = Number(c.req.query('weeks')) || undefined;
+    const weekStart = Number(c.req.query('weekStart')) || undefined;
+    return c.json(getStats(db, me(c), { weeks, weekStart }));
+  });
 
   app.patch('/api/tasks/:id', async (c) => {
     const input = await body(c, taskPatch);

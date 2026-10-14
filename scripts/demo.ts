@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { config } from '../server/config.ts';
 import { openDatabase } from '../server/db/index.ts';
-import { members } from '../server/db/schema.ts';
+import { activity, members, tasks } from '../server/db/schema.ts';
 import { seedStarterGroups } from '../server/db/seed.ts';
 import { resolveGroup, type Actor } from '../server/domain/household.ts';
 import { addListItems, checkListItems } from '../server/domain/lists.ts';
@@ -65,6 +65,57 @@ const mine: NewTask[] = [
 ];
 const created = createTasks(db, asMe, mine);
 completeTasks(db, asMe, [created.at(-1)!.id]);
+
+// Ten weeks of finished chores, so Stats and Activity have a history to show.
+const past = [
+  ['Wipe down the kitchen', 'Home'],
+  ['Vacuum the stairs', 'Home'],
+  ['Call the insurance company', 'Calls'],
+  ['Buy a birthday card', 'Errands'],
+  ['Fold the laundry', 'Home'],
+  ['Pay the water bill', 'Errands'],
+  ['Prune the roses', 'Home'],
+  ['Clean out the fridge', 'Home'],
+  ['Return the package', 'Errands'],
+  ['Oil the bike chain', 'Hobby'],
+  ['Book a haircut', 'Calls'],
+  ['Sort the mail', 'Home'],
+] as const;
+let n = 0;
+for (let daysAgo = 70; daysAgo >= 1; daysAgo--) {
+  const date = addDays(today, -daysAgo);
+  const dow = Temporal.PlainDate.from(date).dayOfWeek;
+  const count = Math.max(0, ((daysAgo * 7 + dow * 3) % 4) + (dow >= 6 ? 1 : 0) - (daysAgo > 49 ? 1 : 0));
+  for (let i = 0; i < count; i++, n++) {
+    const [title, group] = past[n % past.length]!;
+    const who = partner && n % 3 === 1 ? partner : me;
+    const hour = [8, 10, 13, 18, 20, 21][n % 6]!;
+    const doneAt = new Date(Temporal.PlainDate.from(date).toZonedDateTime({ timeZone: me.timezone, plainTime: { hour } }).epochMilliseconds);
+    const addedAt = new Date(doneAt.getTime() - ((n % 9) + 1) * 86_400_000);
+    const task = db
+      .insert(tasks)
+      .values({
+        title,
+        groupId: g(group),
+        assigneeId: who.id,
+        createdById: me.id,
+        plannedDate: date,
+        status: 'done',
+        completedAt: doneAt,
+        completedById: who.id,
+        createdAt: addedAt,
+        updatedAt: doneAt,
+      })
+      .returning()
+      .get();
+    db.insert(activity)
+      .values([
+        { memberId: me.id, via: 'app', action: 'task.created', taskId: task.id, detail: { title }, createdAt: addedAt },
+        { memberId: who.id, via: n % 5 === 0 ? 'claude' : 'app', action: 'task.completed', taskId: task.id, createdAt: doneAt },
+      ])
+      .run();
+  }
+}
 
 if (partner && asPartner) {
   createTasks(db, asMe, [{ title: 'Order printer ink', groupId: g('Errands'), assigneeId: partner.id }]);

@@ -1,11 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from '@tanstack/react-router';
 import { AnimatePresence, motion } from 'motion/react';
 import { useState } from 'react';
-import ArrowBack from '~icons/material-symbols/arrow-back-rounded';
 import Sparkle from '~icons/material-symbols/auto-awesome-outline-rounded';
 import Check from '~icons/material-symbols/check-rounded';
 import Copy from '~icons/material-symbols/content-copy-outline-rounded';
+import { SubpageHeader } from '../components/ui.tsx';
 import { api } from '../lib/api.ts';
 import { expressive } from '../lib/motion.ts';
 
@@ -43,12 +42,7 @@ export function ConnectionsPage() {
 
   return (
     <>
-      <header className="mb-2 flex items-center gap-2">
-        <Link to="/" aria-label="Back" className="-ml-2 grid size-12 place-items-center rounded-full hover:bg-surface-high">
-          <ArrowBack className="size-6" aria-hidden />
-        </Link>
-        <h1 className="display text-[1.75rem] font-medium">Connect Claude</h1>
-      </header>
+      <SubpageHeader title="Connect Claude" />
 
       <section className="mt-4 rounded-[2rem] bg-secondary-container p-5 text-on-secondary-container">
         <div className="flex items-center gap-3">

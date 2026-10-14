@@ -149,6 +149,71 @@ await check('swiping a task right completes it', async (p) => {
   await until(p, `Done: ${title}`);
 });
 
+await check("the calendar's day sheet pulls a task in from the backlog", async (p) => {
+  const title = `Smoke ${run}: calendar`;
+  // Must-do and due today, so it's first among the backlog suggestions.
+  const today = await p.evaluate(() => {
+    const d = new Date();
+    if (d.getHours() < 4) d.setDate(d.getDate() - 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
+  await p.request.post(`${base}/api/tasks`, { data: { title, mustDo: true, dueDate: today } });
+  await p.goto(`${base}/calendar`);
+  await p.getByRole('radio', { name: 'Week' }).click();
+  await p.getByRole('button', { name: /^Today ·/ }).click();
+  const sheet = p.getByRole('dialog', { name: 'Day plan' });
+  await sheet.getByRole('button', { name: `Plan ${title} for this day` }).click();
+  await until(p, 'Moved to today');
+  await sheet.getByText(title).first().waitFor({ timeout: 5000 });
+  await p.keyboard.press('Escape');
+});
+
+await check('the month view shows the whole month', async (p) => {
+  await p.getByRole('radio', { name: 'Month' }).click();
+  await p.waitForTimeout(400);
+  const cells = await p.getByRole('main').getByRole('button', { name: /^\w+day, / }).count();
+  if (cells < 28) throw new Error(`only ${cells} days in the month grid`);
+  await p.getByRole('radio', { name: 'Week' }).click();
+});
+
+await check('stats and activity show what happened', async (p) => {
+  await p.goto(`${base}/stats`);
+  await until(p, /\d+ things? done/);
+  await p.goto(`${base}/activity`);
+  await p.getByRole('main').getByText(TASK).first().waitFor({ timeout: 5000 });
+});
+
+await check('settings rename a group, archive it and bring it back', async (p) => {
+  await p.goto(`${base}/settings/groups`);
+  await p.getByRole('button', { name: new RegExp(`^${GROUP}`) }).click();
+  await p.getByLabel('Name', { exact: true }).fill(`${GROUP} beds`);
+  await p.getByRole('button', { name: 'Save' }).click();
+  await until(p, `Saved ${GROUP} beds`);
+  await p.getByRole('button', { name: new RegExp(`^${GROUP} beds`) }).click();
+  await p.getByRole('button', { name: 'Archive group' }).click();
+  await until(p, `Archived ${GROUP} beds`);
+  await p.getByRole('button', { name: 'Undo' }).last().click();
+  await p.waitForTimeout(600);
+  const { groups } = (await (await p.request.get(`${base}/api/groups`)).json()) as { groups: { name: string }[] };
+  if (!groups.some((g) => g.name === `${GROUP} beds`)) throw new Error('group was not restored');
+});
+
+await check("capacity changes how full today is", async (p) => {
+  await p.goto(`${base}/settings/capacity`);
+  const day = await p.evaluate(() => {
+    const d = new Date();
+    if (d.getHours() < 4) d.setDate(d.getDate() - 1);
+    return d.toLocaleDateString(undefined, { weekday: 'long' });
+  });
+  const before = ((await (await p.request.get(`${base}/api/today`)).json()) as { load: { capacityMinutes: number } }).load.capacityMinutes;
+  await p.getByRole('button', { name: `More time on ${day}` }).click();
+  await p.waitForTimeout(1200);
+  const after = ((await (await p.request.get(`${base}/api/today`)).json()) as { load: { capacityMinutes: number } }).load.capacityMinutes;
+  if (after !== before + 30) throw new Error(`capacity went from ${before} to ${after}`);
+  await p.getByRole('button', { name: `Less time on ${day}` }).click();
+  await p.waitForTimeout(1200);
+});
+
 await browser.close();
 if (errors.length) {
   console.error(`\n${errors.length} console errors:\n${errors.join('\n')}`);

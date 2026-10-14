@@ -39,6 +39,9 @@ export interface Member {
   color: string;
   role: 'admin' | 'member';
   theme: Partial<ThemePrefs> | null;
+  /** Task minutes per ISO weekday ("1" is Monday); missing days use the default. */
+  capacity: Partial<Record<string, number>> | null;
+  showStreaks: boolean;
 }
 
 export interface Session {
@@ -79,6 +82,7 @@ export interface Task {
   completedAt: string | null;
   handedBackNote: string | null;
   createdAt: string;
+  updatedAt: string;
   subtasks: { id: string; title: string; done: boolean }[];
   links: { id: string; url: string; title: string | null }[];
 }
@@ -120,6 +124,44 @@ export interface ListItem {
   quantity: string | null;
   note: string | null;
   checkedAt: string | null;
+}
+
+export interface ActivityEntry {
+  id: string;
+  at: string;
+  memberId: string | null;
+  memberName: string | null;
+  via: 'app' | 'claude' | 'system';
+  action: string;
+  taskId: string | null;
+  taskTitle: string | null;
+  detail: Record<string, unknown> | null;
+  /** Repeated edits to one task fold into one entry. */
+  count: number;
+}
+
+export interface ActivityPage {
+  entries: ActivityEntry[];
+  next: string | null;
+}
+
+export type TimeOfDayBucket = 'morning' | 'afternoon' | 'evening' | 'night';
+
+export interface Stats {
+  today: string;
+  weekStart: number;
+  members: { id: string; name: string; color: string; avatarUrl: string | null }[];
+  weeks: { start: string; total: number; byMember: Record<string, number> }[];
+  weekdays: { day: number; count: number }[];
+  timesOfDay: { key: TimeOfDayBucket; count: number }[];
+  pilingUp: { groupId: string | null; name: string; icon: string; color: string; open: number; oldestDays: number; added: number; done: number }[];
+  records: {
+    streak: { current: number; best: number };
+    bestWeek: { start: string; count: number } | null;
+    oldestDone: { taskId: string; title: string; days: number } | null;
+    totalDone: number;
+    since: string | null;
+  } | null;
 }
 
 export async function signOut() {

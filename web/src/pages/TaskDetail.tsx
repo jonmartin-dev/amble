@@ -13,6 +13,7 @@ import OpenInNew from '~icons/material-symbols/open-in-new-rounded';
 import Person from '~icons/material-symbols/person-outline-rounded';
 import Schedule from '~icons/material-symbols/schedule-outline-rounded';
 import Timer from '~icons/material-symbols/timer-outline-rounded';
+import { ActivityRow } from '../components/ActivityList.tsx';
 import { GroupIcon } from '../components/icons.tsx';
 import { MoveSheet } from '../components/MoveSheet.tsx';
 import { Checkbox, Chip, minutesLabel, SectionTitle } from '../components/ui.tsx';
@@ -20,7 +21,7 @@ import type { Task, TimeOfDay } from '../lib/api.ts';
 import { dayLabel, firstName, todayIso } from '../lib/dates.ts';
 import { expressive } from '../lib/motion.ts';
 import { useTaskActions, type TaskPatch } from '../lib/mutations.ts';
-import { useGroups, useMe, useMembers, useTask } from '../lib/queries.ts';
+import { useGroups, useMe, useMembers, useTask, useTaskActivity } from '../lib/queries.ts';
 
 function Field({ icon, label, children }: { icon: ReactNode; label: string; children: ReactNode }) {
   return (
@@ -315,12 +316,49 @@ function Detail({ task }: { task: Task }) {
         </li>
       </ul>
 
+      <History task={task} />
+
+      <MoveSheet task={moving ? task : null} today={today} onClose={() => setMoving(false)} />
+    </>
+  );
+}
+
+const HISTORY_PREVIEW = 4;
+
+/** Who did what to this task, newest first. */
+function History({ task }: { task: Task }) {
+  const me = useMe();
+  const { data: household } = useMembers();
+  const { data: entries } = useTaskActivity(task.id);
+  const [all, setAll] = useState(false);
+  if (!entries?.length) {
+    return (
       <p className="mt-6 px-1 text-sm text-on-surface-variant">
         Added {task.createdByName ? `by ${firstName(task.createdByName)} ` : ''}
         {new Date(task.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
       </p>
-
-      <MoveSheet task={moving ? task : null} today={today} onClose={() => setMoving(false)} />
+    );
+  }
+  const shown = all ? entries : entries.slice(0, HISTORY_PREVIEW);
+  const ctx = { meId: me?.id ?? '', members: household?.members ?? [], today: todayIso(), inTask: true };
+  return (
+    <>
+      <SectionTitle
+        action={
+          entries.length > HISTORY_PREVIEW && (
+            <button type="button" onClick={() => setAll((v) => !v)} className="rounded-full px-3 py-1 text-sm font-medium text-primary hover:bg-surface-high">
+              {all ? 'Show less' : `Show all ${entries.length}`}
+            </button>
+          )
+        }
+      >
+        History
+      </SectionTitle>
+      <ul className="rounded-[1.75rem] bg-surface-low px-4 py-1">
+        {shown.map((e) => (
+          <ActivityRow key={e.id} entry={e} ctx={ctx} showTime={false} />
+        ))}
+      </ul>
     </>
   );
 }

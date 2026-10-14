@@ -4,10 +4,11 @@ import { addDays, dateRange, daysBetween, isWeekend, planningDate, weekday } fro
 import { DomainError } from './household.ts';
 import { listTasks } from './tasks.ts';
 
-// Until Almanac learns real capacity and estimates (phase 7), these stand in.
+// Until Almanac learns real capacity and estimates (phase 7), these stand in. Each member can set
+// their own capacity per weekday in Settings.
 export const DEFAULT_ESTIMATE_MINUTES = 30;
-const WEEKDAY_CAPACITY = 180;
-const WEEKEND_CAPACITY = 240;
+export const DEFAULT_CAPACITY = { weekday: 180, weekend: 240 };
+export const MAX_CAPACITY_MINUTES = 720;
 const MAX_RANGE_DAYS = 62;
 
 export type LoadLevel = 'light' | 'moderate' | 'full' | 'over';
@@ -24,11 +25,16 @@ export interface DayLoad {
   level: LoadLevel;
 }
 
-export function capacityFor(date: string) {
-  return isWeekend(date) ? WEEKEND_CAPACITY : WEEKDAY_CAPACITY;
+/** Task minutes that fit on a date for this member: their own setting for that weekday, or the default. */
+export function capacityFor(date: string, member?: Pick<Member, 'capacity'>) {
+  const set = member?.capacity?.[String(Temporal.PlainDate.from(date).dayOfWeek)];
+  if (set != null) return set;
+  return isWeekend(date) ? DEFAULT_CAPACITY.weekend : DEFAULT_CAPACITY.weekday;
 }
 
 function level(minutes: number, capacity: number): LoadLevel {
+  // A day off has no room, so anything on it is too much.
+  if (capacity === 0) return minutes > 0 ? 'over' : 'light';
   const ratio = minutes / capacity;
   if (ratio < 0.5) return 'light';
   if (ratio < 0.85) return 'moderate';
@@ -48,7 +54,7 @@ export function getLoad(db: Db, me: Member, forMember: Member, start: string, en
   return dateRange(start, end).map((date) => {
     const day = planned.filter((t) => t.plannedDate === date);
     const minutes = day.reduce((sum, t) => sum + (t.estimateMinutes ?? DEFAULT_ESTIMATE_MINUTES), 0);
-    const capacity = capacityFor(date);
+    const capacity = capacityFor(date, forMember);
     return {
       date,
       weekday: weekday(date),
@@ -74,7 +80,8 @@ export function findGap(db: Db, me: Member, forMember: Member, dueDate: string, 
   const days = getLoad(db, me, forMember, today, end).map((d) => {
     const after = d.plannedMinutes + minutes;
     // Round to 5% so near-equal days count as a tie and the earlier one wins.
-    return { ...d, after, fits: after <= d.capacityMinutes, score: Math.round((after / d.capacityMinutes) * 20) };
+    const score = d.capacityMinutes ? Math.round((after / d.capacityMinutes) * 20) : Infinity;
+    return { ...d, after, fits: after <= d.capacityMinutes, score };
   });
   const ranked = [...days].sort((a, b) => Number(b.fits) - Number(a.fits) || a.score - b.score || (a.date < b.date ? -1 : 1));
   const best = ranked[0]!;

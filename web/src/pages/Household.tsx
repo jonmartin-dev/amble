@@ -1,11 +1,9 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Link } from '@tanstack/react-router';
 import { AnimatePresence, motion } from 'motion/react';
 import { useState } from 'react';
-import ArrowBack from '~icons/material-symbols/arrow-back-rounded';
 import PersonAdd from '~icons/material-symbols/person-add-outline-rounded';
 import { Avatar } from '../components/Avatar.tsx';
-import { SectionTitle } from '../components/ui.tsx';
+import { SectionTitle, SubpageHeader } from '../components/ui.tsx';
 import { api, type HouseholdMember } from '../lib/api.ts';
 import { expressive } from '../lib/motion.ts';
 import { useMe, useMembers } from '../lib/queries.ts';
@@ -49,12 +47,7 @@ export function Household() {
 
   return (
     <>
-      <header className="mb-2 flex items-center gap-2">
-        <Link to="/" aria-label="Back" className="-ml-2 grid size-12 place-items-center rounded-full hover:bg-surface-high">
-          <ArrowBack className="size-6" aria-hidden />
-        </Link>
-        <h1 className="display text-[1.75rem] font-medium">Household</h1>
-      </header>
+      <SubpageHeader title="Household" />
       <p className="px-1 text-on-surface-variant">Everyone here shares groups and lists, and can hand tasks to each other.</p>
 
       <ul className="mt-5 flex flex-col gap-2">

@@ -1,10 +1,9 @@
 import { Link } from '@tanstack/react-router';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import History from '~icons/material-symbols/history-rounded';
 import Logout from '~icons/material-symbols/logout-rounded';
-import Palette from '~icons/material-symbols/palette-outline-rounded';
-import Sparkle from '~icons/material-symbols/auto-awesome-outline-rounded';
-import Group from '~icons/material-symbols/group-outline-rounded';
+import SettingsIcon from '~icons/material-symbols/settings-outline-rounded';
 import { signOut } from '../lib/api.ts';
 import { expressive } from '../lib/motion.ts';
 import { useMe } from '../lib/queries.ts';
@@ -56,28 +55,20 @@ export function PageHeader({ eyebrow, title }: { eyebrow?: ReactNode; title: Rea
                   <p className="truncate text-sm text-on-surface-variant">{me.email}</p>
                 </div>
                 <Link
-                  to="/appearance"
+                  to="/settings"
                   onClick={() => setOpen(false)}
                   className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left hover:bg-surface-highest"
                 >
-                  <Palette className="size-5" aria-hidden />
-                  Appearance
+                  <SettingsIcon className="size-5" aria-hidden />
+                  Settings
                 </Link>
                 <Link
-                  to="/connections"
+                  to="/activity"
                   onClick={() => setOpen(false)}
                   className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left hover:bg-surface-highest"
                 >
-                  <Sparkle className="size-5" aria-hidden />
-                  Connect Claude
-                </Link>
-                <Link
-                  to="/household"
-                  onClick={() => setOpen(false)}
-                  className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left hover:bg-surface-highest"
-                >
-                  <Group className="size-5" aria-hidden />
-                  Household
+                  <History className="size-5" aria-hidden />
+                  Activity
                 </Link>
                 <button
                   type="button"

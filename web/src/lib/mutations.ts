@@ -41,7 +41,7 @@ export function useTaskActions() {
   const qc = useQueryClient();
   const snack = useSnackbar();
   const refresh = () => {
-    for (const key of ['today', 'tasks', 'task', 'load', 'groups']) void qc.invalidateQueries({ queryKey: [key] });
+    for (const key of ['today', 'tasks', 'task', 'load', 'groups', 'activity', 'stats']) void qc.invalidateQueries({ queryKey: [key] });
   };
   const fail = (e: Error) => snack({ message: e.message });
   const undo = (calls: Promise<unknown>[]) => void Promise.all(calls).then(refresh, fail);

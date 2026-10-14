@@ -1,12 +1,11 @@
-import { Link } from '@tanstack/react-router';
 import { motion } from 'motion/react';
 import { useMemo, type ReactNode } from 'react';
-import ArrowBack from '~icons/material-symbols/arrow-back-rounded';
 import AutoMode from '~icons/material-symbols/brightness-auto-outline-rounded';
 import Check from '~icons/material-symbols/check-rounded';
 import Colorize from '~icons/material-symbols/colorize-rounded';
 import DarkMode from '~icons/material-symbols/dark-mode-outline-rounded';
 import LightMode from '~icons/material-symbols/light-mode-outline-rounded';
+import { ButtonGroup, SubpageHeader } from '../components/ui.tsx';
 import { expressive } from '../lib/motion.ts';
 import { seeds, styles, swatchColors, type ThemeContrast, type ThemeMode, type ThemePrefs } from '../lib/theme.ts';
 import { useTheme } from '../lib/useTheme.ts';
@@ -17,52 +16,6 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
       <h2 className="mb-3 px-1 text-sm font-medium text-primary">{title}</h2>
       {children}
     </section>
-  );
-}
-
-/** M3 Expressive connected button group: the selected segment morphs to a full pill. */
-function ButtonGroup<T extends string | number>({
-  value,
-  options,
-  onChange,
-  label,
-}: {
-  value: T;
-  options: { value: T; label: string; icon?: ReactNode }[];
-  onChange: (v: T) => void;
-  label: string;
-}) {
-  return (
-    <div role="radiogroup" aria-label={label} className="flex gap-0.5">
-      {options.map((o, i) => {
-        const on = o.value === value;
-        const first = i === 0;
-        const last = i === options.length - 1;
-        return (
-          <motion.button
-            key={String(o.value)}
-            type="button"
-            role="radio"
-            aria-checked={on}
-            onClick={() => onChange(o.value)}
-            animate={{
-              borderTopLeftRadius: on || first ? 999 : 8,
-              borderBottomLeftRadius: on || first ? 999 : 8,
-              borderTopRightRadius: on || last ? 999 : 8,
-              borderBottomRightRadius: on || last ? 999 : 8,
-            }}
-            transition={expressive.fastSpatial}
-            whileTap={{ scale: 0.96 }}
-            className={`flex h-12 flex-1 items-center justify-center gap-2 text-sm font-medium transition-colors ${
-              on ? 'bg-primary text-on-primary' : 'bg-surface-high text-on-surface'
-            }`}
-          >
-            {on ? <Check className="size-5" aria-hidden /> : o.icon}
-            {o.label}
-          </motion.button>
-        );
-      })}
-    </div>
   );
 }
 
@@ -106,12 +59,7 @@ export function Appearance() {
 
   return (
     <>
-      <header className="mb-2 flex items-center gap-2">
-        <Link to="/" aria-label="Back" className="-ml-2 grid size-12 place-items-center rounded-full hover:bg-surface-high">
-          <ArrowBack className="size-6" aria-hidden />
-        </Link>
-        <h1 className="display text-[1.75rem] font-medium">Appearance</h1>
-      </header>
+      <SubpageHeader title="Appearance" />
 
       <div className="rounded-[2rem] bg-primary-container p-5 text-on-primary-container">
         <div className="flex items-baseline justify-between text-sm">

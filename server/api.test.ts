@@ -88,6 +88,9 @@ describe('tasks API', () => {
     expect(updated).toMatchObject({ notes: 'Due April', subtasks: [{ title: 'W-2', done: true }, { title: '1099' }], links: [{ url: 'https://irs.gov/' }] });
     const trimmed = (await api.patch(`/tasks/${id}`, { removeSubtasks: [w2.id] })).json.task;
     expect(trimmed.subtasks.map((s: { title: string }) => s.title)).toEqual(['1099']);
+    // Only what was sent counts as changed, so the activity feed can say what happened.
+    const [latest] = (await api.get(`/tasks/${id}/activity`)).json.entries;
+    expect([...latest.detail.fields].sort()).toEqual(['addLinks', 'checkSubtasks', 'notes', 'removeSubtasks']);
   });
 
   it('refuses groups and people that do not exist, and bad input', async () => {
@@ -140,5 +143,51 @@ describe('lists API', () => {
     expect((await api.post(`/lists/${groceries.id}/items/${json.open[0].id}/check`, { checked: true })).status).toBe(204);
     expect((await api.get(`/lists/${groceries.id}`)).json).toMatchObject({ open: [], checked: [{ name: 'Eggs' }] });
     expect((await api.get('/groups')).json.groups.find((g: { kind: string }) => g.kind === 'list').open).toBe(0);
+  });
+});
+
+describe('phase 4 API', () => {
+  it("serves a calendar range, and load follows the member's own capacity", async () => {
+    const api = as(jon);
+    await api.post('/tasks', { title: 'Today', plannedDate: today, estimateMinutes: 60 });
+    await api.post('/tasks', { title: 'Next week', plannedDate: addDays(today, 7) });
+    await api.post('/tasks', { title: 'Someday' });
+    const range = (await api.get(`/tasks?status=all&who=me&from=${today}&to=${addDays(today, 6)}`)).json.tasks;
+    expect(range.map((t: { title: string }) => t.title)).toEqual(['Today']);
+
+    const dow = String(Temporal.PlainDate.from(today).dayOfWeek);
+    expect((await api.patch('/me', { capacity: { [dow]: 60 }, showStreaks: false })).json.member).toMatchObject({
+      capacity: { [dow]: 60 },
+      showStreaks: false,
+    });
+    expect((await api.get(`/load?start=${today}&end=${today}`)).json.days[0]).toMatchObject({ capacityMinutes: 60, level: 'full' });
+    expect((await api.patch('/me', { capacity: { 8: 60 } })).status).toBe(400);
+    expect((await api.patch('/me', { capacity: null })).json.member.capacity).toBeNull();
+  });
+
+  it('edits, reorders, archives and restores groups', async () => {
+    const api = as(jon);
+    const groups = (await api.get('/groups')).json.groups as { id: string; name: string }[];
+    const calls = groups.find((g) => g.name === 'Calls')!;
+    expect((await api.patch(`/groups/${calls.id}`, { name: 'Phone', icon: 'call', color: 'blue' })).json.group).toMatchObject({ name: 'Phone', color: 'blue' });
+    expect((await api.post('/groups/order', { ids: [calls.id] })).status).toBe(204);
+    expect((await api.get('/groups')).json.groups[0].name).toBe('Phone');
+    expect((await api.post(`/groups/${calls.id}/archive`, {})).json.group.archivedAt).not.toBeNull();
+    expect((await api.get('/groups?archived=1')).json.groups.map((g: { name: string }) => g.name)).toEqual(['Phone']);
+    expect((await api.post(`/groups/${calls.id}/archive`, { restore: true })).json.group.archivedAt).toBeNull();
+  });
+
+  it('shows activity, a task history, and stats', async () => {
+    const api = as(jon);
+    const id = (await api.post('/tasks', { title: 'Water plants' })).json.task.id;
+    await api.post(`/tasks/${id}/complete`, { done: true });
+    const feed = (await api.get('/activity')).json;
+    expect(feed.entries.map((e: { action: string }) => e.action)).toEqual(['task.completed', 'task.created']);
+    expect(feed.entries[0]).toMatchObject({ memberName: 'Jon Martin', taskTitle: 'Water plants', via: 'app' });
+    expect((await api.get(`/tasks/${id}/activity`)).json.entries).toHaveLength(2);
+    expect((await api.get('/activity?before=nonsense')).status).toBe(400);
+    const stats = (await api.get('/stats?weeks=8&weekStart=7')).json;
+    expect(stats).toMatchObject({ weekStart: 7, records: { totalDone: 1 } });
+    expect(stats.weeks).toHaveLength(8);
   });
 });

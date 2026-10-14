@@ -1,11 +1,23 @@
+import { eq } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { openDatabase, type Db } from '../db/index.ts';
-import { activity, groups, members, type Member } from '../db/schema.ts';
+import { activity, groups, members, tasks, type Member } from '../db/schema.ts';
 import { seedStarterGroups } from '../db/seed.ts';
 import { addDays, planningDate, planningDayStart } from '../lib/dates.ts';
-import { createGroup, resolveGroup, resolveMember, type Actor } from './household.ts';
+import { listActivity } from './activity.ts';
+import {
+  archivedGroups,
+  archiveGroup,
+  createGroup,
+  reorderGroups,
+  resolveGroup,
+  resolveMember,
+  updateGroup,
+  type Actor,
+} from './household.ts';
 import { addListItems, checkListItems, getListItems } from './lists.ts';
-import { findGap, getLoad } from './load.ts';
+import { capacityFor, findGap, getLoad } from './load.ts';
+import { getStats } from './stats.ts';
 import {
   archiveTasks,
   assignTask,
@@ -199,5 +211,142 @@ describe('load', () => {
     expect(gap.date).toBe(addDays(today, 2));
     expect(gap.fits).toBe(true);
     expect(() => findGap(db, jon, jon, addDays(today, -1))).toThrow(/already passed/);
+  });
+});
+
+describe('capacity', () => {
+  it("uses each member's own capacity per weekday, where a day off has no room at all", () => {
+    const dow = (date: string) => String(Temporal.PlainDate.from(date).dayOfWeek);
+    const tomorrow = addDays(today, 1);
+    const custom = db
+      .update(members)
+      .set({ capacity: { [dow(today)]: 60, [dow(tomorrow)]: 0 } })
+      .where(eq(members.id, jon.id))
+      .returning()
+      .get();
+    createTasks(db, asJon, [{ title: 'An hour', plannedDate: today, estimateMinutes: 60 }]);
+    const [d0, d1, d2] = getLoad(db, custom, custom, today, addDays(today, 2));
+    expect(d0).toMatchObject({ capacityMinutes: 60, level: 'full' });
+    expect(d1).toMatchObject({ capacityMinutes: 0, level: 'light' });
+    expect(d2!.capacityMinutes).toBe(capacityFor(addDays(today, 2)));
+    // Neither day fits another half hour, and the day off is never the better choice.
+    expect(findGap(db, custom, custom, tomorrow, 30)).toMatchObject({ date: today, fits: false });
+  });
+});
+
+describe('groups', () => {
+  it('renames, recolors and reorders, refusing a name that is taken', () => {
+    const home = resolveGroup(db, jon, 'Home');
+    expect(updateGroup(db, asJon, home.id, { name: 'House', color: 'rose' })).toMatchObject({ name: 'House', color: 'rose' });
+    expect(() => updateGroup(db, asJon, 'House', { name: 'errands' })).toThrow(/already a group called Errands/);
+    const order = reorderGroups(db, jon, [resolveGroup(db, jon, 'Calls').id]).map((g) => g.name);
+    expect(order[0]).toBe('Calls');
+    expect(order).toContain('House');
+    expect(() => reorderGroups(db, jon, ['nope'])).toThrow(/No group/);
+  });
+
+  it('archives a group, moving its open tasks out, and restores the ones nobody regrouped', () => {
+    const calls = resolveGroup(db, jon, 'Calls');
+    const home = resolveGroup(db, jon, 'Home');
+    const [mom, dentist, bank] = createTasks(db, asJon, [
+      { title: 'Call mom', groupId: calls.id },
+      { title: 'Call the dentist', groupId: calls.id },
+      { title: 'Call the bank', groupId: calls.id },
+    ]);
+    completeTasks(db, asJon, [bank!.id]);
+    archiveGroup(db, asJon, calls.id);
+    expect(() => resolveGroup(db, jon, 'Calls')).toThrow(/No group/);
+    expect(getTask(db, jon, mom!.id).groupId).toBeNull();
+    // Finished tasks keep their group, so stats still know where they came from.
+    expect(getTask(db, jon, bank!.id).groupId).toBe(calls.id);
+    updateTask(db, asJon, dentist!.id, { groupId: home.id });
+    expect(archivedGroups(db, jon.id).map((g) => g.name)).toEqual(['Calls']);
+
+    archiveGroup(db, asJon, calls.id, true);
+    expect(getTask(db, jon, mom!.id).groupId).toBe(calls.id);
+    expect(getTask(db, jon, dentist!.id).groupId).toBe(home.id);
+    expect(archivedGroups(db, jon.id)).toEqual([]);
+  });
+});
+
+describe('activity', () => {
+  it('folds repeated edits and hides private groups from everyone else', () => {
+    const asAlex: Actor = { member: alex, via: 'app' };
+    const [task] = createTasks(db, asJon, [{ title: 'Paint the fence' }]);
+    updateTask(db, asJon, task!.id, { notes: 'White' });
+    updateTask(db, asJon, task!.id, { dueDate: addDays(today, 3) });
+    completeTasks(db, asAlex, [task!.id]);
+    const secret = createGroup(db, asAlex, { name: 'Surprise', private: true });
+    createTasks(db, asAlex, [{ title: 'Buy a gift', groupId: secret.id }]);
+
+    const { entries, next } = listActivity(db, jon);
+    expect(entries.map((e) => e.action)).toEqual(['task.completed', 'task.updated', 'task.created']);
+    expect(entries[0]).toMatchObject({ memberName: 'Alex B', taskTitle: 'Paint the fence', via: 'app' });
+    expect(entries[1]).toMatchObject({ count: 2, via: 'claude', detail: { fields: ['dueDate', 'notes'] } });
+    expect(next).toBeNull();
+    expect(listActivity(db, alex).entries.map((e) => e.action)).toEqual([
+      'task.created',
+      'group.created',
+      'task.completed',
+      'task.updated',
+      'task.created',
+    ]);
+    expect(listActivity(db, jon, { taskId: task!.id }).entries).toHaveLength(3);
+  });
+
+  it('folds items added to one list back to back into one entry', () => {
+    const groceries = resolveGroup(db, jon, 'Groceries', 'list');
+    addListItems(db, asJon, groceries, [{ name: 'Milk' }, { name: 'Eggs' }, { name: 'Bread' }]);
+    checkListItems(db, asJon, groceries, ['Milk']);
+    const { entries } = listActivity(db, jon);
+    expect(entries.map((e) => [e.action, e.count])).toEqual([
+      ['list.items_checked', 1],
+      ['list.item_added', 3],
+    ]);
+    expect(entries[1]!.detail).toMatchObject({ list: 'Groceries', items: ['Milk', 'Eggs', 'Bread'] });
+  });
+
+  it('pages through the feed without skipping or repeating anything', () => {
+    createTasks(db, asJon, Array.from({ length: 7 }, (_, i) => ({ title: `Task ${i}` })));
+    const seen: string[] = [];
+    let before: string | undefined;
+    do {
+      const page = listActivity(db, jon, { limit: 3, before });
+      seen.push(...page.entries.map((e) => e.taskTitle!));
+      before = page.next ?? undefined;
+    } while (before);
+    expect(seen).toEqual(['Task 6', 'Task 5', 'Task 4', 'Task 3', 'Task 2', 'Task 1', 'Task 0']);
+  });
+});
+
+describe('stats', () => {
+  it('counts what gets done per week and person, and keeps records only for those who want them', () => {
+    const asAlex: Actor = { member: alex, via: 'app' };
+    const home = resolveGroup(db, jon, 'Home').id;
+    const [old, todays, alexs] = createTasks(db, asJon, [
+      { title: 'Old one', plannedDate: addDays(today, -1) },
+      { title: 'Today', plannedDate: today },
+      { title: 'For Alex', assigneeId: alex.id },
+      { title: 'Left open', plannedDate: addDays(today, -2) },
+      { title: 'Fix the gate', groupId: home },
+      { title: 'Clean the gutters', groupId: home },
+    ]);
+    db.update(tasks).set({ createdAt: new Date(Date.now() - 10 * 86_400_000) }).where(eq(tasks.id, old!.id)).run();
+    completeTasks(db, asJon, [old!.id, todays!.id]);
+    completeTasks(db, asAlex, [alexs!.id]);
+
+    const stats = getStats(db, jon, { weeks: 4, weekStart: 1 });
+    expect(stats.weeks).toHaveLength(4);
+    expect(stats.weeks.at(-1)).toMatchObject({ total: 3, byMember: { [jon.id]: 2, [alex.id]: 1 } });
+    expect(stats.weekdays.map((d) => d.day)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(stats.weekdays.reduce((n, d) => n + d.count, 0)).toBe(3);
+    expect(stats.timesOfDay.reduce((n, d) => n + d.count, 0)).toBe(3);
+    expect(stats.pilingUp[0]).toMatchObject({ name: 'Home', open: 2, added: 2, done: 0 });
+    // Two days ago was left unfinished, so the streak is yesterday and today.
+    expect(stats.records).toMatchObject({ streak: { current: 2, best: 2 }, totalDone: 2, oldestDone: { title: 'Old one' } });
+
+    const quiet = db.update(members).set({ showStreaks: false }).where(eq(members.id, alex.id)).returning().get();
+    expect(getStats(db, quiet).records).toBeNull();
+    expect(getStats(db, jon, { weekStart: 7 }).weekdays[0]!.day).toBe(7);
   });
 });

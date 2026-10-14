@@ -17,6 +17,7 @@ import type { Db } from './db/index.ts';
 import type { Env } from './env.ts';
 import { z } from 'zod';
 import { members } from './db/schema.ts';
+import { MAX_CAPACITY_MINUTES } from './domain/load.ts';
 
 const STATE_COOKIE = 'almanac_auth_state';
 const webDist = fileURLToPath(new URL('../dist/web', import.meta.url));
@@ -156,12 +157,27 @@ export function createApp({
 
   app.patch('/api/me', async (c) => {
     // theme: null resets to the default theme.
-    const parsed = z.object({ theme: themeSchema.nullable().optional() }).safeParse(await c.req.json().catch(() => null));
+    // capacity: null resets every weekday to the default; a missing weekday uses the default too.
+    const parsed = z
+      .object({
+        theme: themeSchema.nullable().optional(),
+        capacity: z
+          .partialRecord(z.enum(['1', '2', '3', '4', '5', '6', '7']), z.number().int().min(0).max(MAX_CAPACITY_MINUTES))
+          .nullable()
+          .optional(),
+        showStreaks: z.boolean().optional(),
+      })
+      .safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: 'Those settings look wrong. Try again.' }, 400);
     const me = c.get('member')!;
+    const { theme, capacity, showStreaks } = parsed.data;
     const updated = db
       .update(members)
-      .set({ ...(parsed.data.theme !== undefined && { theme: parsed.data.theme }) })
+      .set({
+        ...(theme !== undefined && { theme }),
+        ...(capacity !== undefined && { capacity }),
+        ...(showStreaks !== undefined && { showStreaks }),
+      })
       .where(eq(members.id, me.id))
       .returning()
       .get();

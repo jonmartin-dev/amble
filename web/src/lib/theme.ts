@@ -117,6 +117,8 @@ export function themeVariables(prefs: ThemePrefs, dark: boolean): Record<string,
     const t = customTones(argbFromHex(hex), seed, dark);
     vars[`--tone-${name}`] = hexFromArgb(t.container);
     vars[`--tone-${name}-on`] = hexFromArgb(t.on);
+    // The strong shade, for chart bars and other fills that sit on a surface.
+    vars[`--tone-${name}-base`] = hexFromArgb(t.base);
   }
   return vars;
 }

@@ -1,19 +1,33 @@
 // Captures every screen at phone size for visual review.
 // Needs `pnpm dev` running with ALMANAC_DEV_LOGIN=1, and Chrome installed.
-// Usage: node scripts/screens.ts [email]   -> design/screens/*.png
+// Usage: node scripts/screens.ts [email] [variant,variant]   -> design/screens/*.png
 import fs from 'node:fs';
 import { chromium } from 'playwright-core';
 
 const base = process.env.ALMANAC_URL ?? 'http://localhost:5173';
 const email = process.argv[2] ?? 'dev@almanac.local';
 const out = 'design/screens';
-const routes = ['/', '/backlog', '/calendar', '/stats', '/appearance', '/connections', '/household'];
-const variants = [
+const routes = [
+  '/',
+  '/backlog',
+  '/calendar',
+  '/stats',
+  '/activity',
+  '/settings',
+  '/settings/groups',
+  '/settings/capacity',
+  '/appearance',
+  '/connections',
+  '/household',
+];
+const only = process.argv[3]?.split(',');
+const allVariants = [
   { name: 'light', mode: 'light', seed: '#2e6a57', style: 'tonal' },
   { name: 'dark', mode: 'dark', seed: '#2e6a57', style: 'tonal' },
   { name: 'rose-expressive', mode: 'light', seed: '#a8476b', style: 'expressive' },
   { name: 'ocean-dark-vibrant', mode: 'dark', seed: '#3a5ba9', style: 'vibrant' },
 ];
+const variants = only ? allVariants.filter((v) => only.includes(v.name)) : allVariants;
 
 fs.mkdirSync(out, { recursive: true });
 const browser = await chromium.launch({ channel: 'chrome' });
@@ -47,7 +61,7 @@ for (const v of variants) {
   const { groups } = (await (await page.request.get(`${base}/api/groups`)).json()) as { groups: { id: string; kind: string }[] };
   const rich = [...tasks].sort((a, b) => b.subtasks.length + b.links.length - (a.subtasks.length + a.links.length))[0];
   const list = groups.find((g) => g.kind === 'list');
-  const named: [string, string][] = routes.map((r) => [r === '/' ? 'today' : r.slice(1), r]);
+  const named: [string, string][] = routes.map((r) => [r === '/' ? 'today' : r.slice(1).replace('/', '-'), r]);
   if (rich) named.push(['task', `/task/${rich.id}`]);
   if (list) named.push(['list', `/list/${list.id}`]);
 
@@ -77,6 +91,19 @@ for (const v of variants) {
     await page.screenshot({ path: `${out}/${v.name}-move.png` });
     console.log(`${out}/${v.name}-move.png`);
   }
+  // The calendar's month view and a day's plan.
+  await page.goto(`${base}/calendar`);
+  await page.waitForLoadState('networkidle');
+  await page.getByRole('radio', { name: 'Month' }).click();
+  await page.waitForTimeout(700);
+  await shoot('calendar-month');
+  await page.getByRole('button', { name: /, (Light|Steady|Full|Too much|Wide open)/ }).filter({ hasText: /\d/ }).nth(15).click();
+  await page.waitForTimeout(900);
+  await page.screenshot({ path: `${out}/${v.name}-day.png` });
+  console.log(`${out}/${v.name}-day.png`);
+  await page.keyboard.press('Escape');
+  await page.getByRole('radio', { name: 'Week' }).click();
+
   // The connector consent page, as Claude's sign-in would open it (never approved here).
   const consent = new URLSearchParams({
     response_type: 'code',
