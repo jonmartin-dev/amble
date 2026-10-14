@@ -5,6 +5,8 @@ import Add from '~icons/material-symbols/add-rounded';
 import ChevronRight from '~icons/material-symbols/chevron-right-rounded';
 import ExpandMore from '~icons/material-symbols/expand-more-rounded';
 import Search from '~icons/material-symbols/search-rounded';
+import Sparkle from '~icons/material-symbols/auto-awesome-outline-rounded';
+import { OrganizeSheet } from '../components/OrganizeSheet.tsx';
 import { GroupIcon, tone } from '../components/icons.tsx';
 import { MoveSheet } from '../components/MoveSheet.tsx';
 import { GroupSheet } from '../components/GroupSheet.tsx';
@@ -14,7 +16,8 @@ import { Chip, SectionTitle } from '../components/ui.tsx';
 import type { Group, Task } from '../lib/api.ts';
 import { todayIso } from '../lib/dates.ts';
 import { expressive } from '../lib/motion.ts';
-import { useGroups, useMe, useTasks } from '../lib/queries.ts';
+import { useAi, useGroups, useMe, useTasks } from '../lib/queries.ts';
+import { useSyncState } from '../lib/sync.ts';
 
 function GroupSection({
   group,
@@ -74,6 +77,9 @@ export function Backlog() {
   const [unplanned, setUnplanned] = useState(false);
   const [moving, setMoving] = useState<Task | null>(null);
   const [creating, setCreating] = useState(false);
+  const [tidying, setTidying] = useState(false);
+  const { data: ai } = useAi();
+  const { online } = useSyncState();
   const params: Record<string, string> = {};
   if (query.trim()) params.q = query.trim();
   if (mine && me) params.assignee = me.id;
@@ -109,6 +115,11 @@ export function Backlog() {
         <Chip selected={unplanned} onClick={() => setUnplanned((v) => !v)}>
           Not planned yet
         </Chip>
+        {ai?.available && online && (tasks?.length ?? 0) > 1 && !filtering && (
+          <Chip onClick={() => setTidying(true)} icon={<Sparkle className="size-4" aria-hidden />}>
+            Tidy up
+          </Chip>
+        )}
       </div>
 
       {lists.length > 0 && !filtering && (
@@ -162,6 +173,7 @@ export function Backlog() {
 
       <MoveSheet task={moving} today={today} onClose={() => setMoving(null)} />
       <GroupSheet open={creating} onClose={() => setCreating(false)} />
+      <OrganizeSheet open={tidying} onClose={() => setTidying(false)} />
     </>
   );
 }

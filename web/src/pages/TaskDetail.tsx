@@ -13,6 +13,7 @@ import OpenInNew from '~icons/material-symbols/open-in-new-rounded';
 import Person from '~icons/material-symbols/person-outline-rounded';
 import RepeatIcon from '~icons/material-symbols/repeat-rounded';
 import Schedule from '~icons/material-symbols/schedule-outline-rounded';
+import Sparkle from '~icons/material-symbols/auto-awesome-outline-rounded';
 import Timer from '~icons/material-symbols/timer-outline-rounded';
 import { ActivityRow } from '../components/ActivityList.tsx';
 import { GroupIcon } from '../components/icons.tsx';
@@ -24,7 +25,8 @@ import type { Task, TimeOfDay } from '../lib/api.ts';
 import { dayLabel, firstName, todayIso } from '../lib/dates.ts';
 import { expressive } from '../lib/motion.ts';
 import { useTaskActions, type TaskPatch } from '../lib/mutations.ts';
-import { useGroups, useMe, useMembers, useTask, useTaskActivity } from '../lib/queries.ts';
+import { useGroups, useMe, useMembers, useTask, useTaskActivity, useTaskGap } from '../lib/queries.ts';
+import { useSyncState } from '../lib/sync.ts';
 
 function Field({ icon, label, children }: { icon: ReactNode; label: string; children: ReactNode }) {
   return (
@@ -69,6 +71,10 @@ function Detail({ task }: { task: Task }) {
   const back = () => (window.history.length > 1 ? router.history.back() : void navigate({ to: '/' }));
   const others = household?.members.filter((m) => m.id !== me?.id) ?? [];
   const done = task.status === 'done';
+  const { online } = useSyncState();
+  // Due later and not on a day yet: the day with the most room before the deadline.
+  const wantsDay = task.status === 'open' && !task.plannedDate && !!task.dueDate && task.dueDate >= today;
+  const { data: gap } = useTaskGap(task.id, wantsDay && online);
 
   return (
     <>
@@ -110,6 +116,35 @@ function Detail({ task }: { task: Task }) {
         <p className="mt-2 ml-11 text-sm text-primary">From {firstName(task.createdByName)}</p>
       )}
       {task.handedBackNote && <p className="mt-2 ml-11 rounded-2xl bg-surface-high px-4 py-2.5 text-on-surface-variant">"{task.handedBackNote}"</p>}
+
+      <AnimatePresence initial={false}>
+        {wantsDay && gap && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={expressive.defaultSpatial}
+            className="overflow-hidden"
+          >
+            <div className="mt-4 flex items-center gap-3 rounded-3xl bg-secondary-container py-3 pr-3 pl-4 text-on-secondary-container">
+              <Sparkle className="size-5 shrink-0" aria-hidden />
+              <p className="min-w-0 flex-1 text-sm">
+                {gap.fits
+                  ? `${dayLabel(gap.date, today, true).replace(/^./, (c) => c.toUpperCase())} has the most room before it's due.`
+                  : `Every day before it's due is full. ${dayLabel(gap.date, today, true).replace(/^./, (c) => c.toUpperCase())} is the lightest.`}
+              </p>
+              <motion.button
+                type="button"
+                whileTap={{ scale: 0.94 }}
+                onClick={() => actions.move(task, gap.date, today)}
+                className="h-10 shrink-0 rounded-full bg-primary px-4 text-sm font-medium text-on-primary"
+              >
+                Plan it
+              </motion.button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="mt-4 divide-y divide-outline-variant/40 rounded-[1.75rem] bg-surface-low px-4">
         <Field icon={<Event className="size-5" />} label="Planned for">

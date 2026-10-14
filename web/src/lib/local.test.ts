@@ -16,7 +16,7 @@ function task(fields: Partial<Task> & { id: string }): Task {
 }
 
 function load(date: string, fields: Partial<DayLoad> = {}): DayLoad {
-  return { date, weekday: 'Wed', tasks: 0, mustDo: 0, plannedMinutes: 0, guessed: 0, capacityMinutes: 60, level: 'light', ...fields };
+  return { date, weekday: 'Wed', tasks: 0, mustDo: 0, plannedMinutes: 0, guessed: 0, capacityMinutes: 60, baseCapacityMinutes: 60, eventMinutes: 0, events: 0, usualEventMinutes: 0, level: 'light', ...fields };
 }
 
 const today = (who = 'me') => qc.getQueryData<Today>(['today', who])!;

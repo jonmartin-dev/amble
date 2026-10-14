@@ -183,6 +183,42 @@ function Tile({ value, label, detail }: { value: ReactNode; label: string; detai
   );
 }
 
+const monthName = (month: string) => new Date(`${month}-15T12:00:00`).toLocaleDateString(undefined, { month: 'short' });
+
+/** How Haiku's size guesses held up: each month's guesses, and how many people kept as they were. */
+function Estimates({ e }: { e: StatsData['estimates'] }) {
+  const max = Math.max(1, ...e.months.map((m) => m.made));
+  const changed = e.made - e.kept;
+  const ratio = e.typicalRatio;
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-2">
+        <Tile value={`${Math.round((e.kept / e.made) * 100)}%`} label="Kept as guessed" detail={`${e.kept} of ${e.made} ${e.made === 1 ? 'guess' : 'guesses'}`} />
+        <Tile
+          value={ratio == null ? 'None yet' : ratio >= 1 ? `${ratio}× longer` : `${Math.round((1 / ratio) * 10) / 10}× shorter`}
+          label="When you changed one"
+          detail={changed ? `${e.raised} up, ${e.lowered} down` : 'No changes'}
+        />
+      </div>
+      <div className="mt-4 flex h-24 items-end gap-2" aria-label="Guesses kept each month">
+        {e.months.map((m, i) => (
+          <div key={m.month} className="flex h-full flex-1 flex-col items-center justify-end gap-1.5">
+            <motion.span
+              className="relative w-full max-w-8 overflow-hidden rounded-lg bg-primary/25"
+              initial={{ height: 0 }}
+              animate={{ height: `${m.made ? Math.max((m.made / max) * 100, 8) : 3}%` }}
+              transition={{ ...expressive.defaultSpatial, delay: i * 0.03 }}
+            >
+              <span className="absolute inset-x-0 bottom-0 bg-primary" style={{ height: `${m.made ? (m.kept / m.made) * 100 : 0}%` }} />
+            </motion.span>
+            <span className="text-xs text-on-surface-variant">{monthName(m.month)}</span>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
 function Records({ records }: { records: NonNullable<StatsData['records']> }) {
   const { streak, bestWeek, oldestDone, totalDone, since } = records;
   return (
@@ -267,6 +303,23 @@ export function Stats() {
       <Card title="Piling up">
         <PilingUp data={data} />
       </Card>
+
+      {data.estimates.made > 0 && (
+        <Card
+          title="Almanac's size guesses"
+          footer={
+            data.estimates.typicalRatio == null
+              ? 'Nobody has changed a guess yet. Changing one teaches Almanac your pace.'
+              : data.estimates.typicalRatio > 1.15
+                ? 'Things tend to take longer than Almanac guesses. Your changes teach it.'
+                : data.estimates.typicalRatio < 0.87
+                  ? 'Things tend to go quicker than Almanac guesses. Your changes teach it.'
+                  : "When a guess is off, it's off both ways about equally."
+          }
+        >
+          <Estimates e={data.estimates} />
+        </Card>
+      )}
 
       {data.records ? (
         <Card title="Your records">

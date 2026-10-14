@@ -9,6 +9,8 @@ import { discardQueue, syncState } from './sync.ts';
 const CACHE_KEY = 'query-cache';
 const OWNER_KEY = 'owner';
 const WRITE_EVERY_MS = 1000;
+// One change touches several views in a row; wait this long for them all before saving.
+const SETTLE_MS = 50;
 
 /** Bump when a saved response's shape changes, so an old copy isn't read as a new one. */
 export const CACHE_VERSION = '1';
@@ -29,14 +31,21 @@ export function shouldSave(query: Query) {
   return query.state.status === 'success' && !LIVE_ONLY.has(kind) && !search;
 }
 
-/** Saves the query cache to IndexedDB at most once a second, and right away when the app is hidden. */
+/**
+ * Saves the query cache to IndexedDB: a change after a quiet spell right away, a run of changes at
+ * most once a second, and anything pending when the app is hidden. Saving the first change at once
+ * matters because a save started as the page unloads doesn't always finish.
+ */
 export function idbPersister(): Persister {
   let latest: PersistedClient | null = null;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let lastWrite = 0;
   const write = () => {
     clearTimeout(timer);
     timer = undefined;
-    if (latest) void kvSet(CACHE_KEY, latest).catch(() => {});
+    if (!latest) return;
+    lastWrite = Date.now();
+    void kvSet(CACHE_KEY, latest).catch((e: unknown) => console.warn("Couldn't save the offline copy:", e));
     latest = null;
   };
   // Phones freeze or kill a backgrounded app without warning; this is the last safe moment.
@@ -45,7 +54,7 @@ export function idbPersister(): Persister {
   return {
     persistClient(client) {
       latest = client;
-      timer ??= setTimeout(write, WRITE_EVERY_MS);
+      timer ??= setTimeout(write, Math.max(SETTLE_MS, lastWrite + WRITE_EVERY_MS - Date.now()));
     },
     restoreClient: () => kvGet<PersistedClient>(CACHE_KEY).catch(() => undefined),
     removeClient: () => kvDel(CACHE_KEY).catch(() => {}),
@@ -70,11 +79,15 @@ export async function claimDevice(qc: QueryClient, memberId: string) {
 export function prefetchForOffline(qc: QueryClient, get: <T>(path: string) => Promise<T>) {
   void qc.prefetchQuery({ queryKey: ['tasks', {}], queryFn: () => get('/tasks') });
   void qc.prefetchQuery({ queryKey: ['members'], queryFn: () => get('/members') });
-  void qc.fetchQuery({ queryKey: ['groups'], queryFn: () => get<{ groups: Group[] }>('/groups') }).then(({ groups }) => {
-    for (const g of groups.filter((g) => g.kind === 'list')) {
-      void qc.prefetchQuery({ queryKey: ['list', g.id], queryFn: () => get(`/lists/${g.id}`) });
-    }
-  });
+  void qc
+    .fetchQuery({ queryKey: ['groups'], queryFn: () => get<{ groups: Group[] }>('/groups') })
+    .then(({ groups }) => {
+      for (const g of groups.filter((g) => g.kind === 'list')) {
+        void qc.prefetchQuery({ queryKey: ['list', g.id], queryFn: () => get(`/lists/${g.id}`) });
+      }
+    })
+    // A refresh can cancel this (the outbox finishing on open does); the next open tries again.
+    .catch(() => {});
 }
 
 /** Signs out, dropping this device's copy and anything still waiting to sync (after asking). */

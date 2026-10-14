@@ -5,7 +5,8 @@ import type { Task } from '../lib/api.ts';
 import { addDays, dayLabel, dayOfMonth, weekdayShort } from '../lib/dates.ts';
 import { expressive } from '../lib/motion.ts';
 import { useTaskActions } from '../lib/mutations.ts';
-import { useLoad } from '../lib/queries.ts';
+import { useLoad, useTaskGap } from '../lib/queries.ts';
+import { useSyncState } from '../lib/sync.ts';
 import { LoadBar, loadWord, Sheet } from './ui.tsx';
 
 /** Pick a day for a task, seeing how full each of the next two weeks already is. */
@@ -13,6 +14,9 @@ export function MoveSheet({ task, today, onClose }: { task: Task | null; today: 
   const actions = useTaskActions();
   const end = addDays(today, 13);
   const { data: days } = useLoad(today, end, task != null);
+  const { online } = useSyncState();
+  // For a task with a deadline, the day with the most room before it.
+  const { data: gap } = useTaskGap(task?.id ?? '', task != null && task.status === 'open' && !!task.dueDate && task.dueDate >= today && online);
 
   const pick = (date: string | null) => {
     if (task) actions.move(task, date, today);
@@ -31,6 +35,7 @@ export function MoveSheet({ task, today, onClose }: { task: Task | null; today: 
             {(days ?? []).map((d, i) => {
               const current = task.plannedDate === d.date;
               const pastDue = task.dueDate != null && d.date > task.dueDate;
+              const best = gap?.fits && gap.date === d.date && !current;
               return (
                 <motion.li
                   key={d.date}
@@ -51,7 +56,10 @@ export function MoveSheet({ task, today, onClose }: { task: Task | null; today: 
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="flex items-baseline justify-between text-sm">
-                        <span className="font-medium">{i < 2 ? dayLabel(d.date, today) : ''}</span>
+                        <span className="font-medium">
+                          {i < 2 ? dayLabel(d.date, today) : ''}
+                          {best && <span className="text-primary">{i < 2 ? ' · ' : ''}Most room before it's due</span>}
+                        </span>
                         <span className="text-on-surface-variant">
                           {loadWord(d)}
                           {d.tasks ? ` · ${d.tasks}` : ''}

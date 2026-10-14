@@ -43,6 +43,10 @@ type T = { id: string; title: string; status: string; subtasks: { title: string 
 
 await page.goto(`${base}/auth/dev?email=${encodeURIComponent(email)}`);
 await page.waitForLoadState('networkidle');
+// Skip the morning briefing; this is about Today.
+await page.request.post(`${base}/api/briefing/seen`, { data: {} });
+await page.goto(`${base}/`);
+await page.waitForLoadState('networkidle');
 
 const day = await json<{ planned: T[] }>('/today');
 const target = day.planned.find((t) => t.status === 'open');

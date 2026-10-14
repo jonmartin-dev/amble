@@ -18,6 +18,7 @@ import { AddSheet } from './components/AddSheet.tsx';
 import { FloatingToolbar } from './components/FloatingToolbar.tsx';
 import { StatusPill } from './components/StatusPill.tsx';
 import { basePath } from './lib/api.ts';
+import { syncCalendarsWhileOpen } from './lib/calendar.ts';
 import { expressive } from './lib/motion.ts';
 import { refreshViews } from './lib/mutations.ts';
 import { CACHE_MAX_AGE_MS, CACHE_VERSION, claimDevice, idbPersister, prefetchForOffline, shouldSave } from './lib/persist.ts';
@@ -30,6 +31,8 @@ import { useSyncMemberTheme } from './lib/useTheme.ts';
 import { Activity } from './pages/Activity.tsx';
 import { Appearance } from './pages/Appearance.tsx';
 import { Backlog } from './pages/Backlog.tsx';
+import { Briefing } from './pages/Briefing.tsx';
+import { CalendarsPage } from './pages/Calendars.tsx';
 import { Household } from './pages/Household.tsx';
 import { ListPage } from './pages/ListPage.tsx';
 import { Privacy } from './pages/Privacy.tsx';
@@ -93,6 +96,7 @@ function Root() {
     // Whatever should open offline gets loaded now, while there's a connection.
     void claimDevice(qc, memberId).then(() => navigator.onLine && prefetchForOffline(qc, get));
   }, [qc, memberId]);
+  useEffect(() => (memberId ? syncCalendarsWhileOpen(qc) : undefined), [qc, memberId]);
 
   if (pathname === '/privacy') return <Privacy />;
   if (session.isPending) return <div className="min-h-dvh" />;
@@ -128,6 +132,8 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/settings', component: Settings }),
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/groups', component: GroupsSettings }),
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/capacity', component: Capacity }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/settings/calendars', component: CalendarsPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/briefing', component: Briefing }),
   createRoute({ getParentRoute: () => rootRoute, path: '/activity', component: Activity }),
   createRoute({
     getParentRoute: () => rootRoute,

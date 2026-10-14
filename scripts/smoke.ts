@@ -11,10 +11,10 @@ const browser = await chromium.launch({ channel: 'chrome' });
 const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 const page = await context.newPage();
 const errors: string[] = [];
-page.on('pageerror', (e) => errors.push(e.message));
-page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
-
 let step = 0;
+page.on('pageerror', (e) => errors.push(`step ${step}: ${e.message}`));
+page.on('console', (m) => m.type() === 'error' && errors.push(`step ${step}: ${m.text()}`));
+
 async function check(name: string, fn: (p: Page) => Promise<void>) {
   step++;
   try {
@@ -35,6 +35,19 @@ const GROUP = `Garden ${run}`;
 
 await page.goto(`${base}/auth/dev?email=${encodeURIComponent(email)}`);
 await page.waitForLoadState('networkidle');
+
+await check("the day's first open shows the briefing, and Start my day goes to Today", async (p) => {
+  const briefing = (await (await p.request.get(`${base}/api/briefing`)).json()) as { seen: boolean };
+  // A database someone already opened today skips it; nothing to check then.
+  if (briefing.seen && !p.url().endsWith('/briefing')) return console.log('   (skipped: already seen today)');
+  await p.getByRole('button', { name: 'Start my day' }).waitFor({ timeout: 8000 });
+  await p.getByRole('heading', { name: /^Good (morning|afternoon|evening), / }).waitFor();
+  await p.getByRole('button', { name: 'Start my day' }).click();
+  await p.getByRole('heading', { name: /^Here's today/ }).waitFor({ timeout: 5000 });
+  await p.reload();
+  await p.waitForLoadState('networkidle');
+  if (p.url().endsWith('/briefing')) throw new Error('the briefing came up a second time');
+});
 
 // Plain quick add first; smart add (which calls Haiku) gets its own step below.
 await page.request.patch(`${base}/api/me`, { data: { smartAdd: false } });
@@ -240,7 +253,8 @@ await check('pinning capacity changes how full today is, and unpinning goes back
     if (d.getHours() < 4) d.setDate(d.getDate() - 1);
     return d.toLocaleDateString(undefined, { weekday: 'long' });
   });
-  const capacity = async () => ((await (await p.request.get(`${base}/api/today`)).json()) as { load: { capacityMinutes: number } }).load.capacityMinutes;
+  // Before the calendar's adjustment, which scales the pinned number along with everything else.
+  const capacity = async () => ((await (await p.request.get(`${base}/api/today`)).json()) as { load: { baseCapacityMinutes: number } }).load.baseCapacityMinutes;
   const before = await capacity();
   await p.getByRole('button', { name: `More time on ${day}` }).click();
   await p.waitForTimeout(1200);
@@ -294,13 +308,50 @@ await check('smart add reads what was typed and saves it after review', async (p
   await p.getByRole('button', { name: 'Add a task' }).click();
   await p.getByLabel('What to add').fill('water the ferns every sunday');
   await p.keyboard.press('Enter');
-  await until(p, "Here's what I got");
+  // Haiku usually answers in a few seconds, sometimes more.
+  await p.getByText("Here's what I got").first().waitFor({ timeout: 20000 });
   await p.getByRole('button', { name: /^Add (all )?\d+$/ }).click();
   await p.getByRole('dialog', { name: 'Add' }).waitFor({ state: 'detached', timeout: 8000 });
   const { tasks } = (await (await p.request.get(`${base}/api/tasks?q=ferns`)).json()) as { tasks: { id: string; repeat: { weekdays?: number[] } | null }[] };
   const ferns = tasks.find((t) => t.repeat?.weekdays?.includes(7));
   if (!ferns) throw new Error('no repeating ferns task');
   await p.request.post(`${base}/api/tasks/${ferns.id}/archive`, { data: {} });
+});
+
+await check('a task due later offers the day with the most room, and plans it there', async (p) => {
+  const due = new Date(Date.now() + 4 * 86_400_000).toISOString().slice(0, 10);
+  const { task } = (await (await p.request.post(`${base}/api/tasks`, { data: { title: `Smoke ${run}: insurance form`, dueDate: due, estimateMinutes: 30 } })).json()) as { task: { id: string } };
+  await p.goto(`${base}/task/${task.id}`);
+  await until(p, /has the most room before it's due|is the lightest/);
+  await p.getByRole('button', { name: 'Plan it' }).click();
+  await until(p, /^Moved to /);
+  // The move goes out through the outbox; give it a moment to reach the server.
+  let planned: string | null = null;
+  for (let i = 0; i < 20 && !planned; i++) {
+    await p.waitForTimeout(250);
+    planned = ((await (await p.request.get(`${base}/api/tasks/${task.id}`)).json()) as { task: { plannedDate: string | null } }).task.plannedDate;
+  }
+  if (!planned || planned > due) throw new Error(`planned for ${planned}, due ${due}`);
+});
+
+await check('plan my week proposes days and plans what was kept', async (p) => {
+  await p.request.post(`${base}/api/tasks`, { data: { title: `Smoke ${run}: sort the garage shelves`, estimateMinutes: 20 } });
+  await p.goto(`${base}/calendar`);
+  await p.getByRole('button', { name: 'Plan my week' }).click();
+  const make = p.getByRole('button', { name: 'Make a plan' });
+  if (await make.isVisible({ timeout: 2000 }).catch(() => false)) await make.click();
+  const plan = p.getByRole('button', { name: /^Plan \d+ tasks?$/ });
+  await plan.waitFor({ timeout: 40000 });
+  await plan.click();
+  await until(p, /^Planned /);
+});
+
+await check('the calendars page explains itself and offers to connect', async (p) => {
+  await p.goto(`${base}/settings/calendars`);
+  await until(p, 'Plan around your calendar');
+  const calendars = (await (await p.request.get(`${base}/api/calendars`)).json()) as { enabled: boolean };
+  if (calendars.enabled) await p.getByRole('button', { name: /Connect (Google Calendar|another Google account)/ }).waitFor();
+  else await until(p, "Calendar sync isn't set up on this server");
 });
 
 await browser.close();

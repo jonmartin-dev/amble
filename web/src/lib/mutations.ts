@@ -31,7 +31,7 @@ export type TaskPatch = Partial<Omit<NewTask, 'assigneeId'>> & {
 const post = <T,>(path: string, data: unknown) => api<T>(path, { method: 'POST', body: JSON.stringify(data) });
 
 /** Every view a task change can touch, refreshed from the server once it has the change. */
-export const TASK_VIEWS = ['today', 'tasks', 'task', 'load', 'groups', 'activity', 'stats', 'list', 'session', 'capacity', 'ai'];
+export const TASK_VIEWS = ['today', 'tasks', 'task', 'load', 'groups', 'activity', 'stats', 'list', 'session', 'capacity', 'ai', 'briefing', 'gaps'];
 
 export function refreshViews(qc: QueryClient, keys = TASK_VIEWS) {
   for (const key of keys) void qc.invalidateQueries({ queryKey: [key] });
@@ -150,6 +150,17 @@ export function useTaskActions() {
     });
   };
 
+  /** Plans several tasks, each on its own day, with one Undo for all of them. */
+  const planAll = (picks: { task: Task; date: string }[]) => {
+    if (picks.length === 0) return;
+    const was = picks.map((p) => findTask(qc, p.task.id) ?? p.task);
+    picks.forEach((p, i) => setPlanned(was[i]!, p.date));
+    snack({
+      message: picks.length === 1 ? `Planned ${picks[0]!.task.title}` : `Planned ${picks.length} tasks`,
+      action: { label: 'Undo', run: () => was.forEach((t) => setPlanned(t, t.plannedDate)) },
+    });
+  };
+
   const setArchived = (task: Task, archived: boolean) => {
     editTask(qc, task.id, (t) => ({ status: archived ? 'archived' : t.completedAt ? 'done' : 'open' }));
     send('POST', `/tasks/${task.id}/archive`, archived ? {} : { restore: true }, `${archived ? 'Remove' : 'Restore'} ${task.title}`);
@@ -182,6 +193,7 @@ export function useTaskActions() {
     complete,
     move: (task: Task, plannedDate: string | null, today: string) => moveAll([task], plannedDate, today),
     moveAll,
+    planAll,
     archive,
     skip: (task: Task) => skip.mutate(task),
   };

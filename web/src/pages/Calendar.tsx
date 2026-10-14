@@ -3,12 +3,15 @@ import { useState } from 'react';
 import Check from '~icons/material-symbols/check-rounded';
 import ChevronLeft from '~icons/material-symbols/chevron-left-rounded';
 import ChevronRight from '~icons/material-symbols/chevron-right-rounded';
+import Sparkle from '~icons/material-symbols/auto-awesome-outline-rounded';
 import { DaySheet, sortDay } from '../components/DaySheet.tsx';
+import { EventList, eventsOn } from '../components/Events.tsx';
+import { PlanWeekSheet } from '../components/PlanWeekSheet.tsx';
 import { MoveSheet } from '../components/MoveSheet.tsx';
 import { PageHeader } from '../components/PageHeader.tsx';
 import { TaskRow } from '../components/TaskRow.tsx';
 import { ButtonGroup, Chip, loadRatio, loadWord, minutesLabel } from '../components/ui.tsx';
-import type { DayLoad, Task } from '../lib/api.ts';
+import type { CalendarEvent, DayLoad, DayPick, Task } from '../lib/api.ts';
 import {
   addDays,
   addMonths,
@@ -26,7 +29,8 @@ import {
   weekStartDay,
 } from '../lib/dates.ts';
 import { expressive } from '../lib/motion.ts';
-import { useLoad, useMe, useMembers, useTasks } from '../lib/queries.ts';
+import { useTaskActions } from '../lib/mutations.ts';
+import { useEvents, useGaps, useLoad, useMe, useMembers, useTasks } from '../lib/queries.ts';
 
 type View = 'week' | 'month';
 const VIEW_KEY = 'almanac.calendarView';
@@ -78,10 +82,62 @@ function WeekBars({ dates, loads, today, onPick }: { dates: string[]; loads: Map
   );
 }
 
+/** Unplanned tasks with a deadline coming up, each with the day that has the most room before it. */
+function Gaps({ gaps, today }: { gaps: DayPick[]; today: string }) {
+  const actions = useTaskActions();
+  const [all, setAll] = useState(false);
+  const shown = all ? gaps : gaps.slice(0, 3);
+  return (
+    <section className="mt-6 rounded-[2rem] bg-surface-low p-4">
+      <div className="flex items-baseline justify-between gap-3 px-1">
+        <h2 className="text-sm font-medium text-primary">Due soon, no day yet</h2>
+        {gaps.length > 1 && (
+          <button type="button" onClick={() => actions.planAll(gaps.map((g) => ({ task: g.task, date: g.date })))} className="rounded-full px-3 py-1 text-sm font-medium text-primary hover:bg-surface-high">
+            Plan all {gaps.length}
+          </button>
+        )}
+      </div>
+      <ul className="mt-2 flex flex-col gap-1.5">
+        <AnimatePresence initial={false}>
+          {shown.map((g) => (
+            <motion.li
+              key={g.task.id}
+              layout
+              exit={{ opacity: 0, height: 0 }}
+              transition={expressive.defaultSpatial}
+              className="flex items-center gap-3 rounded-2xl bg-surface-high py-2 pr-2 pl-4"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block truncate">{g.task.title}</span>
+                <span className={`block text-xs ${g.fits ? 'text-on-surface-variant' : 'text-warm'}`}>{g.reason}</span>
+              </span>
+              <motion.button
+                type="button"
+                whileTap={{ scale: 0.92 }}
+                onClick={() => actions.move(g.task, g.date, today)}
+                aria-label={`Plan ${g.task.title} for ${fullDate(g.date)}`}
+                className="h-10 shrink-0 rounded-full bg-primary-container px-4 text-sm font-medium text-on-primary-container"
+              >
+                {g.date === today ? 'Today' : weekdayName(isoWeekday(g.date))}
+              </motion.button>
+            </motion.li>
+          ))}
+        </AnimatePresence>
+      </ul>
+      {gaps.length > 3 && !all && (
+        <button type="button" onClick={() => setAll(true)} className="mt-2 px-1 text-sm font-medium text-primary">
+          {gaps.length - 3} more
+        </button>
+      )}
+    </section>
+  );
+}
+
 function WeekList({
   dates,
   loads,
   byDay,
+  events,
   today,
   meId,
   onOpen,
@@ -90,6 +146,7 @@ function WeekList({
   dates: string[];
   loads: Map<string, DayLoad>;
   byDay: Map<string, Task[]>;
+  events: CalendarEvent[];
   today: string;
   meId: string;
   onOpen: (d: string) => void;
@@ -100,6 +157,7 @@ function WeekList({
       {dates.map((date) => {
         const load = loads.get(date);
         const tasks = byDay.get(date) ?? [];
+        const dayEvents = eventsOn(events, date);
         const isToday = date === today;
         const done = tasks.filter((t) => t.status === 'done').length;
         // Past days say what got done; today and later say how full they are.
@@ -120,6 +178,11 @@ function WeekList({
                 <span className={`shrink-0 text-sm ${date >= today && heavy(load) ? 'text-warm' : 'text-on-surface-variant'}`}>{summary}</span>
               )}
             </button>
+            {dayEvents.length > 0 && (
+              <div className="mt-2">
+                <EventList events={dayEvents} date={date} />
+              </div>
+            )}
             {tasks.length > 0 ? (
               <ul className="mt-2 flex flex-col gap-2">
                 <AnimatePresence initial={false}>
@@ -131,7 +194,7 @@ function WeekList({
                 </AnimatePresence>
               </ul>
             ) : date < today ? (
-              <p className="mt-1 px-1 text-sm text-on-surface-variant">Nothing was planned.</p>
+              dayEvents.length === 0 && <p className="mt-1 px-1 text-sm text-on-surface-variant">Nothing was planned.</p>
             ) : (
               <button
                 type="button"
@@ -232,6 +295,7 @@ export function Calendar() {
   const [anchor, setAnchor] = useState(today);
   const [openDay, setOpenDay] = useState<string | null>(null);
   const [moving, setMoving] = useState<Task | null>(null);
+  const [planning, setPlanning] = useState(false);
 
   const dates =
     view === 'week'
@@ -241,6 +305,8 @@ export function Calendar() {
   const end = dates.at(-1)!;
   const { data: loadDays } = useLoad(start, end, true, who);
   const { data: tasks } = useTasks({ status: 'all', who, from: start, to: end });
+  const { data: events } = useEvents(start, end, who === 'me');
+  const { data: gaps } = useGaps(who === 'me');
   const loads = new Map((loadDays ?? []).map((d) => [d.date, d]));
   const byDay = new Map<string, Task[]>();
   for (const t of sortDay(tasks ?? [])) byDay.set(t.plannedDate!, [...(byDay.get(t.plannedDate!) ?? []), t]);
@@ -276,6 +342,18 @@ export function Calendar() {
             Everyone
           </Chip>
         </div>
+      )}
+
+      {who === 'me' && (
+        <motion.button
+          type="button"
+          whileTap={{ scale: 0.97 }}
+          onClick={() => setPlanning(true)}
+          className="mb-4 flex h-12 w-full items-center justify-center gap-2 rounded-full bg-secondary-container font-medium text-on-secondary-container"
+        >
+          <Sparkle className="size-5" aria-hidden />
+          Plan my week
+        </motion.button>
       )}
 
       <div className="mb-4 flex items-center gap-2">
@@ -321,7 +399,8 @@ export function Calendar() {
           <p className="mt-2 px-1 text-sm text-on-surface-variant">
             {weekTotal ? `About ${minutesLabel(weekTotal)} planned this week.` : 'Nothing planned this week yet.'} Tap a day to plan it.
           </p>
-          <WeekList dates={dates} loads={loads} byDay={byDay} today={today} meId={me?.id ?? ''} onOpen={setOpenDay} onMove={setMoving} />
+          {who === 'me' && gaps && gaps.length > 0 && dates.at(-1)! >= today && <Gaps gaps={gaps} today={today} />}
+          <WeekList dates={dates} loads={loads} byDay={byDay} events={events ?? []} today={today} meId={me?.id ?? ''} onOpen={setOpenDay} onMove={setMoving} />
         </>
       ) : (
         <>
@@ -334,6 +413,7 @@ export function Calendar() {
 
       <DaySheet date={openDay} today={today} who={who} onClose={() => setOpenDay(null)} onMove={setMoving} />
       <MoveSheet task={moving} today={today} onClose={() => setMoving(null)} />
+      <PlanWeekSheet open={planning} onClose={() => setPlanning(false)} today={today} />
     </>
   );
 }

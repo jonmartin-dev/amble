@@ -3,7 +3,12 @@ import {
   api,
   type ActivityPage,
   type AiStatus,
+  type Briefing,
+  type CalendarAccount,
+  type CalendarEvent,
   type CapacityDay,
+  type DayPick,
+  type Gap,
   type DayLoad,
   type Group,
   type HouseholdMember,
@@ -138,6 +143,35 @@ export function useListHistory(groupId: string | null) {
 
 export function useAi() {
   return useQuery({ queryKey: ['ai'], queryFn: () => get<AiStatus>('/ai'), staleTime: 60_000 });
+}
+
+/** Your own calendar events between two dates. */
+export function useEvents(start: string, end: string, enabled = true) {
+  return useQuery({
+    queryKey: ['events', start, end],
+    queryFn: () => get<{ events: CalendarEvent[] }>(`/events?start=${start}&end=${end}`),
+    select: (d) => d.events,
+    enabled,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useCalendars() {
+  return useQuery({ queryKey: ['calendars'], queryFn: () => get<{ enabled: boolean; accounts: CalendarAccount[] }>('/calendars') });
+}
+
+export function useBriefing() {
+  return useQuery({ queryKey: ['briefing'], queryFn: () => get<Briefing>('/briefing') });
+}
+
+/** A day for each unplanned task with a deadline coming up. */
+export function useGaps(enabled = true) {
+  return useQuery({ queryKey: ['gaps'], queryFn: () => get<{ gaps: DayPick[] }>('/gaps'), select: (d) => d.gaps, enabled });
+}
+
+/** The day with the most room for one task before it's due; null when it has no deadline ahead. */
+export function useTaskGap(id: string, enabled = true) {
+  return useQuery({ queryKey: ['gaps', 'task', id], queryFn: () => get<{ gap: Gap | null }>(`/tasks/${id}/gap`), select: (d) => d.gap, enabled });
 }
 
 export function useCapacity() {

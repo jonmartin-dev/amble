@@ -7,7 +7,7 @@ export function Privacy() {
         Almanac
       </a>
       <h1 className="display mt-4 text-4xl font-medium">Privacy</h1>
-      <p className="mt-2 text-on-surface-variant">Last updated October 13, 2026</p>
+      <p className="mt-2 text-on-surface-variant">Last updated October 14, 2026</p>
 
       <div className="mt-8 flex flex-col gap-5 [&_h2]:display [&_h2]:text-xl [&_h2]:font-medium">
         <p>
@@ -22,13 +22,17 @@ export function Privacy() {
         </p>
         <h2>Google Calendar</h2>
         <p>
-          If you connect Google Calendar, Almanac reads the calendars you choose to work out how busy your days are. It only writes to a
-          calendar named "Almanac" that it creates in your account. It never edits or deletes your other events.
+          If you connect Google Calendar, Almanac reads the calendars you choose, to work out how busy your days are and plan around them.
+          It keeps a copy of their events from twelve weeks back to six months ahead on the household's server, refreshed every few
+          minutes. Only you see your events; everyone else in the household only sees that a day is busier. Almanac only reads: it never
+          adds, edits or deletes events. Disconnecting a calendar in Settings deletes the copy and tells Google to end Almanac's access.
         </p>
         <h2>AI features</h2>
         <p>
-          When the household turns AI features on, task titles and related details are sent to Anthropic's API to estimate effort and
-          suggest plans. Anthropic does not use API data to train its models.
+          When the server has an Anthropic API key, task titles and related details are sent to Anthropic's API to turn what you type
+          into tasks, estimate how long tasks take, word the morning's suggestions, plan your week and suggest tidying the backlog. For
+          the morning suggestions and planning your week, the titles and times of your own calendar events that day or week are sent too.
+          Anthropic does not use API data to train its models.
         </p>
         <h2>Claude connector</h2>
         <p>

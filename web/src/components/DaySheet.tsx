@@ -4,7 +4,8 @@ import type { Task } from '../lib/api.ts';
 import { dayLabel, daysFrom, fullDate } from '../lib/dates.ts';
 import { expressive } from '../lib/motion.ts';
 import { useTaskActions } from '../lib/mutations.ts';
-import { useLoad, useMe, useTasks } from '../lib/queries.ts';
+import { useEvents, useLoad, useMe, useTasks } from '../lib/queries.ts';
+import { calendarLine, EventList } from './Events.tsx';
 import { TaskRow } from './TaskRow.tsx';
 import { LoadBar, loadWord, minutesLabel, SectionTitle, Sheet } from './ui.tsx';
 
@@ -38,6 +39,7 @@ export function DaySheet({
   const open = date != null;
   const day = date ?? today;
   const { data: load } = useLoad(day, day, open, who);
+  const { data: events } = useEvents(day, day, open && who === 'me');
   const { data: planned } = useTasks({ status: 'all', who, from: day, to: day }, open);
   const { data: backlog } = useTasks({ unplanned: '1', who }, open && day >= today);
   const dayLoad = load?.[0];
@@ -88,8 +90,16 @@ export function DaySheet({
                     ? `Room for about ${minutesLabel(dayLoad.capacityMinutes)}.`
                     : 'No task time set aside for this day.'
                   : `${dayLoad.tasks} planned, about ${minutesLabel(dayLoad.plannedMinutes)} of ${minutesLabel(dayLoad.capacityMinutes)}.`}
+                {who !== 'everyone' && calendarLine(dayLoad, who === 'me' ? 'your' : 'their') && ` ${calendarLine(dayLoad, who === 'me' ? 'your' : 'their')}`}
               </p>
             </div>
+          )}
+
+          {events && events.length > 0 && (
+            <>
+              <SectionTitle>On your calendar</SectionTitle>
+              <EventList events={events} date={date} surface="bg-surface-high" />
+            </>
           )}
 
           <SectionTitle>Planned</SectionTitle>

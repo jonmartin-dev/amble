@@ -2,23 +2,26 @@
 
 A calm, shared, self-hosted planner for a household. It knows how full each day already is, from your tasks and your Google Calendar, and suggests what to do today and which day has room for something due later. It never nags.
 
-Status: early but usable. The day list, backlog, task details, smart add, repeating tasks, list templates, handing tasks to each other, the calendar, stats, the activity feed, settings and the Claude connector work, offline too, and capacity is learned from what gets done. The calendar-aware planner is next (see [SPEC.md](SPEC.md) for the plan and build order).
+Status: early but usable. The day list, backlog, task details, smart add, repeating tasks, list templates, handing tasks to each other, the calendar, stats, the activity feed, settings and the Claude connector work, offline too. Capacity is learned from what gets done, Google Calendar shapes how full each day is, and the planner suggests what to do today and where things fit. Reminders, adding to the calendar and files are next (see [SPEC.md](SPEC.md) for the plan and build order).
 
 ## Features so far
 
+- Here's today: the first open each morning shows how full the day is, what's on your calendar, what someone handed you, and a few backlog tasks worth pulling in, each with a reason. Nothing changes until you tap Add
 - Today: your day list by time of day, a load meter, what carried over and what's due. Swipe right to finish a task, swipe left or long-press to move it, with Undo for both
+- Google Calendar: each person connects their own and picks which calendars count. A day with more on it than usual has less room for tasks, and the calendar shows your events next to your tasks. It only reads
+- Planning help: a task due later shows the day with the most room before it, Plan my week lays out the next seven days around your calendar (tell it "keep Saturday free" and it does), and Tidy up suggests regrouping, merging duplicates and splitting tasks that are really several
 - Backlog in collapsible groups with search, a quick-add sheet, and a task page for notes, steps, links, deadlines, time of day, must-do and estimates
 - Moving a task shows the next two weeks with how full each day already is
 - Smart add: type anything into quick add ("call mom tomorrow evening, out of milk and eggs, Alex should mow every Saturday") and Claude Haiku turns it into tasks, list items and changes to existing tasks, using what's already in the household. You review and edit each one before anything is saved. Optional; it needs an Anthropic API key and has a monthly spending cap
 - Repeating tasks: on a schedule (every Sunday, the 1st, the 2nd Thursday, weekdays, seasonal months) or a set time after the last one was done, with skip and pause
-- Capacity learned from what each person finishes, so how full a day looks needs no setup; anyone can pin their own numbers
+- Capacity learned from what each person finishes, so how full a day looks needs no setup; anyone can pin their own numbers. Tasks without a size get one from Haiku in the background, and Stats shows how good its guesses are
 - Lists from templates: groceries sorted by aisle, shopping with links and prices, packing lists that reset for the next trip, with autocomplete from what you've bought before
 - A household: hand tasks to each other with a note, or share them with anyone; admins add people before they've signed in
 - Sign in with Google, or any OpenID Connect provider, limited to an allowlist of emails
 - Works offline: the app and what you last loaded open without a connection, changes show at once and sync in order when you're back, and if someone changed the same thing in the meantime the later change wins
 - Installable app (PWA) designed in Material 3 Expressive, with its spring motion tokens
 - Material You theming: pick any color and Almanac generates the full Material 3 palette (2025 spec) in five styles and three contrast levels, light, dark or automatic. It's saved per person and follows you across devices.
-- A Claude connector (MCP) with its own OAuth sign-in: Claude can add, plan, complete and hand off tasks, keep shopping lists, and check how full each day is
+- A Claude connector (MCP) with its own OAuth sign-in: Claude can add, plan, complete and hand off tasks, keep shopping lists, check how full each day is, suggest what to do today and draft a week's plan
 
 ## Run it locally
 
@@ -30,7 +33,7 @@ cp .env.example .env    # dev sign-in is on by default, so no OIDC setup is need
 pnpm dev                # http://localhost:5173
 ```
 
-`pnpm test` runs the tests, including contrast checks for every theme. `node --env-file=.env scripts/eval-smart-add.ts` scores smart add against real household phrasing at each effort level (it calls Haiku, a fraction of a cent per case). For a realistic household to look at, `node scripts/demo.ts <empty-folder> <your-email>` writes a demo database; run the app on it with `ALMANAC_DATA_DIR=<that-folder> pnpm dev`. With that running (and Chrome installed), `node scripts/screens.ts <email>` captures every screen at phone size in several themes, and `node scripts/smoke.ts <email>` clicks through the core loop and fails on any broken step or console error. Offline needs the service worker, which only a production build has: run `pnpm build`, start `node --env-file=.env server/index.ts` on the demo database, and `ALMANAC_URL=http://localhost:8787 node scripts/offline.ts <email>` goes offline, makes changes, comes back and checks they synced.
+`pnpm test` runs the tests, including contrast checks for every theme. `node --env-file=.env scripts/eval-smart-add.ts` scores smart add against real household phrasing at each effort level (it calls Haiku, a fraction of a cent per case). For a realistic household to look at, `node scripts/demo.ts <empty-folder> <your-email>` writes a demo database; run the app on it with `ALMANAC_DATA_DIR=<that-folder> pnpm dev`. With that running (and Chrome installed), `node scripts/screens.ts <email>` captures every screen at phone size in several themes, and `node scripts/smoke.ts <email>` clicks through the core loop and fails on any broken step or console error. The demo includes a sample calendar, so the briefing and planner have events to work around. Offline needs the service worker, which only a production build has: run `pnpm build`, start `node --env-file=.env server/index.ts` on the demo database, and `ALMANAC_URL=http://localhost:8787 node scripts/offline.ts <email>` goes offline, makes changes, comes back and checks they synced.
 
 ## Use it from Claude
 
@@ -54,7 +57,7 @@ For the Claude desktop app, add the same command under `mcpServers` in its confi
 cp .env.example .env    # set ALMANAC_PUBLIC_URL, the emails, OIDC_CLIENT_ID, and ALMANAC_DEV_LOGIN=0
 mkdir -p data secrets
 printf '%s' 'your-client-secret' > secrets/oidc_client_secret
-printf '%s' 'sk-ant-...' > secrets/anthropic_api_key   # optional, for smart add
+printf '%s' 'sk-ant-...' > secrets/anthropic_api_key   # optional, for smart add, estimates and planning help
 docker compose up -d --build
 ```
 

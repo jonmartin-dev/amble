@@ -93,6 +93,8 @@ export interface Task {
   mustDo: boolean;
   estimateMinutes: number | null;
   estimateSource: 'ai' | 'user' | 'learned' | null;
+  /** Haiku's guess, kept after someone changes it. */
+  aiEstimateMinutes?: number | null;
   status: 'open' | 'done' | 'archived';
   completedAt: string | null;
   handedBackNote: string | null;
@@ -112,9 +114,88 @@ export interface DayLoad {
   mustDo: number;
   plannedMinutes: number;
   guessed: number;
+  /** Room for tasks, after the calendar. */
   capacityMinutes: number;
+  /** Room on an ordinary day like this one, before the calendar. */
+  baseCapacityMinutes: number;
+  /** Busy calendar time, 7am to 10pm, and how many busy events. */
+  eventMinutes: number;
+  events: number;
+  /** Busy calendar time on a usual day like this weekday. */
+  usualEventMinutes: number;
   level: 'light' | 'moderate' | 'full' | 'over';
 }
+
+export interface CalendarEvent {
+  id: string;
+  title: string | null;
+  allDay: boolean;
+  start: string;
+  end: string;
+  /** All-day events: the first date, and the day after the last. */
+  startDate: string | null;
+  endDate: string | null;
+  busy: boolean;
+  calendar: string;
+  color: string | null;
+  url: string | null;
+}
+
+export interface CalendarAccount {
+  id: string;
+  email: string;
+  status: 'ok' | 'reconnect';
+  error: string | null;
+  syncedAt: string | null;
+  calendars: { id: string; name: string; color: string | null; primary: boolean; counts: boolean }[];
+}
+
+export interface Suggestion {
+  task: Task;
+  reason: string;
+  why: 'overdue' | 'due' | 'must' | 'waiting';
+  fits: boolean;
+}
+
+export interface Briefing {
+  date: string;
+  seen: boolean;
+  greeting: string;
+  load: DayLoad;
+  events: CalendarEvent[];
+  handedOver: { task: Task; from: string; note: string | null }[];
+  carriedOver: Task[];
+  suggestions: Suggestion[];
+}
+
+export interface DayPick {
+  task: Task;
+  date: string;
+  weekday: string;
+  fits: boolean;
+  reason: string;
+}
+
+export interface Gap {
+  date: string;
+  weekday: string;
+  fits: boolean;
+  reason: string;
+  estimateMinutes: number;
+}
+
+export interface PlannedWeek {
+  start: string;
+  days: DayLoad[];
+  picks: DayPick[];
+  note: string | null;
+  by: 'ai' | 'planner';
+}
+
+export type OrganizeSuggestion =
+  | { kind: 'regroup'; taskId: string; title: string; groupId: string; groupName: string; reason: string }
+  | { kind: 'merge'; taskIds: string[]; titles: string[]; title: string; reason: string }
+  | { kind: 'split'; taskId: string; title: string; into: string[]; reason: string };
 
 export interface Today {
   today: string;
@@ -199,6 +280,14 @@ export interface Stats {
   weekdays: { day: number; count: number }[];
   timesOfDay: { key: TimeOfDayBucket; count: number }[];
   pilingUp: { groupId: string | null; name: string; icon: string; color: string; open: number; oldestDays: number; added: number; done: number }[];
+  estimates: {
+    made: number;
+    kept: number;
+    raised: number;
+    lowered: number;
+    typicalRatio: number | null;
+    months: { month: string; made: number; kept: number }[];
+  };
   records: {
     streak: { current: number; best: number };
     bestWeek: { start: string; count: number } | null;

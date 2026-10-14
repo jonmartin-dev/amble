@@ -2,6 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import Sparkle from '~icons/material-symbols/auto-awesome-outline-rounded';
 import Folder from '~icons/material-symbols/folder-outline-rounded';
 import Bolt from '~icons/material-symbols/bolt-outline-rounded';
+import CalendarMonth from '~icons/material-symbols/calendar-month-outline-rounded';
 import Group from '~icons/material-symbols/group-outline-rounded';
 import History from '~icons/material-symbols/history-rounded';
 import Logout from '~icons/material-symbols/logout-rounded';
@@ -13,7 +14,7 @@ import { ListGroup, SectionTitle, SubpageHeader, Switch, minutesLabel } from '..
 import { type Member } from '../lib/api.ts';
 import { useSaveMe } from '../lib/mutations.ts';
 import { signOut } from '../lib/persist.ts';
-import { useAi, useGroups, useMe, useMembers } from '../lib/queries.ts';
+import { useAi, useCalendars, useGroups, useMe, useMembers } from '../lib/queries.ts';
 
 export function capacitySummary(me: Member | null) {
   const pinned = Object.keys(me?.capacity ?? {}).length;
@@ -32,7 +33,18 @@ export function Settings() {
 
   const showStreaks = me?.showStreaks ?? true;
   const { data: ai } = useAi();
+  const { data: calendars } = useCalendars();
   const smartOn = me?.smartAdd ?? true;
+  const counted = calendars?.accounts.flatMap((a) => a.calendars.filter((c) => c.counts)).length ?? 0;
+  const calendarSummary = !calendars
+    ? undefined
+    : !calendars.enabled
+      ? 'Not set up on this server'
+      : calendars.accounts.some((a) => a.status === 'reconnect')
+        ? 'Needs connecting again'
+        : calendars.accounts.length === 0
+          ? 'Connect Google Calendar so busy days have less room'
+          : `${counted} ${counted === 1 ? 'calendar counts' : 'calendars count'} toward your days`;
 
   return (
     <>
@@ -43,6 +55,7 @@ export function Settings() {
         rows={[
           { icon: <Palette className="size-6" />, title: 'Appearance', subtitle: 'Color, style, light and dark', to: '/appearance' },
           { icon: <Timer className="size-6" />, title: 'Daily capacity', subtitle: capacitySummary(me), to: '/settings/capacity' },
+          { icon: <CalendarMonth className="size-6" />, title: 'Calendars', subtitle: calendarSummary, to: '/settings/calendars' },
           ai?.available
             ? {
                 icon: <Sparkle className="size-6" />,
@@ -86,7 +99,7 @@ export function Settings() {
                 {
                   icon: <Bolt className="size-6" />,
                   title: 'AI this month',
-                  subtitle: `$${ai.monthSpendUsd.toFixed(2)} of the $${ai.monthlyCapUsd} cap. Smart add pauses past it until next month.`,
+                  subtitle: `$${ai.monthSpendUsd.toFixed(2)} of the $${ai.monthlyCapUsd} cap. Smart add, estimates and planning help pause past it until next month.`,
                 },
               ]
             : []),

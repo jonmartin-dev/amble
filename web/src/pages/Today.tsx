@@ -1,8 +1,11 @@
-import { Link } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 import { AnimatePresence, motion } from 'motion/react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import ChevronRight from '~icons/material-symbols/chevron-right-rounded';
+import Sparkle from '~icons/material-symbols/auto-awesome-outline-rounded';
 import ExpandMore from '~icons/material-symbols/expand-more-rounded';
 import Sun from '~icons/material-symbols/wb-sunny-outline-rounded';
+import { calendarLine, EventList } from '../components/Events.tsx';
 import { MoveSheet } from '../components/MoveSheet.tsx';
 import { PageHeader } from '../components/PageHeader.tsx';
 import { TaskRow } from '../components/TaskRow.tsx';
@@ -11,7 +14,8 @@ import type { Task, TimeOfDay } from '../lib/api.ts';
 import { firstName, longDate, planningDate } from '../lib/dates.ts';
 import { expressive } from '../lib/motion.ts';
 import { useTaskActions } from '../lib/mutations.ts';
-import { useMe, useMembers, useToday } from '../lib/queries.ts';
+import { useBriefing, useEvents, useMe, useMembers, useToday } from '../lib/queries.ts';
+import { briefingShown } from './Briefing.tsx';
 
 const sections: { key: TimeOfDay | 'anytime'; title: string }[] = [
   { key: 'morning', title: 'Morning' },
@@ -50,6 +54,15 @@ export function Today() {
   const actions = useTaskActions();
   const [moving, setMoving] = useState<Task | null>(null);
   const [showDone, setShowDone] = useState(false);
+  const navigate = useNavigate();
+  const briefing = useBriefing();
+  const { data: events } = useEvents(data?.today ?? '', data?.today ?? '', !!data && who === 'me');
+
+  // The first open of the day starts with the briefing, once it's fresh from the server.
+  useEffect(() => {
+    const b = briefing.data;
+    if (b && !b.seen && briefing.isFetchedAfterMount && !briefingShown(b.date)) void navigate({ to: '/briefing' });
+  }, [briefing.data, briefing.isFetchedAfterMount, navigate]);
 
   const today = data?.today ?? '';
   const row = (t: Task, { showDay = false, showTime = true } = {}) => (
@@ -90,8 +103,26 @@ export function Today() {
             {data.load.tasks === 0
               ? 'Nothing planned yet. Add something with the plus button, or pull one in from the backlog.'
               : `${data.load.tasks} planned, about ${minutesLabel(data.load.plannedMinutes)} of ${minutesLabel(data.load.capacityMinutes)}.`}
+            {who !== 'everyone' && calendarLine(data.load, who === 'me' ? 'your' : 'their') && ` ${calendarLine(data.load, who === 'me' ? 'your' : 'their')}`}
           </p>
         </section>
+      )}
+
+      {who === 'me' && briefing.data && briefing.data.suggestions.length > 0 && (
+        <Link to="/briefing" className="mt-2 flex items-center gap-3 rounded-3xl bg-surface-low py-3 pr-3 pl-4 transition-colors hover:bg-surface-container">
+          <Sparkle className="size-5 text-primary" aria-hidden />
+          <span className="flex-1 text-sm">
+            {briefing.data.suggestions.length === 1 ? '1 thing' : `${briefing.data.suggestions.length} things`} worth doing today
+          </span>
+          <ChevronRight className="size-5 text-on-surface-variant" aria-hidden />
+        </Link>
+      )}
+
+      {who === 'me' && events && events.length > 0 && (
+        <>
+          <SectionTitle>On your calendar</SectionTitle>
+          <EventList events={events} date={today} />
+        </>
       )}
 
       {data && data.carriedOver.length > 0 && (
