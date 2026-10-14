@@ -1,6 +1,5 @@
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, usePresence } from 'motion/react';
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
-import { expressive } from './motion.ts';
 
 interface Snack {
   id: number;
@@ -35,14 +34,7 @@ export function SnackbarProvider({ children }: { children: ReactNode }) {
       >
         <AnimatePresence>
           {snack && (
-            <motion.div
-              key={snack.id}
-              initial={{ opacity: 0, y: 24, scale: 0.96 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 12, scale: 0.98 }}
-              transition={expressive.fastSpatial}
-              className="pointer-events-auto flex w-full max-w-md items-center gap-3 rounded-2xl bg-on-surface py-2 pr-2 pl-4 text-surface shadow-lg"
-            >
+            <SnackCard key={snack.id}>
               <p className="flex-1 py-1.5 text-sm">{snack.message}</p>
               {snack.action && (
                 <button
@@ -56,11 +48,30 @@ export function SnackbarProvider({ children }: { children: ReactNode }) {
                   {snack.action.label}
                 </button>
               )}
-            </motion.div>
+            </SnackCard>
           )}
         </AnimatePresence>
       </div>
     </SnackbarContext.Provider>
+  );
+}
+
+/** Rises in and drops away as browser animations, which stay smooth while the page is busy. */
+function SnackCard({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [isPresent, safeToRemove] = usePresence();
+  useEffect(() => {
+    if (isPresent) return;
+    const el = ref.current;
+    if (!el || matchMedia('(prefers-reduced-motion: reduce)').matches) return safeToRemove();
+    el.style.pointerEvents = 'none';
+    el.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(12px) scale(0.98)' }], { duration: 200, easing: 'ease-in', fill: 'forwards' })
+      .finished.then(safeToRemove, safeToRemove);
+  }, [isPresent, safeToRemove]);
+  return (
+    <div ref={ref} className="snack-in pointer-events-auto flex w-full max-w-md items-center gap-3 rounded-2xl bg-on-surface py-2 pr-2 pl-4 text-surface shadow-lg">
+      {children}
+    </div>
   );
 }
 

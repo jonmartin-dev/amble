@@ -52,19 +52,17 @@ function appliedMessage(r: Applied) {
 /** A compact chip in the options row. Pressing it doesn't take focus, so the keyboard stays up. */
 function OptionChip({ on, open, onClick, children }: { on?: boolean; open?: boolean; onClick: () => void; children: ReactNode }) {
   return (
-    <motion.button
+    <button
       type="button"
       onPointerDown={(e) => e.preventDefault()}
       onClick={onClick}
-      whileTap={{ scale: 0.95 }}
-      transition={expressive.fastSpatial}
       aria-expanded={open}
-      className={`flex h-8 shrink-0 items-center gap-1 rounded-lg px-2.5 text-sm transition-colors ${
+      className={`press flex h-8 shrink-0 items-center gap-1 rounded-lg px-2.5 text-sm ${
         open ? 'bg-primary text-on-primary' : on ? 'bg-secondary-container text-on-secondary-container' : 'border border-outline-variant text-on-surface-variant'
       }`}
     >
       {children}
-    </motion.button>
+    </button>
   );
 }
 
@@ -413,17 +411,15 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
           disabled={phase === 'thinking'}
           className="max-h-[140px] min-h-12 min-w-0 flex-1 resize-none rounded-3xl bg-surface-high px-4 py-3 text-base leading-6 outline-none placeholder:text-on-surface-variant disabled:opacity-60"
         />
-        <motion.button
+        <button
           type="submit"
           onPointerDown={(e) => e.preventDefault()}
-          whileTap={{ scale: 0.9 }}
-          transition={expressive.fastSpatial}
           disabled={!text.trim() || phase === 'thinking'}
           aria-label={smart ? 'Read it' : 'Add'}
-          className="grid size-12 shrink-0 place-items-center rounded-full bg-primary text-on-primary disabled:opacity-40"
+          className="press grid size-12 shrink-0 place-items-center rounded-full bg-primary text-on-primary disabled:opacity-40"
         >
           {smart ? <Sparkle className="size-5" aria-hidden /> : <ArrowUp className="size-6" aria-hidden />}
-        </motion.button>
+        </button>
       </div>
     </form>
   );
@@ -443,16 +439,14 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
       >
         Edit text
       </button>
-      <motion.button
+      <button
         type="button"
-        whileTap={{ scale: 0.96 }}
-        transition={expressive.fastSpatial}
         onClick={apply}
         disabled={!chosen.length || !valid || applying}
-        className="h-12 flex-[1.4] rounded-full bg-primary font-medium text-on-primary disabled:opacity-40"
+        className="press h-12 flex-[1.4] rounded-full bg-primary font-medium text-on-primary disabled:opacity-40"
       >
         {applying ? 'Adding…' : chosen.length === drafts.length && chosen.length > 1 ? `Add all ${chosen.length}` : chosen.length ? `Add ${chosen.length}` : 'Nothing picked'}
-      </motion.button>
+      </button>
     </div>
   );
 

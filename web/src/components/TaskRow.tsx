@@ -1,5 +1,4 @@
 import { useNavigate } from '@tanstack/react-router';
-import { animate, motion, useMotionValue, useTransform, type PanInfo } from 'motion/react';
 import { useRef, useState } from 'react';
 import AttachFile from '~icons/material-symbols/attach-file-rounded';
 import Check from '~icons/material-symbols/check-rounded';
@@ -14,11 +13,15 @@ import RepeatIcon from '~icons/material-symbols/repeat-rounded';
 import Sun from '~icons/material-symbols/wb-sunny-outline-rounded';
 import type { Task } from '../lib/api.ts';
 import { dayLabel, daysFrom, firstName, reminderLabel } from '../lib/dates.ts';
-import { expressive } from '../lib/motion.ts';
 import { useTaskActions } from '../lib/mutations.ts';
 import { Checkbox } from './ui.tsx';
 
+// How far the finger has to travel to finish or move a task. The row follows at half that, so it
+// feels like it resists being pulled.
 const SWIPE = 96;
+const FOLLOW = 0.5;
+// Movement that decides between a swipe, a scroll, and a press.
+const SLOP = 8;
 
 interface Props {
   task: Task;
@@ -41,23 +44,22 @@ export function TaskRow({ task, today, meId, onMove, showDay = false, showGroup 
   // A tap shows right away; once the server's copy of the task changes (done, or undone), it wins.
   const [tapped, setTapped] = useState<{ done: boolean; version: string } | null>(null);
   const checked = tapped && tapped.version === task.updatedAt ? tapped.done : task.status === 'done';
-  const x = useMotionValue(0);
-  const doneOpacity = useTransform(x, [0, SWIPE], [0, 1]);
-  const moveOpacity = useTransform(x, [-SWIPE, 0], [1, 0]);
+  // What shows behind the row only exists while it's being swiped, so a long list builds less.
+  const [swiping, setSwiping] = useState(false);
   // A long press or a swipe ends in a click event too; `handled` swallows that click.
   const press = useRef<{ timer?: ReturnType<typeof setTimeout>; handled: boolean; x: number; y: number }>({ handled: false, x: 0, y: 0 });
+  // The swipe moves the row directly, without React, so it keeps up with the finger. Nothing here
+  // measures the page, so a list of rows is cheap to build.
+  const row = useRef<HTMLDivElement>(null);
+  const doneBg = useRef<HTMLDivElement | null>(null);
+  const moveBg = useRef<HTMLDivElement | null>(null);
+  const drag = useRef<{ state: 'idle' | 'pending' | 'swiping' | 'scrolling'; dx: number }>({ state: 'idle', dx: 0 });
 
   const toggle = () => {
     const next = !checked;
     setTapped({ done: next, version: task.updatedAt });
     // Let the check animation play before the row moves to its new section.
     setTimeout(() => actions.complete(task, next), 320);
-  };
-
-  const onDragEnd = (_: unknown, info: PanInfo) => {
-    if (info.offset.x > SWIPE) toggle();
-    else if (info.offset.x < -SWIPE) onMove(task);
-    void animate(x, 0, expressive.fastSpatial);
   };
 
   const startPress = (e: React.PointerEvent) => {
@@ -70,41 +72,108 @@ export function TaskRow({ task, today, meId, onMove, showDay = false, showGroup 
   };
   const cancelPress = () => clearTimeout(press.current.timer);
 
+  // The row slides by half the finger's travel; what's behind it shows as it goes.
+  const paint = () => {
+    const offset = drag.current.dx * FOLLOW;
+    if (row.current) row.current.style.transform = offset ? `translateX(${offset}px)` : '';
+    if (doneBg.current) doneBg.current.style.opacity = String(Math.min(Math.max(offset / (SWIPE * FOLLOW), 0), 1));
+    if (moveBg.current) moveBg.current.style.opacity = String(Math.min(Math.max(-offset / (SWIPE * FOLLOW), 0), 1));
+  };
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    drag.current = { state: 'pending', dx: 0 };
+    startPress(e);
+  };
+
+  const onPointerMove = (e: React.PointerEvent) => {
+    const d = drag.current;
+    if (d.state === 'idle' || d.state === 'scrolling') return;
+    const dx = e.clientX - press.current.x;
+    const dy = e.clientY - press.current.y;
+    if (d.state === 'pending') {
+      if (Math.abs(dx) + Math.abs(dy) <= SLOP) return;
+      cancelPress();
+      // Mostly up or down: a scroll, which the browser handles (the row only takes sideways pans).
+      if (Math.abs(dy) >= Math.abs(dx)) {
+        d.state = 'scrolling';
+        return;
+      }
+      d.state = 'swiping';
+      press.current.handled = true;
+      if (row.current) {
+        row.current.setPointerCapture(e.pointerId);
+        // Its own layer while it moves, so following the finger doesn't repaint it.
+        row.current.style.willChange = 'transform';
+      }
+      setSwiping(true);
+    }
+    d.dx = dx;
+    paint();
+  };
+
+  const onPointerEnd = () => {
+    cancelPress();
+    const d = drag.current;
+    const wasSwiping = d.state === 'swiping';
+    d.state = 'idle';
+    if (!wasSwiping) return;
+    if (d.dx > SWIPE) toggle();
+    else if (d.dx < -SWIPE) onMove(task);
+    // Spring back as a browser animation, then let go of what was behind the row, which stays
+    // as it was so the row slides back over it.
+    const el = row.current;
+    const from = el?.style.transform;
+    d.dx = 0;
+    if (el) el.style.transform = '';
+    const settle = () => {
+      if (el) el.style.willChange = '';
+      setSwiping(false);
+    };
+    if (!el || !from || matchMedia('(prefers-reduced-motion: reduce)').matches) return settle();
+    const easing = getComputedStyle(el).getPropertyValue('--spring-fast').trim() || 'ease-out';
+    el.animate([{ transform: from }, { transform: 'translateX(0)' }], { duration: 350, easing }).finished.then(settle, settle);
+  };
+
   const due = task.dueDate ? daysFrom(today, task.dueDate) : null;
   const fromSomeoneElse = task.createdById && task.createdById !== meId && task.assigneeId === meId;
   const subtasksDone = task.subtasks.filter((s) => s.done).length;
 
   return (
     <div className="relative overflow-hidden rounded-3xl">
-      <motion.div style={{ opacity: doneOpacity }} className="absolute inset-0 flex items-center bg-primary-container pl-5 text-on-primary-container">
-        <Check className="size-6" aria-hidden />
-      </motion.div>
-      <motion.div style={{ opacity: moveOpacity }} className="absolute inset-0 flex items-center justify-end bg-secondary-container pr-5 text-on-secondary-container">
-        <Event className="size-6" aria-hidden />
-      </motion.div>
-      <motion.div
-        style={{ x }}
-        drag="x"
-        dragConstraints={{ left: 0, right: 0 }}
-        dragElastic={0.5}
-        dragDirectionLock
-        onDragStart={() => {
-          cancelPress();
-          press.current.handled = true;
-        }}
-        onDragEnd={onDragEnd}
-        onPointerDown={startPress}
-        onPointerUp={cancelPress}
-        onPointerCancel={cancelPress}
-        onPointerMove={(e) => {
-          if (Math.abs(e.clientX - press.current.x) + Math.abs(e.clientY - press.current.y) > 8) cancelPress();
-        }}
+      {swiping && (
+        <>
+          <div
+            ref={(el) => {
+              doneBg.current = el;
+              if (el && drag.current.state === 'swiping') paint();
+            }}
+            className="absolute inset-0 flex items-center bg-primary-container pl-5 text-on-primary-container opacity-0"
+          >
+            <Check className="size-6" aria-hidden />
+          </div>
+          <div
+            ref={(el) => {
+              moveBg.current = el;
+              if (el && drag.current.state === 'swiping') paint();
+            }}
+            className="absolute inset-0 flex items-center justify-end bg-secondary-container pr-5 text-on-secondary-container opacity-0"
+          >
+            <Event className="size-6" aria-hidden />
+          </div>
+        </>
+      )}
+      <div
+        ref={row}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerEnd}
+        onPointerCancel={onPointerEnd}
         onClick={() => {
           if (press.current.handled) return;
           void navigate({ to: '/task/$taskId', params: { taskId: task.id } });
         }}
         onContextMenu={(e) => e.preventDefault()}
-        className={`relative flex cursor-pointer items-start gap-3 px-4 py-3.5 select-none ${surface}`}
+        className={`relative flex cursor-pointer touch-pan-y items-start gap-3 px-4 py-3.5 select-none ${surface}`}
       >
         <div className="pt-0.5">
           <Checkbox checked={checked} onChange={toggle} label={checked ? `Mark ${task.title} not done` : `Complete ${task.title}`} />
@@ -159,7 +228,7 @@ export function TaskRow({ task, today, meId, onMove, showDay = false, showGroup 
             <p className="mt-1.5 rounded-xl bg-surface-high px-3 py-1.5 text-sm text-on-surface-variant">"{task.handedBackNote}"</p>
           )}
         </div>
-      </motion.div>
+      </div>
     </div>
   );
 }

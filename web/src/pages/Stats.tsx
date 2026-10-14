@@ -1,12 +1,10 @@
 import { Link } from '@tanstack/react-router';
-import { motion } from 'motion/react';
 import type { ReactNode } from 'react';
 import { Avatar } from '../components/Avatar.tsx';
 import { GroupIcon, tone } from '../components/icons.tsx';
 import { PageHeader } from '../components/PageHeader.tsx';
 import type { Stats as StatsData, TimeOfDayBucket } from '../lib/api.ts';
-import { firstName, shortDate, weekdayName } from '../lib/dates.ts';
-import { expressive } from '../lib/motion.ts';
+import { firstName, monthShort, shortDate, weekdayName } from '../lib/dates.ts';
 import { useStats } from '../lib/queries.ts';
 
 const PALETTE = ['green', 'blue', 'orange', 'violet', 'rose', 'teal', 'lime'];
@@ -43,18 +41,16 @@ function Weekly({ data, colors }: { data: StatsData; colors: Map<string, string>
       <div className="flex h-36 items-end gap-1.5" role="img" aria-label={`Tasks done each week for the last ${data.weeks.length} weeks`}>
         {data.weeks.map((w, i) => (
           <div key={w.start} className="flex h-full flex-1 flex-col justify-end" title={`Week of ${shortDate(w.start)}: ${w.total}`}>
-            <motion.div
-              className="flex flex-col-reverse overflow-hidden rounded-lg"
-              initial={{ height: 0 }}
-              animate={{ height: `${(w.total / max) * 100}%` }}
-              transition={{ ...expressive.defaultSpatial, delay: i * 0.02 }}
+            <div
+              className="grow-up flex flex-col-reverse overflow-hidden rounded-lg"
+              style={{ height: `${(w.total / max) * 100}%`, animationDelay: `${i * 20}ms` }}
             >
               {order.map((id) =>
                 w.byMember[id] ? (
                   <span key={id} style={{ flexGrow: w.byMember[id], background: colors.get(id) ?? 'var(--color-outline)' }} className="block min-h-1" />
                 ) : null,
               )}
-            </motion.div>
+            </div>
             {w.total === 0 && <span className="block h-1 rounded-full bg-surface-highest" />}
           </div>
         ))}
@@ -84,11 +80,9 @@ function Weekdays({ data }: { data: StatsData }) {
     <div className="flex h-28 items-end gap-2">
       {data.weekdays.map((d, i) => (
         <div key={d.day} className="flex h-full flex-1 flex-col items-center justify-end gap-1.5">
-          <motion.span
-            className={`w-full max-w-8 rounded-lg ${d.day === top.day && top.count > 0 ? 'bg-primary' : 'bg-primary/40'}`}
-            initial={{ height: 0 }}
-            animate={{ height: `${Math.max((d.count / max) * 100, d.count ? 6 : 3)}%` }}
-            transition={{ ...expressive.defaultSpatial, delay: i * 0.03 }}
+          <span
+            className={`grow-up w-full max-w-8 rounded-lg ${d.day === top.day && top.count > 0 ? 'bg-primary' : 'bg-primary/40'}`}
+            style={{ height: `${Math.max((d.count / max) * 100, d.count ? 6 : 3)}%`, animationDelay: `${i * 30}ms` }}
           />
           <span className="text-xs text-on-surface-variant">{weekdayName(d.day, 'narrow')}</span>
         </div>
@@ -109,18 +103,11 @@ function TimesOfDay({ data }: { data: StatsData }) {
   const total = data.timesOfDay.reduce((n, t) => n + t.count, 0) || 1;
   return (
     <>
-      <div className="flex h-4 gap-0.5 overflow-hidden rounded-full">
+      <div className="grow-right flex h-4 gap-0.5 overflow-hidden rounded-full">
         {data.timesOfDay
           .filter((t) => t.count)
           .map((t) => (
-            <motion.span
-              key={t.key}
-              initial={{ flexGrow: 0 }}
-              animate={{ flexGrow: t.count }}
-              transition={expressive.defaultSpatial}
-              style={{ background: timeFills[t.key] }}
-              className="block"
-            />
+            <span key={t.key} style={{ flexGrow: t.count, background: timeFills[t.key] }} className="block" />
           ))}
       </div>
       <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
@@ -154,12 +141,7 @@ function PilingUp({ data }: { data: StatsData }) {
                 <span className="shrink-0 text-sm text-on-surface-variant">{g.open} open</span>
               </span>
               <span className="mt-1 block h-1.5 overflow-hidden rounded-full bg-surface-highest">
-                <motion.span
-                  className="block h-full rounded-full bg-primary"
-                  initial={{ width: 0 }}
-                  animate={{ width: `${(g.open / max) * 100}%` }}
-                  transition={expressive.defaultSpatial}
-                />
+                <span className="enter-right block h-full rounded-full bg-primary" style={{ transform: `translateX(${(g.open / max) * 100 - 100}%)` }} />
               </span>
               <span className="mt-1 block text-xs text-on-surface-variant">
                 {g.oldestDays > 0 ? `Oldest has waited ${plural(g.oldestDays, 'day')}` : 'All added today'}
@@ -183,8 +165,6 @@ function Tile({ value, label, detail }: { value: ReactNode; label: string; detai
   );
 }
 
-const monthName = (month: string) => new Date(`${month}-15T12:00:00`).toLocaleDateString(undefined, { month: 'short' });
-
 /** How Haiku's size guesses held up: each month's guesses, and how many people kept as they were. */
 function Estimates({ e }: { e: StatsData['estimates'] }) {
   const max = Math.max(1, ...e.months.map((m) => m.made));
@@ -203,15 +183,13 @@ function Estimates({ e }: { e: StatsData['estimates'] }) {
       <div className="mt-4 flex h-24 items-end gap-2" aria-label="Guesses kept each month">
         {e.months.map((m, i) => (
           <div key={m.month} className="flex h-full flex-1 flex-col items-center justify-end gap-1.5">
-            <motion.span
-              className="relative w-full max-w-8 overflow-hidden rounded-lg bg-primary/25"
-              initial={{ height: 0 }}
-              animate={{ height: `${m.made ? Math.max((m.made / max) * 100, 8) : 3}%` }}
-              transition={{ ...expressive.defaultSpatial, delay: i * 0.03 }}
+            <span
+              className="grow-up relative w-full max-w-8 overflow-hidden rounded-lg bg-primary/25"
+              style={{ height: `${m.made ? Math.max((m.made / max) * 100, 8) : 3}%`, animationDelay: `${i * 30}ms` }}
             >
               <span className="absolute inset-x-0 bottom-0 bg-primary" style={{ height: `${m.made ? (m.kept / m.made) * 100 : 0}%` }} />
-            </motion.span>
-            <span className="text-xs text-on-surface-variant">{monthName(m.month)}</span>
+            </span>
+            <span className="text-xs text-on-surface-variant">{monthShort(m.month)}</span>
           </div>
         ))}
       </div>

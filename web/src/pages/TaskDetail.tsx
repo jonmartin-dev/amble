@@ -137,14 +137,13 @@ function Detail({ task }: { task: Task }) {
                   ? `${dayLabel(gap.date, today, true).replace(/^./, (c) => c.toUpperCase())} has the most room before it's due.`
                   : `Every day before it's due is full. ${dayLabel(gap.date, today, true).replace(/^./, (c) => c.toUpperCase())} is the lightest.`}
               </p>
-              <motion.button
+              <button
                 type="button"
-                whileTap={{ scale: 0.94 }}
                 onClick={() => actions.move(task, gap.date, today)}
-                className="h-10 shrink-0 rounded-full bg-primary px-4 text-sm font-medium text-on-primary"
+                className="press h-10 shrink-0 rounded-full bg-primary px-4 text-sm font-medium text-on-primary"
               >
                 Plan it
-              </motion.button>
+              </button>
             </div>
           </motion.div>
         )}

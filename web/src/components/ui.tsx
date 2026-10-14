@@ -1,11 +1,11 @@
 import { Link, useRouter } from '@tanstack/react-router';
-import { AnimatePresence, motion, useDragControls, type PanInfo } from 'motion/react';
+import { AnimatePresence, motion, useDragControls, usePresence, type DragControls, type PanInfo } from 'motion/react';
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import ArrowBack from '~icons/material-symbols/arrow-back-rounded';
 import Check from '~icons/material-symbols/check-rounded';
 import ChevronRight from '~icons/material-symbols/chevron-right-rounded';
 import type { DayLoad } from '../lib/api.ts';
-import { expressive, standard } from '../lib/motion.ts';
+import { expressive } from '../lib/motion.ts';
 import { useBackToClose, useScrollLock, useVisualViewport } from '../lib/viewport.ts';
 
 /** Header for a page reached from somewhere else: back arrow and title. */
@@ -132,6 +132,7 @@ export function ButtonGroup<T extends string | number>({
             role="radio"
             aria-checked={on}
             onClick={() => onChange(o.value)}
+            initial={false}
             animate={{
               borderTopLeftRadius: on || first ? 999 : 8,
               borderBottomLeftRadius: on || first ? 999 : 8,
@@ -204,45 +205,95 @@ export function Sheet({
             exit={{ opacity: 0, pointerEvents: 'none' }}
             onClick={onClose}
           />
-          <motion.div
-            role="dialog"
-            aria-label={label}
-            className="fixed inset-x-0 z-30 mx-auto flex max-w-xl flex-col overflow-hidden rounded-t-[2rem] bg-surface-low shadow-2xl"
-            // The sheet glides to fit what's in it, and rides up with the keyboard.
-            initial={{ y: '100%', bottom: view.keyboard }}
-            animate={{
-              y: 0,
-              bottom: view.keyboard,
-              ...(natural.height ? { height: Math.min(natural.height, maxHeight) } : {}),
-            }}
-            exit={{ y: '100%', pointerEvents: 'none' }}
-            transition={{ ...expressive.defaultSpatial, bottom: standard.fastSpatial, height: expressive.defaultSpatial }}
-            style={{ maxHeight }}
-            drag="y"
-            dragListener={false}
-            dragControls={controls}
-            dragConstraints={{ top: 0, bottom: 0 }}
-            dragElastic={{ top: 0, bottom: 0.6 }}
-            onDragEnd={onDragEnd}
+          {/* Rides up with the keyboard. */}
+          <div
+            className="sheet-keyboard fixed inset-x-0 bottom-0 z-30 mx-auto max-w-xl"
+            style={view.keyboard ? { transform: `translateY(${-view.keyboard}px)` } : undefined}
           >
-            <div ref={natural.header} onPointerDown={(e) => controls.start(e)} className="shrink-0 cursor-grab touch-none px-5 pt-3 pb-1">
-              <div className="mx-auto mb-2 h-1 w-8 rounded-full bg-outline-variant" aria-hidden />
-              {header}
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5">
-              <div ref={natural.body} className={children ? 'pb-1' : ''}>
-                {children}
+            <SheetPanel
+              label={label}
+              // The sheet glides to fit what's in it.
+              height={natural.height ? Math.min(natural.height, maxHeight) : undefined}
+              maxHeight={maxHeight}
+              controls={controls}
+              onDragEnd={onDragEnd}
+            >
+              <div ref={natural.header} onPointerDown={(e) => controls.start(e)} className="shrink-0 cursor-grab touch-none px-5 pt-3 pb-1">
+                <div className="mx-auto mb-2 h-1 w-8 rounded-full bg-outline-variant" aria-hidden />
+                {header}
               </div>
-            </div>
-            <div ref={natural.footer} className={`shrink-0 px-5 ${footer ? 'pt-2' : ''}`}>
-              {footer}
-            </div>
-            {/* Room for the home indicator, which the keyboard hides while it's up. */}
-            <div ref={natural.spacer} className="shrink-0" style={{ height: keyboardUp ? 10 : 'max(1.25rem, env(safe-area-inset-bottom))' }} />
-          </motion.div>
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5">
+                <div ref={natural.body} className={children ? 'pb-1' : ''}>
+                  {children}
+                </div>
+              </div>
+              <div ref={natural.footer} className={`shrink-0 px-5 ${footer ? 'pt-2' : ''}`}>
+                {footer}
+              </div>
+              {/* Room for the home indicator, which the keyboard hides while it's up. */}
+              <div ref={natural.spacer} className="shrink-0" style={{ height: keyboardUp ? 10 : 'max(1.25rem, env(safe-area-inset-bottom))' }} />
+            </SheetPanel>
+          </div>
         </>
       )}
     </AnimatePresence>
+  );
+}
+
+/**
+ * The sheet itself. It slides in and out as browser animations, which run on the GPU even while
+ * the page is busy; Motion only follows a drag on the handle and glides the height to fit.
+ */
+function SheetPanel({
+  label,
+  height,
+  maxHeight,
+  controls,
+  onDragEnd,
+  children,
+}: {
+  label: string;
+  height?: number;
+  maxHeight: number;
+  controls: DragControls;
+  onDragEnd: (e: unknown, info: PanInfo) => void;
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [isPresent, safeToRemove] = usePresence();
+  useEffect(() => {
+    if (isPresent) return;
+    const el = ref.current;
+    if (!el || matchMedia('(prefers-reduced-motion: reduce)').matches) return safeToRemove();
+    // Down from wherever it is, partway through a drag included, and no more taps on the way out.
+    el.style.pointerEvents = 'none';
+    const style = getComputedStyle(el);
+    const from = style.transform === 'none' ? 'translateY(0)' : style.transform;
+    el.animate([{ transform: from }, { transform: 'translateY(100%)' }], {
+      duration: 420,
+      easing: style.getPropertyValue('--spring').trim() || 'ease-in',
+      fill: 'forwards',
+    }).finished.then(safeToRemove, safeToRemove);
+  }, [isPresent, safeToRemove]);
+
+  return (
+    <motion.div
+      ref={ref}
+      role="dialog"
+      aria-label={label}
+      className="sheet-in flex flex-col overflow-hidden rounded-t-[2rem] bg-surface-low shadow-2xl"
+      animate={height ? { height } : undefined}
+      transition={expressive.defaultSpatial}
+      style={{ maxHeight }}
+      drag="y"
+      dragListener={false}
+      dragControls={controls}
+      dragConstraints={{ top: 0, bottom: 0 }}
+      dragElastic={{ top: 0, bottom: 0.6 }}
+      onDragEnd={onDragEnd}
+    >
+      {children}
+    </motion.div>
   );
 }
 
@@ -268,12 +319,15 @@ function useNaturalHeight(open: boolean) {
   return { header, body, footer, spacer, height };
 }
 
-/** Round when open, morphing to a rounded square with a check when done (M3 Expressive shape morph). */
+/**
+ * Round when open, morphing to a rounded square with a check when done (M3 Expressive shape morph).
+ * Plain CSS rather than Motion: a list mounts one per row, and these stay cheap to build.
+ */
 export function Checkbox({ checked, onChange, label, size = 28 }: { checked: boolean; onChange: () => void; label: string; size?: number }) {
   // A tick the person just made gets a small burst; ones that load already ticked don't.
   const [burst, setBurst] = useState(0);
   return (
-    <motion.button
+    <button
       type="button"
       role="checkbox"
       aria-checked={checked}
@@ -283,44 +337,31 @@ export function Checkbox({ checked, onChange, label, size = 28 }: { checked: boo
         if (!checked) setBurst((b) => b + 1);
         onChange();
       }}
-      whileTap={{ scale: 0.85 }}
-      animate={{ borderRadius: checked ? size * 0.32 : size / 2 }}
-      transition={expressive.fastSpatial}
-      style={{ width: size, height: size }}
-      className={`relative grid shrink-0 place-items-center border-2 transition-colors ${
+      style={{ width: size, height: size, borderRadius: checked ? size * 0.32 : size / 2 }}
+      className={`check relative grid shrink-0 place-items-center border-2 ${
         checked ? 'border-primary bg-primary text-on-primary' : 'border-outline text-transparent'
       }`}
     >
-      <AnimatePresence initial={false}>
-        {checked && (
-          <motion.span initial={{ scale: 0, rotate: -45 }} animate={{ scale: 1, rotate: 0 }} exit={{ scale: 0 }} transition={expressive.fastSpatial}>
-            <Check style={{ width: size * 0.7, height: size * 0.7 }} aria-hidden />
-          </motion.span>
-        )}
-      </AnimatePresence>
+      <span className="check-mark grid" style={{ transform: checked ? 'none' : 'scale(0) rotate(-45deg)' }}>
+        <Check style={{ width: size * 0.7, height: size * 0.7 }} aria-hidden />
+      </span>
       {burst > 0 && checked && <Burst key={burst} size={size} />}
-    </motion.button>
+    </button>
   );
 }
 
-/** Eight dots that spring out from the middle and fade: the moment of finishing something. */
+/**
+ * Eight dots that spring out from the middle and fade: the moment of finishing something. Each dot
+ * flies along its own turned track with the same keyframes, which keeps the animation on the GPU.
+ */
 function Burst({ size }: { size: number }) {
   return (
     <span className="pointer-events-none absolute inset-0" aria-hidden>
-      {Array.from({ length: 8 }, (_, i) => {
-        const angle = (i / 8) * Math.PI * 2;
-        const reach = size * 0.95;
-        return (
-          <motion.span
-            key={i}
-            className="absolute top-1/2 left-1/2 size-1.5 rounded-full bg-primary"
-            style={{ marginLeft: -3, marginTop: -3 }}
-            initial={{ x: 0, y: 0, scale: 0.4, opacity: 1 }}
-            animate={{ x: Math.cos(angle) * reach, y: Math.sin(angle) * reach, scale: [0.4, 1.2, 0], opacity: [1, 1, 0] }}
-            transition={{ duration: 0.55, ease: [0.2, 0, 0, 1] }}
-          />
-        );
-      })}
+      {Array.from({ length: 8 }, (_, i) => (
+        <span key={i} className="absolute top-1/2 left-1/2 size-0" style={{ transform: `rotate(${i * 45}deg) scale(${size / 28})` }}>
+          <span className="burst-dot absolute -top-[3px] -left-[3px] size-1.5 rounded-full bg-primary" />
+        </span>
+      ))}
     </span>
   );
 }
@@ -338,19 +379,17 @@ export function Chip({
   icon?: ReactNode;
 }) {
   return (
-    <motion.button
+    <button
       type="button"
       aria-pressed={selected}
       onClick={onClick}
-      whileTap={{ scale: 0.95 }}
-      transition={expressive.fastSpatial}
-      className={`flex h-9 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-sm transition-colors ${
+      className={`press flex h-9 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-sm ${
         selected ? 'bg-secondary-container text-on-secondary-container' : 'border border-outline-variant text-on-surface-variant'
       } ${icon ? 'pl-2.5' : ''}`}
     >
       {icon}
       {children}
-    </motion.button>
+    </button>
   );
 }
 
@@ -387,16 +426,12 @@ export function LoadBar({
   track?: string;
   fill?: string;
 }) {
-  const pct = loadRatio(load) * 100;
+  const pct = Math.max(loadRatio(load) * 100, load.tasks ? 4 : 2);
   const heavy = load.level === 'full' || load.level === 'over';
   return (
     <div className={`h-3 overflow-hidden rounded-full ${track} ${className}`}>
-      <motion.div
-        className={`h-full rounded-full ${heavy ? 'bg-warm' : fill}`}
-        initial={false}
-        animate={{ width: `${Math.max(pct, load.tasks ? 4 : 2)}%` }}
-        transition={expressive.defaultSpatial}
-      />
+      {/* Full width, slid left so only `pct` of it shows: the round end stays round. */}
+      <div className={`fill-glide h-full rounded-full ${heavy ? 'bg-warm' : fill}`} style={{ transform: `translateX(${pct - 100}%)` }} />
     </div>
   );
 }

@@ -5,8 +5,19 @@ export function planningDate(now = new Date(), cutoffHour = 4) {
   return d;
 }
 
+// toLocaleDateString builds a new formatter on every call, which a screen full of dates pays for
+// on each render; one formatter per set of options is built once and kept.
+const formatters = new Map<string, Intl.DateTimeFormat>();
+
+function format(d: Date, options: Intl.DateTimeFormatOptions) {
+  const key = JSON.stringify(options);
+  let f = formatters.get(key);
+  if (!f) formatters.set(key, (f = new Intl.DateTimeFormat(undefined, options)));
+  return f.format(d);
+}
+
 export function longDate(d: Date) {
-  return d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+  return format(d, { weekday: 'long', month: 'short', day: 'numeric' });
 }
 
 export function firstName(name: string) {
@@ -41,12 +52,12 @@ export function dayLabel(iso: string, today: string, long = false) {
   if (diff === 1) return long ? 'tomorrow' : 'Tomorrow';
   if (diff === -1) return long ? 'yesterday' : 'Yesterday';
   const d = parse(iso);
-  if (diff > 1 && diff < 7) return d.toLocaleDateString(undefined, { weekday: long ? 'long' : 'short' });
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  if (diff > 1 && diff < 7) return format(d, { weekday: long ? 'long' : 'short' });
+  return format(d, { month: 'short', day: 'numeric' });
 }
 
 export function weekdayShort(iso: string) {
-  return parse(iso).toLocaleDateString(undefined, { weekday: 'short' });
+  return format(parse(iso), { weekday: 'short' });
 }
 
 export function dayOfMonth(iso: string) {
@@ -58,8 +69,14 @@ export function isoWeekday(iso: string) {
   return parse(iso).getDay() || 7;
 }
 
+let weekStart: number | undefined;
+
 /** The day this person's weeks start on, from their locale: 7 (Sunday) in the US, 1 (Monday) in most places. */
 export function weekStartDay(): number {
+  return (weekStart ??= readWeekStart());
+}
+
+function readWeekStart(): number {
   try {
     const locale = new Intl.Locale(navigator.language) as Intl.Locale & {
       getWeekInfo?: () => { firstDay: number };
@@ -95,31 +112,36 @@ export function monthGrid(iso: string, weekStart = weekStartDay()) {
 }
 
 export function monthLabel(iso: string) {
-  return parse(iso).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  return format(parse(iso), { month: 'long', year: 'numeric' });
+}
+
+/** "Oct" from "2026-10". */
+export function monthShort(month: string) {
+  return format(parse(`${month}-15`), { month: 'short' });
 }
 
 export function shortDate(iso: string) {
-  return parse(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return format(parse(iso), { month: 'short', day: 'numeric' });
 }
 
 export function fullDate(iso: string) {
-  return parse(iso).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+  return format(parse(iso), { weekday: 'long', month: 'long', day: 'numeric' });
 }
 
 /** A weekday's name from its ISO number. */
 export function weekdayName(day: number, style: 'short' | 'long' | 'narrow' = 'short') {
   // Jan 1, 2024 was a Monday.
-  return parse(addDays('2024-01-01', day - 1)).toLocaleDateString(undefined, { weekday: style });
+  return format(parse(addDays('2024-01-01', day - 1)), { weekday: style });
 }
 
 export function timeLabel(at: string | Date) {
-  return new Date(at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  return format(new Date(at), { hour: 'numeric', minute: '2-digit' });
 }
 
 /** "6 PM", or "6:30 PM" when it isn't on the hour. */
 export function clockLabel(at: string | Date) {
   const d = new Date(at);
-  return d.toLocaleTimeString(undefined, { hour: 'numeric', ...(d.getMinutes() ? { minute: '2-digit' } : {}) });
+  return format(d, d.getMinutes() ? { hour: 'numeric', minute: '2-digit' } : { hour: 'numeric' });
 }
 
 /** When a reminder goes off: "Today 6 PM", "Tomorrow 9 AM", "Thu 6 PM", "Oct 21, 9 AM". Plain calendar days, not planning days. */
@@ -132,8 +154,8 @@ export function reminderLabel(at: string | Date) {
       : diff === 1
         ? 'Tomorrow'
         : diff > 1 && diff < 7
-          ? d.toLocaleDateString(undefined, { weekday: 'short' })
-          : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', ...(d.getFullYear() !== new Date().getFullYear() && { year: 'numeric' }) });
+          ? format(d, { weekday: 'short' })
+          : format(d, d.getFullYear() !== new Date().getFullYear() ? { month: 'short', day: 'numeric', year: 'numeric' } : { month: 'short', day: 'numeric' });
   return `${day}${diff > 1 && diff < 7 ? '' : diff < 0 || diff >= 7 ? ',' : ''} ${clockLabel(d)}`;
 }
 

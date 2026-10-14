@@ -185,14 +185,13 @@ export function ListPage({ groupId }: { groupId: string }) {
             className="w-16 rounded-2xl bg-surface-high px-3 py-3.5 text-center outline-none placeholder:text-on-surface-variant"
           />
         )}
-        <motion.button
+        <button
           type="submit"
-          whileTap={{ scale: 0.9 }}
           aria-label="Add item"
-          className="grid size-[3.25rem] shrink-0 place-items-center rounded-2xl bg-primary text-on-primary"
+          className="press grid size-[3.25rem] shrink-0 place-items-center rounded-2xl bg-primary text-on-primary"
         >
           <Add className="size-6" aria-hidden />
-        </motion.button>
+        </button>
       </form>
       <AnimatePresence initial={false}>
         {suggestions.length > 0 && (

@@ -62,11 +62,10 @@ function WeekBars({ dates, loads, today, onPick }: { dates: string[]; loads: Map
             className="flex flex-1 flex-col items-center gap-2 rounded-2xl pt-1 pb-1.5 transition-colors hover:bg-surface-high"
           >
             <span className="relative flex h-28 w-full max-w-9 items-end overflow-hidden rounded-xl bg-surface-highest">
-              <motion.span
-                className={`w-full rounded-xl ${heavy(load) ? 'bg-warm' : isToday ? 'bg-primary' : 'bg-primary/60'}`}
-                initial={{ height: 0 }}
-                animate={{ height: `${Math.max(ratio * 100, load?.tasks ? 8 : 0)}%` }}
-                transition={{ ...expressive.defaultSpatial, delay: i * 0.03 }}
+              {/* Full height, slid down so only its share shows: rises in, then glides as the day fills. */}
+              <span
+                className={`enter-up fill-glide absolute inset-0 rounded-xl ${heavy(load) ? 'bg-warm' : isToday ? 'bg-primary' : 'bg-primary/60'}`}
+                style={{ transform: `translateY(${100 - Math.max(ratio * 100, load?.tasks ? 8 : 0)}%)`, animationDelay: `${i * 30}ms` }}
               />
             </span>
             <span className={`text-xs ${isToday ? 'font-medium text-primary' : 'text-on-surface-variant'}`}>{weekdayName(isoWeekday(date), 'narrow')}</span>
@@ -111,15 +110,14 @@ function Gaps({ gaps, today }: { gaps: DayPick[]; today: string }) {
                 <span className="block truncate">{g.task.title}</span>
                 <span className={`block text-xs ${g.fits ? 'text-on-surface-variant' : 'text-warm'}`}>{g.reason}</span>
               </span>
-              <motion.button
+              <button
                 type="button"
-                whileTap={{ scale: 0.92 }}
                 onClick={() => actions.move(g.task, g.date, today)}
                 aria-label={`Plan ${g.task.title} for ${fullDate(g.date)}`}
-                className="h-10 shrink-0 rounded-full bg-primary-container px-4 text-sm font-medium text-on-primary-container"
+                className="press h-10 shrink-0 rounded-full bg-primary-container px-4 text-sm font-medium text-on-primary-container"
               >
                 {g.date === today ? 'Today' : weekdayName(isoWeekday(g.date))}
-              </motion.button>
+              </button>
             </motion.li>
           ))}
         </AnimatePresence>
@@ -345,15 +343,14 @@ export function Calendar() {
       )}
 
       {who === 'me' && (
-        <motion.button
+        <button
           type="button"
-          whileTap={{ scale: 0.97 }}
           onClick={() => setPlanning(true)}
-          className="mb-4 flex h-12 w-full items-center justify-center gap-2 rounded-full bg-secondary-container font-medium text-on-secondary-container"
+          className="press mb-4 flex h-12 w-full items-center justify-center gap-2 rounded-full bg-secondary-container font-medium text-on-secondary-container"
         >
           <Sparkle className="size-5" aria-hidden />
           Plan my week
-        </motion.button>
+        </button>
       )}
 
       <div className="mb-4 flex items-center gap-2">

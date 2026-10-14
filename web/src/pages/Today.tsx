@@ -163,15 +163,14 @@ export function Today() {
             render={(t) => (
               <div className="flex items-center gap-2">
                 <div className="min-w-0 flex-1">{row(t)}</div>
-                <motion.button
+                <button
                   type="button"
-                  whileTap={{ scale: 0.9 }}
                   onClick={() => actions.move(t, today, today)}
                   aria-label={`Do ${t.title} today`}
-                  className="grid size-12 shrink-0 place-items-center rounded-2xl bg-primary-container text-on-primary-container"
+                  className="press grid size-12 shrink-0 place-items-center rounded-2xl bg-primary-container text-on-primary-container"
                 >
                   <Sun className="size-6" aria-hidden />
-                </motion.button>
+                </button>
               </div>
             )}
           />

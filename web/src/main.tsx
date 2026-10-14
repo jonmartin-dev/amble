@@ -12,7 +12,7 @@ import {
   useParams,
   useRouterState,
 } from '@tanstack/react-router';
-import { motion, MotionConfig } from 'motion/react';
+import { MotionConfig } from 'motion/react';
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AddSheet } from './components/AddSheet.tsx';
@@ -20,7 +20,6 @@ import { FloatingToolbar } from './components/FloatingToolbar.tsx';
 import { StatusPill } from './components/StatusPill.tsx';
 import { basePath } from './lib/api.ts';
 import { syncCalendarsWhileOpen } from './lib/calendar.ts';
-import { expressive } from './lib/motion.ts';
 import { refreshViews } from './lib/mutations.ts';
 import { CACHE_MAX_AGE_MS, CACHE_VERSION, claimDevice, idbPersister, prefetchForOffline, shouldSave } from './lib/persist.ts';
 import { refreshPush } from './lib/push.ts';
@@ -90,6 +89,9 @@ function Root() {
   const qc = useQueryClient();
   const session = useSession();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  // The page on screen. The location changes the moment a link is tapped, but the old page stays
+  // until the new one is ready; keying on the location would build the old page again in between.
+  const shown = useRouterState({ select: (s) => s.matches.at(-1)?.pathname ?? s.location.pathname });
   const navigate = useNavigate();
   const [adding, setAdding] = useState(false);
   const memberId = session.data?.member?.id;
@@ -126,10 +128,10 @@ function Root() {
   return (
     <div className="min-h-dvh">
       <main className="mx-auto max-w-xl px-4 pt-6 pb-36" style={{ paddingTop: 'max(1.5rem, env(safe-area-inset-top))' }}>
-        {/* Each page rises in softly; the springs settle quickly so it never feels slow. */}
-        <motion.div key={pathname} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={expressive.defaultSpatial}>
+        {/* Each page rises in softly, as a CSS animation so it stays smooth while the page is built. */}
+        <div key={shown} className="page-in">
           <Outlet />
-        </motion.div>
+        </div>
       </main>
       <StatusPill />
       <FloatingToolbar onAdd={() => setAdding(true)} />
@@ -185,13 +187,11 @@ const routeTree = rootRoute.addChildren([
 // Apply the saved theme before the first paint so there's no flash of the default colors.
 applyTheme(loadLocalTheme());
 
-// Same-document View Transitions crossfade between screens where the browser supports them. Only
-// for a new screen: a sheet's history entry coming and going isn't one, and a transition then would
-// swallow the next tap or swipe while it plays.
+// No View Transitions between screens: on a phone the crossfade's snapshots held up every switch,
+// and the page's own rise-in already marks the change.
 const router = createRouter({
   routeTree,
   basepath: basePath || '/',
-  defaultViewTransition: { types: ({ pathChanged }) => (pathChanged ? ['screen'] : false) },
 });
 
 declare module '@tanstack/react-router' {
