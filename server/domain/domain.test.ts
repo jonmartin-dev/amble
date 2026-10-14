@@ -15,7 +15,7 @@ import {
   updateGroup,
   type Actor,
 } from './household.ts';
-import { addListItems, checkListItems, getListItems } from './lists.ts';
+import { addListItems, checkListItems, getListItems, openTrip, planTrip, setListSections } from './lists.ts';
 import { capacityFor, findGap, getLoad } from './load.ts';
 import { getStats } from './stats.ts';
 import {
@@ -186,6 +186,67 @@ describe('lists', () => {
   it('refuses to add items to a task group', () => {
     const home = db.select().from(groups).all().find((g) => g.name === 'Home')!;
     expect(() => addListItems(db, asJon, home, [{ name: 'x' }])).toThrow(/task group/);
+  });
+
+  it("guesses a new item's aisle unless someone said, and one bought before keeps its own", () => {
+    const groceries = resolveGroup(db, jon, 'Groceries', 'list');
+    addListItems(db, asJon, groceries, [{ name: 'Oat milk', section: 'Pantry' }]);
+    checkListItems(db, asJon, groceries, ['Oat milk']);
+    const added = addListItems(db, asJon, groceries, [
+      { name: 'Peanut butter' },
+      { name: 'Lemons' },
+      { name: 'Chicken broth' },
+      { name: 'Widgets' },
+      { name: 'Eggs', section: null },
+      { name: 'oat milk' },
+    ]);
+    expect(added.map((r) => r.item.section)).toEqual(['Pantry', 'Produce', 'Pantry', null, null, 'Pantry']);
+  });
+
+  it('fills a new list from a kit, and gift ideas start private', () => {
+    const packing = createGroup(db, asJon, { name: 'Beach trip', kind: 'list', template: 'packing', kit: 'Beach' });
+    expect(getListItems(db, packing).open.map((i) => i.name)).toContain('Sunscreen');
+    const empty = createGroup(db, asJon, { name: 'Ski trip', kind: 'list', template: 'packing', kit: null });
+    expect(getListItems(db, empty).open).toEqual([]);
+    expect(() => createGroup(db, asJon, { name: 'Moon trip', kind: 'list', template: 'packing', kit: 'Moon' })).toThrow(/no "Moon" kit/);
+    const gifts = createGroup(db, asJon, { name: 'Gift ideas', kind: 'list', template: 'gifts' });
+    expect(gifts.privateTo).toBe(jon.id);
+    expect(createGroup(db, asJon, { name: 'Shared gifts', kind: 'list', template: 'gifts', private: false }).privateTo).toBeNull();
+  });
+
+  it('renames, reorders and removes sections, taking items along', () => {
+    const groceries = resolveGroup(db, jon, 'Groceries', 'list');
+    addListItems(db, asJon, groceries, [
+      { name: 'Apples', section: 'Produce' },
+      { name: 'Ice cream', section: 'Frozen' },
+      { name: 'Rice', section: 'Pantry' },
+    ]);
+    const updated = setListSections(db, asJon, groceries, ['Frozen', 'Fruit & veg', 'Pantry', 'pantry'], [{ from: 'Produce', to: 'Fruit & veg' }]);
+    expect(updated.sections).toEqual(['Frozen', 'Fruit & veg', 'pantry']);
+    const items = getListItems(db, updated).open;
+    expect(Object.fromEntries(items.map((i) => [i.name, i.section]))).toEqual({ Apples: 'Fruit & veg', 'Ice cream': 'Frozen', Rice: 'Pantry' });
+    setListSections(db, asJon, updated, ['Frozen']);
+    expect(getListItems(db, updated).open.find((i) => i.name === 'Apples')!.section).toBeNull();
+  });
+
+  it("plans a list's trip as one task, and moves it rather than making a second", () => {
+    const groceries = resolveGroup(db, jon, 'Groceries', 'list');
+    const first = planTrip(db, asJon, groceries, addDays(today, 2));
+    expect(first).toMatchObject({ created: true, task: { title: 'Grocery run', listId: groceries.id, listName: 'Groceries', groupName: 'Errands', estimateMinutes: 45 } });
+    const second = planTrip(db, asJon, groceries, addDays(today, 3));
+    expect(second).toMatchObject({ created: false, task: { id: first.task.id, plannedDate: addDays(today, 3) } });
+    expect(openTrip(db, groceries)?.id).toBe(first.task.id);
+    const costco = createGroup(db, asJon, { name: 'Costco', kind: 'list', template: 'groceries' });
+    expect(planTrip(db, asJon, costco, null).task.title).toBe('Costco run');
+    const packing = createGroup(db, asJon, { name: 'Packing', kind: 'list', template: 'packing' });
+    expect(() => planTrip(db, asJon, packing, null)).toThrow(/plans as a trip/);
+  });
+
+  it("keeps someone else's private list name off a trip task the household can see", () => {
+    const secret = createGroup(db, asJon, { name: 'Surprise party', kind: 'list', template: 'shopping', private: true });
+    const [task] = createTasks(db, asJon, [{ title: 'Party supplies run', listId: secret.id }]);
+    expect(getTask(db, jon, task!.id).listName).toBe('Surprise party');
+    expect(getTask(db, alex, task!.id).listName).toBeNull();
   });
 });
 

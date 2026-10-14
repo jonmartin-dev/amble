@@ -130,6 +130,8 @@ function describe(e: ActivityEntry, ctx: Context): { text: ReactNode; note?: str
       return { text: s(`changed ${items(d)} on ${d.list}`) };
     case 'list.reset':
       return { text: s(`reset ${d.list} for next time`) };
+    case 'list.sections_changed':
+      return { text: s(`changed the sections on ${d.list}`) };
     default:
       return { text: e.action };
   }

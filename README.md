@@ -2,7 +2,7 @@
 
 A calm, shared, self-hosted planner for a household. It knows how full each day already is, from your tasks and your Google Calendar, and suggests what to do today and which day has room for something due later. It never nags.
 
-Status: early but usable. The day list, backlog, task details, smart add, repeating tasks, list templates, handing tasks to each other, the calendar, stats, the activity feed, settings and the Claude connector work, offline too. Capacity is learned from what gets done, Google Calendar shapes how full each day is, and the planner suggests what to do today and where things fit. Reminders and files on tasks work too. An Android app is next.
+Status: early but usable. The day list, backlog, task details, smart add, repeating tasks, lists from eleven templates, handing tasks to each other, the calendar, stats, the activity feed, settings and the Claude connector work, offline too. Capacity is learned from what gets done, Google Calendar shapes how full each day is, and the planner suggests what to do today and where things fit. Reminders and files on tasks work too. An Android app is next.
 
 <p>
   <img src="docs/screenshots/briefing.png" width="160" alt="Here's today: the day's load, calendar events, a task handed over and a suggestion">
@@ -10,6 +10,8 @@ Status: early but usable. The day list, backlog, task details, smart add, repeat
   <img src="docs/screenshots/calendar.png" width="160" alt="Calendar: a week of load bars, with tasks due soon and the day that has room for each">
   <img src="docs/screenshots/task.png" width="160" alt="A task's page: day, time of day, deadline, reminder, repeat, group and person">
   <img src="docs/screenshots/groceries.png" width="160" alt="Groceries in dark mode, sorted by aisle with quantities">
+  <img src="docs/screenshots/lists.png" width="160" alt="A new list: eleven templates, from groceries and packing to gift ideas and a meal plan">
+  <img src="docs/screenshots/quick-add.png" width="160" alt="Quick add: what's typed in large type, with a row of chips for the day, group and person">
   <img src="docs/screenshots/appearance.png" width="160" alt="Appearance: Material You colors and styles, light, dark or automatic">
 </p>
 
@@ -26,7 +28,7 @@ Status: early but usable. The day list, backlog, task details, smart add, repeat
 - Smart add: type anything into quick add ("call mom tomorrow evening, out of milk and eggs, Alex should mow every Saturday") and Claude Haiku turns it into tasks, list items and changes to existing tasks, using what's already in the household. You review and edit each one before anything is saved. Optional; it needs an Anthropic API key and has a monthly spending cap
 - Repeating tasks: on a schedule (every Sunday, the 1st, the 2nd Thursday, weekdays, seasonal months) or a set time after the last one was done, with skip and pause
 - Capacity learned from what each person finishes, so how full a day looks needs no setup; anyone can pin their own numbers. Tasks without a size get one from Haiku in the background, and Stats shows how good its guesses are
-- Lists from templates: groceries sorted by aisle, shopping with links and prices, packing lists that reset for the next trip, with autocomplete from what you've bought before
+- Lists from eleven templates: groceries that sort themselves by aisle as you type, shopping with links, prices and stores, packing lists from a kit that reset for the next trip, private gift ideas by person, errands by place, a meal plan whose ingredients go to Groceries in one tap, the hardware store, things to watch and read, places to try, and routines. Tap an item to check it off, hold it to change it, and change any list's sections. A grocery run plans as one task on the day with room, and shows what's left on the list
 - A household: hand tasks to each other with a note, or share them with anyone; admins add people before they've signed in
 - Sign in with Google, or any OpenID Connect provider, limited to an allowlist of emails
 - Works offline: the app and what you last loaded open without a connection, changes show at once and sync in order when you're back, and if someone changed the same thing in the meantime the later change wins

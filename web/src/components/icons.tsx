@@ -9,6 +9,13 @@ import Palette from '~icons/material-symbols/palette-outline-rounded';
 import Rocket from '~icons/material-symbols/rocket-launch-outline-rounded';
 import Bag from '~icons/material-symbols/shopping-bag-outline-rounded';
 import Cart from '~icons/material-symbols/shopping-cart-outline-rounded';
+import Dinner from '~icons/material-symbols/dinner-dining-outline-rounded';
+import Hardware from '~icons/material-symbols/hardware-outline-rounded';
+import Place from '~icons/material-symbols/location-on-outline-rounded';
+import MapIcon from '~icons/material-symbols/map-outline-rounded';
+import Movie from '~icons/material-symbols/movie-outline-rounded';
+import Gift from '~icons/material-symbols/redeem-rounded';
+import Repeat from '~icons/material-symbols/repeat-rounded';
 
 type Icon = ComponentType<SVGProps<SVGSVGElement>>;
 
@@ -23,7 +30,17 @@ const groupIcons: Record<string, Icon> = {
   checklist: Checklist,
   'shopping-bag': Bag,
   luggage: Luggage,
+  redeem: Gift,
+  'location-on': Place,
+  'dinner-dining': Dinner,
+  hardware: Hardware,
+  movie: Movie,
+  map: MapIcon,
+  repeat: Repeat,
 };
+
+/** Every icon a group or list can have, in the order the pickers show them. */
+export const GROUP_ICON_NAMES = Object.keys(groupIcons);
 
 export function GroupIcon({ name, className }: { name: string; className?: string }) {
   const Component = groupIcons[name] ?? Folder;

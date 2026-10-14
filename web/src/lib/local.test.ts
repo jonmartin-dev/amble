@@ -29,7 +29,7 @@ beforeEach(() => {
     auth: { provider: 'Google', oidc: true, devEmails: [], privacyContact: '' },
   });
   qc.setQueryData<{ groups: Group[] }>(['groups'], {
-    groups: [{ id: 'home', name: 'Home', icon: 'home', color: 'green', kind: 'tasks', template: null, privateTo: null, open: 1 }],
+    groups: [{ id: 'home', name: 'Home', icon: 'home', color: 'green', kind: 'tasks', template: null, sections: null, privateTo: null, open: 1 }],
   });
   const carried = task({ id: 'carried', plannedDate: addDays(TODAY, -1), groupId: 'home', estimateMinutes: 45 });
   qc.setQueryData<Today>(['today', 'me'], { today: TODAY, planned: [], carriedOver: [carried], due: [], done: [], load: load(TODAY) });
@@ -89,17 +89,17 @@ describe('changes show in every view at once', () => {
 
 describe('lists change at once too', () => {
   const item = (fields: Partial<ListItem> & { id: string; name: string }): ListItem => ({
-    groupId: 'groceries', quantity: null, note: null, section: null, url: null, price: null, checkedAt: null, ...fields,
+    groupId: 'groceries', quantity: null, note: null, section: null, url: null, price: null, store: null, parts: null, checkedAt: null, ...fields,
   });
 
   beforeEach(() => {
     qc.setQueryData(['list', 'groceries'], {
-      group: { id: 'groceries', name: 'Groceries', icon: 'shopping-cart', color: 'green', kind: 'list', template: 'groceries', privateTo: null, open: 1 },
+      group: { id: 'groceries', name: 'Groceries', icon: 'shopping-cart', color: 'green', kind: 'list', template: 'groceries', sections: null, privateTo: null, open: 1 },
       open: [item({ id: 'milk', name: 'Milk' })],
       checked: [item({ id: 'eggs', name: 'Eggs', checkedAt: '2026-10-10T12:00:00Z' })],
     });
     qc.setQueryData<{ groups: Group[] }>(['groups'], (d) => ({
-      groups: [...d!.groups, { id: 'groceries', name: 'Groceries', icon: 'shopping-cart', color: 'green', kind: 'list', template: 'groceries', privateTo: null, open: 1 }],
+      groups: [...d!.groups, { id: 'groceries', name: 'Groceries', icon: 'shopping-cart', color: 'green', kind: 'list', template: 'groceries', sections: null, privateTo: null, open: 1 }],
     }));
   });
 
@@ -113,6 +113,11 @@ describe('lists change at once too', () => {
     expect(list().open.map((i) => `${i.name}${i.quantity ? ` x${i.quantity}` : ''}`)).toEqual(['Milk x2', 'Bread', 'Eggs']);
     expect(list().checked).toEqual([]);
     expect(count()).toBe(3);
+  });
+
+  it("keeps a new item's store and section, with no ingredients until it has some", () => {
+    addListItem(qc, 'groceries', { id: 'n4', name: 'Rice', section: 'Pantry', store: 'Costco' });
+    expect(list().open.find((i) => i.name === 'Rice')).toMatchObject({ section: 'Pantry', store: 'Costco', parts: null, checkedAt: null });
   });
 
   it('checks off, puts back and resets', () => {

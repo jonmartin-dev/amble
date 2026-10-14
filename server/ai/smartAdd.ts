@@ -4,7 +4,7 @@ import { and, desc, eq, isNotNull, isNull } from 'drizzle-orm';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { z } from 'zod';
 import type { AddHints, Proposal, ProposedTask, TaskChanges } from '../../shared/proposals.ts';
-import { listTemplate } from '../../shared/templates.ts';
+import { listSections, listTemplate } from '../../shared/templates.ts';
 import type { Db } from '../db/index.ts';
 import { listItems, tasks, type Member } from '../db/schema.ts';
 import { firstName, listMembers, visibleGroups } from '../domain/household.ts';
@@ -61,7 +61,8 @@ const Item = z.discriminatedUnion('kind', [
     list: z.string().describe('A list ref like l1'),
     name: z.string(),
     quantity: z.string().describe('"" for none'),
-    section: z.string().describe("One of the list's sections, or \"\" if it has none"),
+    section: z.string().describe("One of the list's sections (a new one only where the list says new ones are fine), or \"\""),
+    store: z.string().describe('Where to buy it, on lists with stores, when they said; "" for none'),
     note: z.string().describe('"" for none'),
   }),
   z.object({
@@ -122,14 +123,15 @@ Fields (every field is always present; "" or 0 or an empty list means not set, a
 List items:
 - name: the item alone, as this household names it. When the list's history has the household's own version of what they said, use that: "milk" is their "Oat milk", "bread" their "Sourdough bread". Otherwise use their words. Capitalize the first letter.
 - quantity: amounts and sizes, separate from the name ("2 lbs chicken thighs" becomes "Chicken thighs", "2 lbs").
-- section: the best fit from the list's sections, when it has them.
+- section: the best fit from the list's sections, when it has them. On lists whose sections are people or places, use the one they named ("for Mom", "at Target"), matching an existing one when it's the same, or a new one.
+- store: only on lists with stores, and only when they named one ("at Costco").
 
 If part of the text can't be interpreted at all, say so briefly in unclear instead of guessing. Most text is simply a task.`;
 
 interface Refs {
   members: Map<string, Member>;
   groups: Map<string, string>;
-  lists: Map<string, { id: string; sections: string[] }>;
+  lists: Map<string, { id: string; sections: string[]; free: boolean; stores: boolean }>;
   tasks: Map<string, { id: string; title: string }>;
   items: Map<string, { id: string; listId: string; name: string }>;
 }
@@ -194,15 +196,26 @@ export function buildContext(db: Db, me: Member, hints: AddHints = {}) {
   lists.forEach((g, i) => {
     const r = `l${i + 1}`;
     const template = listTemplate(g.template);
-    refs.lists.set(r, { id: g.id, sections: template.sections ?? [] });
-    out.push(
-      `${r} ${g.name} (${template.name.toLowerCase()} list${template.sections ? `; sections: ${template.sections.join(', ')}` : ''})${template.hint ? ` ${template.hint}` : ''}`,
-    );
     const open = db
       .select()
       .from(listItems)
       .where(and(eq(listItems.groupId, g.id), isNull(listItems.checkedAt)))
       .all();
+    // Free-form sections, like who a gift is for, are whatever the items already use.
+    const free = !!template.sections?.free;
+    const sections = listSections(g, open.map((it) => it.section));
+    const stores = !!template.fields.store;
+    refs.lists.set(r, { id: g.id, sections, free, stores });
+    const label = template.sections?.label.toLowerCase() ?? 'section';
+    const sectionText = free
+      ? `; sections are by ${label}${sections.length ? `: ${sections.join(', ')}` : ''}, and new ones are fine`
+      : sections.length
+        ? `; ${label} sections: ${sections.join(', ')}`
+        : '';
+    const storeNames = stores ? [...new Set(open.map((it) => it.store).filter(Boolean))] : [];
+    out.push(
+      `${r} ${g.name} (${template.name.toLowerCase()} list${sectionText}${stores ? `; has stores${storeNames.length ? `: ${storeNames.join(', ')}` : ''}` : ''})${template.hint ? ` ${template.hint}` : ''}`,
+    );
     out.push(
       `  On it now: ${
         open
@@ -352,8 +365,10 @@ export function toProposals(output: Output, refs: Refs, me: Member, today: strin
       const list = refs.lists.get(item.list);
       const name = clean(item.name);
       if (!list || !name) continue;
-      const section = list.sections.find((s) => s.toLowerCase() === item.section?.trim().toLowerCase()) ?? null;
-      proposals.push({ kind: 'list_item', listId: list.id, name: capital(name), quantity: clean(item.quantity), section, note: clean(item.note) });
+      const asked = clean(item.section);
+      const section = (asked && list.sections.find((s) => s.toLowerCase() === asked.toLowerCase())) ?? (list.free && asked ? capital(asked) : null);
+      const store = list.stores ? clean(item.store) : null;
+      proposals.push({ kind: 'list_item', listId: list.id, name: capital(name), quantity: clean(item.quantity), section, note: clean(item.note), ...(store && { store }) });
     } else if (item.kind === 'update_task') {
       const task = refs.tasks.get(item.task);
       if (!task) continue;

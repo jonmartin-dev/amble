@@ -64,6 +64,13 @@
       "when": 1791994770139,
       "tag": "0008_reminders_files",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1792008072473,
+      "tag": "0009_lists",
+      "breakpoints": true
     }
   ]
 }

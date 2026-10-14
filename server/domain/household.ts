@@ -88,6 +88,13 @@ export const GROUP_ICONS = [
   'checklist',
   'shopping-bag',
   'luggage',
+  'redeem',
+  'location-on',
+  'dinner-dining',
+  'hardware',
+  'movie',
+  'map',
+  'repeat',
 ] as const;
 export const GROUP_COLORS = ['green', 'teal', 'lime', 'blue', 'violet', 'orange', 'rose'] as const;
 
@@ -100,6 +107,8 @@ export interface NewGroup {
   private?: boolean;
   /** Lists only: which kind of list, from shared/templates.ts. */
   template?: string;
+  /** Lists only: which of the template's starter kits to fill it with, or null for none. The first by default. */
+  kit?: string | null;
 }
 
 export function createGroup(db: Db, actor: Actor, input: NewGroup): Group {
@@ -109,6 +118,10 @@ export function createGroup(db: Db, actor: Actor, input: NewGroup): Group {
   if (clash) throw new DomainError(`There's already a ${clash.kind === 'list' ? 'list' : 'group'} called ${clash.name}.`);
   if (input.template && !LIST_TEMPLATES.some((t) => t.id === input.template)) throw new DomainError(`There's no "${input.template}" list template.`);
   const template = input.kind === 'list' ? listTemplate(input.template) : null;
+  // The kit asked for, the template's first when nobody said, or none when they said none.
+  const kits = template?.kits ?? [];
+  const kit = input.kit === null ? undefined : input.kit ? kits.find((k) => k.name.toLowerCase() === input.kit!.toLowerCase()) : kits[0];
+  if (input.kit && !kit) throw new DomainError(`${template?.name ?? 'That'} list has no "${input.kit}" kit.`);
   const all = db.select({ sortOrder: groups.sortOrder }).from(groups).all();
   return db.transaction(() => {
     const group = db
@@ -120,14 +133,14 @@ export function createGroup(db: Db, actor: Actor, input: NewGroup): Group {
         icon: input.icon ?? (template ? (template.icon as (typeof GROUP_ICONS)[number]) : 'folder'),
         // A plain checklist takes the next color in turn; the other templates have their own.
         color: input.color ?? (template && template.id !== 'default' ? template.color : GROUP_COLORS[all.length % GROUP_COLORS.length]!),
-        privateTo: input.private ? actor.member.id : null,
+        privateTo: (input.private ?? template?.private) ? actor.member.id : null,
         sortOrder: Math.max(-1, ...all.map((g) => g.sortOrder)) + 1,
       })
       .returning()
       .get();
-    if (template?.starter?.length) {
+    if (kit?.items.length) {
       db.insert(listItems)
-        .values(template.starter.map((it, i) => ({ groupId: group.id, name: it.name, section: it.section ?? null, quantity: it.quantity ?? null, addedById: actor.member.id, sortOrder: i })))
+        .values(kit.items.map((it, i) => ({ groupId: group.id, name: it.name, section: it.section ?? null, quantity: it.quantity ?? null, addedById: actor.member.id, sortOrder: i })))
         .run();
     }
     logActivity(db, actor, 'group.created', null, { groupId: group.id, name, kind: group.kind });

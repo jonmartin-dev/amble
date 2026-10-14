@@ -35,7 +35,7 @@ import { Backlog } from './pages/Backlog.tsx';
 import { Briefing } from './pages/Briefing.tsx';
 import { CalendarsPage } from './pages/Calendars.tsx';
 import { Household } from './pages/Household.tsx';
-import { ListPage } from './pages/ListPage.tsx';
+import { ADD_TO_LIST, ListPage } from './pages/ListPage.tsx';
 import { Notifications } from './pages/Notifications.tsx';
 import { Privacy } from './pages/Privacy.tsx';
 import { TaskDetail } from './pages/TaskDetail.tsx';
@@ -164,7 +164,10 @@ function Root() {
         )}
       </main>
       <StatusPill />
-      <FloatingToolbar onAdd={() => setAdding(true)} />
+      <FloatingToolbar
+        onAdd={() => (pathname.startsWith('/list/') ? window.dispatchEvent(new Event(ADD_TO_LIST)) : setAdding(true))}
+        label={pathname.startsWith('/list/') ? 'Add to this list' : 'Add a task'}
+      />
       <AddSheet open={adding} onClose={() => setAdding(false)} plannedByDefault={pathname === '/'} />
     </div>
   );

@@ -1,7 +1,10 @@
 import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, like, lte, sql } from 'drizzle-orm';
 import type { Db } from '../db/index.ts';
-import { activity, listItems, type Group, type ListItem } from '../db/schema.ts';
-import { DomainError, logActivity, type Actor } from './household.ts';
+import { guessAisle } from '../../shared/aisles.ts';
+import { listSections, listTemplate, tripTitle } from '../../shared/templates.ts';
+import { activity, groups, listItems, tasks, type Group, type ListItem } from '../db/schema.ts';
+import { DomainError, logActivity, visibleGroups, type Actor } from './household.ts';
+import { createTasks, moveTasks } from './tasks.ts';
 
 const RECENT_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -38,6 +41,9 @@ export interface NewListItem {
   section?: string | null;
   url?: string | null;
   price?: string | null;
+  store?: string | null;
+  /** A meal's ingredients. */
+  parts?: string[] | null;
 }
 
 function cleanUrl(url: string | null | undefined) {
@@ -53,8 +59,16 @@ function itemDetails(item: Omit<NewListItem, 'name'>) {
     ...(item.section !== undefined && { section: item.section?.trim() || null }),
     ...(item.url !== undefined && { url: cleanUrl(item.url) }),
     ...(item.price !== undefined && { price: item.price?.trim() || null }),
+    ...(item.store !== undefined && { store: item.store?.trim() || null }),
+    ...(item.parts !== undefined && { parts: cleanParts(item.parts) }),
   };
 }
+
+function cleanParts(parts: string[] | null) {
+  const clean = [...new Set((parts ?? []).map((p) => p.trim().replace(/\s+/g, ' ')).filter(Boolean))].slice(0, 50);
+  return clean.length ? clean : null;
+}
+
 
 export type AddOutcome = 'added' | 'already on the list' | 'back on the list' | 'changed since';
 
@@ -112,6 +126,8 @@ export function addListItems(db: Db, actor: Actor, group: Group, items: NewListI
           .get();
       } else {
         outcome = 'added';
+        // Nobody said where it goes: a guess from its name. (One that was here before keeps its own.)
+        if (item.section === undefined) details.section = guessAisle(name, listSections(group));
         const [last] = db
           .select({ max: sql<number>`coalesce(max(${listItems.sortOrder}), -1)` })
           .from(listItems)
@@ -215,4 +231,58 @@ export function resetList(db: Db, actor: Actor, group: Group) {
     .all();
   if (reset.length) logActivity(db, actor, 'list.reset', null, { groupId: group.id, list: group.name, count: reset.length });
   return reset.length;
+}
+
+/**
+ * Sets a list's sections, in order. A renamed one takes its items with it; items in one that was
+ * removed go to no section.
+ */
+export function setListSections(db: Db, actor: Actor, group: Group, sections: string[], renames: { from: string; to: string }[] = []) {
+  const clean = [...new Map(sections.map((s) => s.trim()).filter(Boolean).map((s) => [s.toLowerCase(), s])).values()];
+  if (clean.length > 40) throw new DomainError('A list can have at most 40 sections.');
+  return db.transaction(() => {
+    for (const { from, to } of renames) {
+      if (!to.trim() || from === to) continue;
+      db.update(listItems)
+        .set({ section: to.trim() })
+        .where(and(eq(listItems.groupId, group.id), sql`lower(${listItems.section}) = ${from.toLowerCase()}`))
+        .run();
+    }
+    const kept = new Set(clean.map((s) => s.toLowerCase()));
+    const items = db.select({ id: listItems.id, section: listItems.section }).from(listItems).where(eq(listItems.groupId, group.id)).all();
+    const orphans = items.filter((i) => i.section && !kept.has(i.section.toLowerCase())).map((i) => i.id);
+    if (orphans.length) db.update(listItems).set({ section: null }).where(inArray(listItems.id, orphans)).run();
+    const updated = db.update(groups).set({ sections: clean }).where(eq(groups.id, group.id)).returning().get();
+    logActivity(db, actor, 'list.sections_changed', null, { groupId: group.id, list: group.name });
+    return updated;
+  });
+}
+
+/** The open task that's a trip for this list, if there is one: the soonest planned. */
+export function openTrip(db: Db, group: Group) {
+  return (
+    db
+      .select({ id: tasks.id, title: tasks.title, plannedDate: tasks.plannedDate })
+      .from(tasks)
+      .where(and(eq(tasks.listId, group.id), eq(tasks.status, 'open')))
+      .orderBy(sql`${tasks.plannedDate} IS NULL`, asc(tasks.plannedDate))
+      .get() ?? null
+  );
+}
+
+/**
+ * Plans a list's trip, like a grocery run, as one task on a day (or in the backlog). A trip
+ * that's already planned moves instead of a second one being made.
+ */
+export function planTrip(db: Db, actor: Actor, group: Group, plannedDate: string | null) {
+  const title = tripTitle(group);
+  if (!title) throw new DomainError(`${group.name} isn't a list that plans as a trip.`);
+  const open = openTrip(db, group);
+  if (open) return { task: moveTasks(db, actor, [open.id], plannedDate)[0]!, created: false };
+  // Errands is where trips go, when the household has a group by that name.
+  const errands = visibleGroups(db, actor.member.id).find((g) => g.kind === 'tasks' && g.name.toLowerCase() === 'errands');
+  const [task] = createTasks(db, actor, [
+    { title, listId: group.id, groupId: errands?.id ?? null, plannedDate, estimateMinutes: listTemplate(group.template).trip!.minutes },
+  ]);
+  return { task: task!, created: true };
 }

@@ -15,9 +15,11 @@ export interface NewTask {
   timeOfDay?: TimeOfDay | null;
   mustDo?: boolean;
   estimateMinutes?: number | null;
+  /** The list it's a trip for, like Groceries for a grocery run. */
+  listId?: string | null;
 }
 
-export type TaskPatch = Partial<Omit<NewTask, 'assigneeId'>> & {
+export type TaskPatch = Partial<Omit<NewTask, 'assigneeId' | 'listId'>> & {
   addSubtasks?: string[];
   checkSubtasks?: string[];
   uncheckSubtasks?: string[];

@@ -3,7 +3,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { and, count, eq, isNull, like } from 'drizzle-orm';
 import { z } from 'zod';
 import { describeRepeat, repeatOn } from '../../shared/repeat.ts';
-import { listTemplate, LIST_TEMPLATES } from '../../shared/templates.ts';
+import { listSections, listTemplate, LIST_TEMPLATES } from '../../shared/templates.ts';
 import { config } from '../config.ts';
 import type { Db } from '../db/index.ts';
 import { attachments, listItems, pushSubscriptions, tasks, type Group, type ListItem, type Member } from '../db/schema.ts';
@@ -20,7 +20,7 @@ import {
   visibleGroups,
   type Actor,
 } from '../domain/household.ts';
-import { addListItems, checkListItems, getListItems } from '../domain/lists.ts';
+import { addListItems, checkListItems, getListItems, openTrip, planTrip } from '../domain/lists.ts';
 import { listEvents, type EventView } from '../domain/events.ts';
 import { findGap, getLoad } from '../domain/load.ts';
 import { daySuggestions, planWeek } from '../domain/planner.ts';
@@ -95,6 +95,7 @@ export function createMcpServer({ db, member, files = createFileStore(config.dat
       id: t.id.slice(0, 8),
       title: t.title,
       group: t.groupName,
+      tripFor: t.listName ?? undefined,
       for: t.assigneeId ? (t.assigneeId === member.id ? 'me' : firstName({ name: t.assigneeName ?? '' })) : 'anyone',
       planned: t.plannedDate,
       due: t.dueDate,
@@ -122,6 +123,8 @@ export function createMcpServer({ db, member, files = createFileStore(config.dat
       note: i.note,
       link: i.url,
       price: i.price,
+      store: i.store,
+      ingredients: i.parts ?? undefined,
       checked: i.checkedAt ? true : undefined,
     });
 
@@ -501,18 +504,25 @@ export function createMcpServer({ db, member, files = createFileStore(config.dat
     'get_list',
     {
       title: 'Show a list',
-      description: 'What is still on a list (groceries, packing...). Optionally include items checked off in the last 30 days.',
+      description:
+        'What is still on a list (groceries, packing, gift ideas, a meal plan...), its sections, and its planned trip if it has one. Optionally include items checked off in the last 30 days.',
       inputSchema: z.object({ list: listArg, include_checked: z.boolean().optional() }),
       annotations: read,
     },
     run((a: { list?: string; include_checked?: boolean }) => {
       const group = list(a.list);
       const { open, checked } = getListItems(db, group, a.include_checked);
+      const template = listTemplate(group.template);
+      const sections = listSections(group, open.map((i) => i.section));
+      const trip = template.trip ? openTrip(db, group) : null;
       return compact({
         list: group.name,
-        sections: listTemplate(group.template).sections?.join(', '),
+        kind: template.name,
+        sections: sections.length ? `${template.sections?.label ?? 'Section'}: ${sections.join(', ')}` : undefined,
+        newSectionsOk: template.sections?.free || undefined,
         items: open.map(presentItem),
         recentlyChecked: a.include_checked ? checked.map(presentItem) : undefined,
+        trip: trip ? compact({ id: trip.id.slice(0, 8), title: trip.title, planned: trip.plannedDate }) : undefined,
       });
     }),
   );
@@ -521,7 +531,14 @@ export function createMcpServer({ db, member, files = createFileStore(config.dat
     name: z.string().min(1),
     quantity: z.string().optional().describe('e.g. "2", "1 lb"'),
     note: z.string().optional(),
-    section: z.string().optional().describe('For lists with sections (get_list shows them), e.g. an aisle: "Produce", "Dairy & eggs"'),
+    section: z
+      .string()
+      .optional()
+      .describe('For lists with sections (get_list shows them): an aisle like "Produce", who a gift is for, a place. Groceries without one get a guessed aisle'),
+    store: z.string().optional().describe('Where to buy it, on lists with stores'),
+    link: z.string().optional(),
+    price: z.string().optional(),
+    ingredients: z.array(z.string()).optional().describe("A meal's ingredients, on a meal plan"),
   });
 
   server.registerTool(
@@ -534,7 +551,12 @@ export function createMcpServer({ db, member, files = createFileStore(config.dat
     },
     run((a: { list?: string; items: z.output<typeof item>[] }) => {
       const group = list(a.list);
-      const added = addListItems(db, actor, group, a.items);
+      const added = addListItems(
+        db,
+        actor,
+        group,
+        a.items.map(({ link, ingredients, ...it }) => ({ ...it, ...(link !== undefined && { url: link }), ...(ingredients !== undefined && { parts: ingredients }) })),
+      );
       return { list: group.name, items: added.map(({ item: i, outcome }) => ({ ...presentItem(i), outcome })) };
     }),
   );
@@ -550,6 +572,27 @@ export function createMcpServer({ db, member, files = createFileStore(config.dat
     run((a: { list?: string; items: string[]; undo?: boolean }) => {
       const group = list(a.list);
       return { list: group.name, [a.undo ? 'putBack' : 'checkedOff']: checkListItems(db, actor, group, a.items, !a.undo) };
+    }),
+  );
+
+  server.registerTool(
+    'plan_list_trip',
+    {
+      title: "Plan a list's trip",
+      description:
+        'Plan a whole list (Groceries, an errand run, the hardware store) as one task, like "Grocery run", on a day or in the backlog. Moves the trip if one is already planned. Check get_load first, as for any task.',
+      inputSchema: z.object({ list: listArg, day: z.string().describe('YYYY-MM-DD, "today", "tomorrow", or "backlog"') }),
+      annotations: { ...write, idempotentHint: true },
+    },
+    run((a: { list?: string; day: string }) => {
+      let day: string | null = null;
+      if (a.day.trim().toLowerCase() !== 'backlog') {
+        const parsed = dateArg.safeParse(a.day);
+        if (!parsed.success) throw new DomainError(`"${a.day}" isn't a date. Use YYYY-MM-DD, "today", "tomorrow" or "backlog".`);
+        day = parsed.data;
+      }
+      const { task, created } = planTrip(db, actor, list(a.list), day);
+      return { ...present(task), outcome: created ? 'planned' : 'moved' };
     }),
   );
 
@@ -649,16 +692,24 @@ export function createMcpServer({ db, member, files = createFileStore(config.dat
         kind: z.enum(['tasks', 'list']).optional().describe('Default "tasks"'),
         icon: z.enum(GROUP_ICONS).optional(),
         color: z.enum(GROUP_COLORS).optional(),
-        private: z.boolean().optional().describe('Only you can see it and its tasks'),
         template: z
           .enum(LIST_TEMPLATES.map((t) => t.id) as [string, ...string[]])
           .optional()
           .describe(`Lists only: ${LIST_TEMPLATES.map((t) => `"${t.id}" (${t.description})`).join('; ')}`),
+        kit: z
+          .string()
+          .optional()
+          .describe(
+            `Lists only: starter items to fill it with, by name, or "none". ${LIST_TEMPLATES.filter((t) => t.kits)
+              .map((t) => `${t.id}: ${t.kits!.map((k) => k.name).join(', ')} (default ${t.kits![0]!.name})`)
+              .join('; ')}`,
+          ),
+        private: z.boolean().optional().describe('Only you can see it and its tasks. Gift ideas lists are private unless you say false'),
       }),
       annotations: write,
     },
-    run((a: { name: string; kind?: 'tasks' | 'list'; icon?: (typeof GROUP_ICONS)[number]; color?: (typeof GROUP_COLORS)[number]; private?: boolean; template?: string }) => {
-      const g = createGroup(db, actor, a);
+    run((a: { name: string; kind?: 'tasks' | 'list'; icon?: (typeof GROUP_ICONS)[number]; color?: (typeof GROUP_COLORS)[number]; private?: boolean; template?: string; kit?: string }) => {
+      const g = createGroup(db, actor, { ...a, kit: a.kit?.trim().toLowerCase() === 'none' ? null : a.kit });
       return compact({ name: g.name, kind: g.kind, icon: g.icon, color: g.color, private: g.privateTo ? true : undefined });
     }),
   );

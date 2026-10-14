@@ -70,6 +70,8 @@ export interface Group {
   color: string;
   kind: 'tasks' | 'list';
   template: string | null;
+  /** A list's own sections, when someone changed its template's. */
+  sections: string[] | null;
   privateTo: string | null;
   /** Open tasks, or unchecked items for a list. */
   open: number;
@@ -83,6 +85,9 @@ export interface Task {
   notes: string | null;
   groupId: string | null;
   groupName: string | null;
+  /** The list this task is a trip for, like Groceries for a grocery run. */
+  listId: string | null;
+  listName: string | null;
   assigneeId: string | null;
   assigneeName: string | null;
   createdById: string | null;
@@ -261,6 +266,9 @@ export interface ListItem {
   section: string | null;
   url: string | null;
   price: string | null;
+  store: string | null;
+  /** A meal's ingredients. */
+  parts: string[] | null;
   checkedAt: string | null;
 }
 

@@ -22,6 +22,7 @@ import { MoveSheet } from '../components/MoveSheet.tsx';
 import { ReminderField, ReminderSheet } from '../components/ReminderSheet.tsx';
 import { RepeatSheet } from '../components/RepeatSheet.tsx';
 import { TaskFiles } from '../components/TaskFiles.tsx';
+import { TripCard } from '../components/TripList.tsx';
 import { describeRepeat, repeatOn } from '../../../shared/repeat.ts';
 import { Checkbox, Chip, minutesLabel, SectionTitle } from '../components/ui.tsx';
 import type { Task, TimeOfDay } from '../lib/api.ts';
@@ -120,6 +121,7 @@ function Detail({ task }: { task: Task }) {
         <p className="mt-2 ml-11 text-sm text-primary">From {firstName(task.createdByName)}</p>
       )}
       {task.handedBackNote && <p className="mt-2 ml-11 rounded-2xl bg-surface-high px-4 py-2.5 text-on-surface-variant">"{task.handedBackNote}"</p>}
+      {task.listId && <TripCard task={task} />}
 
       <AnimatePresence initial={false}>
         {wantsDay && gap && (

@@ -55,6 +55,27 @@ const shots: Shot[] = [
   { name: 'calendar', theme: light, open: go('/calendar') },
   ...(rich ? [{ name: 'task', theme: light, open: go(`/task/${rich.id}`) }] : []),
   ...(groceries ? [{ name: 'groceries', theme: dark, open: go(`/list/${groceries.id}`) }] : []),
+  {
+    name: 'lists',
+    theme: light,
+    // The list templates, from the backlog's New group or list.
+    open: async (page) => {
+      await go('/backlog')(page);
+      await page.getByRole('button', { name: 'New group or list' }).locator('visible=true').first().click();
+      await page.getByRole('radio', { name: 'List', exact: true }).click();
+      await page.getByRole('radio', { name: 'Meal plan' }).click();
+    },
+  },
+  {
+    name: 'quick-add',
+    theme: light,
+    open: async (page) => {
+      await go('/')(page);
+      await page.getByRole('button', { name: 'Add a task' }).locator('visible=true').first().click();
+      await page.keyboard.type('Pick up the dry cleaning');
+      await page.getByRole('button', { name: 'Group', exact: true }).click();
+    },
+  },
   { name: 'appearance', theme: dark, open: go('/appearance') },
 ];
 

@@ -7,7 +7,8 @@ import { config } from '../server/config.ts';
 import { openDatabase } from '../server/db/index.ts';
 import { activity, calendarAccounts, calendarEvents, calendarSources, members, tasks } from '../server/db/schema.ts';
 import { seedStarterGroups } from '../server/db/seed.ts';
-import { resolveGroup, type Actor } from '../server/domain/household.ts';
+import { WEEKDAYS } from '../shared/templates.ts';
+import { createGroup, resolveGroup, type Actor } from '../server/domain/household.ts';
 import { addListItems, checkListItems } from '../server/domain/lists.ts';
 import { assignTask, completeTasks, createTasks, type NewTask } from '../server/domain/tasks.ts';
 import { inviteMember } from '../server/auth/members.ts';
@@ -135,13 +136,36 @@ addListItems(db, asMe, groceries, [
   { name: 'Lemons', quantity: '3', section: 'Produce' },
   { name: 'Avocados', quantity: '2', section: 'Produce' },
   { name: 'Sourdough', section: 'Bakery' },
-  { name: 'Coffee beans', section: 'Pantry' },
+  { name: 'Coffee beans', section: 'Pantry', store: 'Costco' },
   { name: 'Chicken thighs', quantity: '2 lbs', section: 'Meat & seafood' },
-  { name: 'Dish soap', section: 'Household' },
+  { name: 'Dish soap', section: 'Household', store: 'Costco' },
   { name: 'Bread', section: 'Bakery' },
   { name: 'Butter', section: 'Dairy & eggs' },
 ]);
 checkListItems(db, asMe, groceries, ['Bread', 'Butter']);
+
+// Gift ideas are private, so the person they're for can't see them.
+const gifts = createGroup(db, asMe, { name: 'Gift ideas', kind: 'list', template: 'gifts' });
+addListItems(db, asMe, gifts, [
+  { name: 'Pottery class for two', section: 'Mom', price: '$85', url: 'https://example.com/pottery' },
+  { name: 'Wool hiking socks', section: 'Dad', price: '$24' },
+  { name: 'Trail guidebook', section: 'Dad' },
+  { name: 'Botanical Lego set', section: partnerName.split(' ')[0], price: '$50', url: 'https://example.com/lego' },
+  { name: 'Concert tickets', section: partnerName.split(' ')[0], note: 'Check dates in March' },
+]);
+
+const day = (offset: number) => WEEKDAYS[Temporal.PlainDate.from(addDays(today, offset)).dayOfWeek - 1]!;
+const meals = createGroup(db, asMe, { name: 'Meal plan', kind: 'list', template: 'meals' });
+addListItems(db, asMe, meals, [
+  { name: 'Sheet-pan chicken', section: day(0), parts: ['Chicken thighs', 'Sweet potatoes', 'Red onion', 'Lemons'] },
+  { name: 'Tacos', section: day(1), parts: ['Ground beef', 'Tortillas', 'Salsa', 'Cheddar', 'Lettuce'] },
+  { name: 'Leftovers', section: day(2) },
+  { name: 'Pasta with greens', section: day(4), parts: ['Penne', 'Marinara', 'Parmesan', 'Spinach'] },
+]);
+
+const packing = createGroup(db, asMe, { name: 'Lake weekend', kind: 'list', template: 'packing' });
+addListItems(db, asMe, packing, [{ name: 'Swimsuit', section: 'Clothes' }, { name: 'Paddleboard pump', section: 'Gear' }]);
+checkListItems(db, asMe, packing, ['Socks', 'Toothbrush', 'Phone charger']);
 
 // A calendar to plan around: a standing weekday standup (usual, so it leaves room alone), and a
 // dentist visit and a dinner today on top of it. It's never synced from Google; the account's last

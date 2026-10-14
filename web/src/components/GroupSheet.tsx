@@ -1,17 +1,18 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { motion } from 'motion/react';
+import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useState } from 'react';
 import Archive from '~icons/material-symbols/archive-outline-rounded';
 import Check from '~icons/material-symbols/check-rounded';
+import ExpandMore from '~icons/material-symbols/expand-more-rounded';
+import { LIST_TEMPLATES, listTemplate, type ListTemplate } from '../../../shared/templates.ts';
 import { api, type Group } from '../lib/api.ts';
 import { expressive } from '../lib/motion.ts';
 import { useSnackbar } from '../lib/snackbar.tsx';
-import { GroupIcon, tone } from './icons.tsx';
-import { LIST_TEMPLATES, type ListTemplate } from '../../../shared/templates.ts';
-import { Chip, Sheet } from './ui.tsx';
+import { ChipRow } from './fields.tsx';
+import { GROUP_ICON_NAMES, GroupIcon, tone } from './icons.tsx';
+import { ButtonGroup, Chip, Sheet, Switch } from './ui.tsx';
 
 const colors = ['green', 'teal', 'lime', 'blue', 'violet', 'orange', 'rose'];
-const icons = ['folder', 'home', 'directions-car', 'call', 'rocket-launch', 'palette', 'shopping-cart', 'shopping-bag', 'luggage', 'checklist'];
 
 /** Make a group or list, or, given one, rename, recolor or archive it. */
 export function GroupSheet({ open, onClose, group }: { open: boolean; onClose: () => void; group?: Group | null }) {
@@ -24,6 +25,11 @@ export function GroupSheet({ open, onClose, group }: { open: boolean; onClose: (
   const [icon, setIcon] = useState('folder');
   const [isPrivate, setPrivate] = useState(false);
   const [template, setTemplate] = useState('default');
+  // The starter kit's name, or null for an empty list.
+  const [kit, setKit] = useState<string | null>(null);
+  // Whether the name is still the template's, so picking another template can replace it.
+  const [named, setNamed] = useState(false);
+  const [showLook, setShowLook] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -33,14 +39,19 @@ export function GroupSheet({ open, onClose, group }: { open: boolean; onClose: (
     setIcon(group?.icon ?? 'folder');
     setPrivate(group?.privateTo != null);
     setTemplate('default');
-  }, [open, group]);
+    setKit(null);
+    setNamed(false);
+    setShowLook(editing);
+  }, [open, group, editing]);
 
-  // A template brings its own look; the person can still change it.
+  // A template brings its own look, name, kit and privacy; the person can still change them.
   const pickTemplate = (t: ListTemplate) => {
     setTemplate(t.id);
     setIcon(t.icon);
     if (t.id !== 'default') setColor(t.color);
-    if (!name.trim() && t.id !== 'default') setName(t.name);
+    if (!name.trim() || !named) setName(t.id === 'default' ? '' : t.name);
+    setKit(t.kits?.[0]?.name ?? null);
+    setPrivate(!!t.private);
   };
 
   const refresh = () => {
@@ -54,7 +65,7 @@ export function GroupSheet({ open, onClose, group }: { open: boolean; onClose: (
         ? api(`/groups/${group.id}`, { method: 'PATCH', body: JSON.stringify({ name, icon, color }) })
         : api('/groups', {
             method: 'POST',
-            body: JSON.stringify({ name, kind, color, icon, private: isPrivate, ...(kind === 'list' && { template }) }),
+            body: JSON.stringify({ name, kind, color, icon, private: isPrivate, ...(kind === 'list' && { template, kit }) }),
           }),
     onSuccess: () => {
       snack({ message: editing ? `Saved ${name}` : `Made ${name}` });
@@ -72,8 +83,7 @@ export function GroupSheet({ open, onClose, group }: { open: boolean; onClose: (
         message: `Archived ${g.name}.${moved}`,
         action: {
           label: 'Undo',
-          run: () =>
-            void api(`/groups/${g.id}/archive`, { method: 'POST', body: JSON.stringify({ restore: true }) }).then(refresh, onError),
+          run: () => void api(`/groups/${g.id}/archive`, { method: 'POST', body: JSON.stringify({ restore: true }) }).then(refresh, onError),
         },
       });
       onClose();
@@ -83,6 +93,35 @@ export function GroupSheet({ open, onClose, group }: { open: boolean; onClose: (
   });
 
   const noun = kind === 'list' ? 'list' : 'group';
+  const picked = listTemplate(template);
+  const look = (
+    <>
+      <div className="mt-4 flex flex-wrap gap-1.5" role="radiogroup" aria-label="Icon">
+        {GROUP_ICON_NAMES.map((i) => (
+          <motion.button
+            key={i}
+            type="button"
+            role="radio"
+            aria-checked={icon === i}
+            aria-label={i}
+            onClick={() => setIcon(i)}
+            animate={{ borderRadius: icon === i ? 14 : 999 }}
+            transition={expressive.fastSpatial}
+            className={`grid size-10 place-items-center ${icon === i ? tone(color) : 'bg-surface-high text-on-surface-variant'}`}
+          >
+            <GroupIcon name={i} className="size-5" />
+          </motion.button>
+        ))}
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2" role="radiogroup" aria-label="Color">
+        {colors.map((c) => (
+          <button key={c} type="button" role="radio" aria-checked={color === c} aria-label={c} onClick={() => setColor(c)} className={`grid size-10 place-items-center rounded-full ${tone(c)}`}>
+            {color === c && <Check className="size-5" aria-hidden />}
+          </button>
+        ))}
+      </div>
+    </>
+  );
 
   return (
     <Sheet
@@ -96,7 +135,7 @@ export function GroupSheet({ open, onClose, group }: { open: boolean; onClose: (
             type="submit"
             form="group-form"
             disabled={!name.trim() || save.isPending}
-            className="h-12 w-full rounded-full bg-primary font-medium text-on-primary disabled:opacity-50"
+            className="press h-12 w-full rounded-full bg-primary font-medium text-on-primary disabled:opacity-50"
           >
             {editing ? 'Save' : 'Create'}
           </button>
@@ -121,86 +160,133 @@ export function GroupSheet({ open, onClose, group }: { open: boolean; onClose: (
           if (name.trim()) save.mutate();
         }}
       >
+        {!editing && (
+          <div className="mt-1">
+            <ButtonGroup
+              label="Kind"
+              size="sm"
+              value={kind}
+              options={[
+                { value: 'tasks', label: 'Task group' },
+                { value: 'list', label: 'List' },
+              ]}
+              onChange={(k) => {
+                setKind(k);
+                if (k === 'list') pickTemplate(picked);
+                else {
+                  setIcon('folder');
+                  setPrivate(false);
+                  if (!named) setName('');
+                }
+              }}
+            />
+          </div>
+        )}
         <input
           value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder={kind === 'list' ? 'Packing, Hardware store…' : 'Garden, Car, Taxes…'}
+          onChange={(e) => {
+            setName(e.target.value);
+            setNamed(true);
+          }}
+          placeholder={kind === 'list' ? 'Name the list' : 'Garden, Car, Taxes…'}
           aria-label="Name"
-          className="mt-2 w-full rounded-2xl bg-surface-high px-4 py-3.5 text-lg outline-none placeholder:text-on-surface-variant"
+          className="mt-3 w-full rounded-2xl bg-surface-high px-4 py-3.5 text-lg outline-none placeholder:text-on-surface-variant"
         />
-        {!editing && (
-          <div className="mt-4 flex gap-2">
-            <Chip selected={kind === 'tasks'} onClick={() => setKind('tasks')}>
-              Tasks
-            </Chip>
-            <Chip
-              selected={kind === 'list'}
-              onClick={() => {
-                setKind('list');
-                pickTemplate(LIST_TEMPLATES.find((t) => t.id === template) ?? LIST_TEMPLATES[0]!);
-              }}
-            >
-              Shopping-style list
-            </Chip>
-            <Chip selected={isPrivate} onClick={() => setPrivate((v) => !v)}>
-              Only me
-            </Chip>
-          </div>
-        )}
+
         {!editing && kind === 'list' && (
-          <div className="mt-4 grid grid-cols-2 gap-2" role="radiogroup" aria-label="Kind of list">
-            {LIST_TEMPLATES.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                role="radio"
-                aria-checked={template === t.id}
-                onClick={() => pickTemplate(t)}
-                className={`rounded-3xl p-3 text-left transition-colors ${
-                  template === t.id ? 'bg-secondary-container text-on-secondary-container ring-2 ring-primary' : 'bg-surface-high'
-                }`}
+          <>
+            <div className="mt-4 grid grid-cols-3 gap-2" role="radiogroup" aria-label="Kind of list">
+              {LIST_TEMPLATES.map((t) => {
+                const on = template === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={on}
+                    onClick={() => pickTemplate(t)}
+                    className={`press flex flex-col items-center gap-1.5 rounded-3xl px-1 pt-3 pb-2.5 text-center transition-colors ${
+                      on ? 'bg-secondary-container text-on-secondary-container' : 'bg-surface-high'
+                    }`}
+                  >
+                    <motion.span
+                      animate={{ borderRadius: on ? 14 : 999 }}
+                      transition={expressive.fastSpatial}
+                      className={`grid size-10 place-items-center ${tone(t.id === 'default' ? color : t.color)}`}
+                    >
+                      {on ? <Check className="size-5" aria-hidden /> : <GroupIcon name={t.icon} className="size-5" />}
+                    </motion.span>
+                    <span className="text-[0.8125rem] leading-tight font-medium">{t.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <AnimatePresence mode="popLayout" initial={false}>
+              <motion.p
+                key={picked.id}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={expressive.fastSpatial}
+                className="mt-3 px-1 text-sm text-on-surface-variant"
               >
-                <span className={`mb-2 grid size-9 place-items-center rounded-xl ${tone(t.id === 'default' ? color : t.color)}`}>
-                  <GroupIcon name={t.icon} className="size-5" />
-                </span>
-                <span className="block font-medium">{t.name}</span>
-                <span className="mt-0.5 block text-xs leading-snug opacity-80">{t.description}</span>
-              </button>
-            ))}
+                {picked.description}
+              </motion.p>
+            </AnimatePresence>
+            {picked.kits && (
+              <ChipRow label="Start with">
+                {picked.kits.map((k) => (
+                  <Chip key={k.name} selected={kit === k.name} onClick={() => setKit(k.name)}>
+                    {k.name}
+                  </Chip>
+                ))}
+                <Chip selected={kit === null} onClick={() => setKit(null)}>
+                  Nothing
+                </Chip>
+              </ChipRow>
+            )}
+          </>
+        )}
+
+        {!editing && (
+          <div className="mt-4 flex items-center gap-3 rounded-3xl bg-surface-high px-4 py-3">
+            <span className="min-w-0 flex-1">
+              <span className="block">Only me</span>
+              <span className="block text-sm text-on-surface-variant">
+                {kind === 'list' && picked.private ? 'Gift ideas start private, so nobody sees their own' : `Nobody else sees this ${noun}`}
+              </span>
+            </span>
+            <Switch checked={isPrivate} onChange={setPrivate} label="Only me" />
           </div>
         )}
-        <div className="mt-5 flex flex-wrap gap-2" role="radiogroup" aria-label="Icon">
-          {icons.map((i) => (
-            <motion.button
-              key={i}
-              type="button"
-              role="radio"
-              aria-checked={icon === i}
-              aria-label={i}
-              onClick={() => setIcon(i)}
-              animate={{ borderRadius: icon === i ? 14 : 999 }}
-              transition={expressive.fastSpatial}
-              className={`grid size-11 place-items-center ${icon === i ? tone(color) : 'bg-surface-high text-on-surface-variant'}`}
-            >
-              <GroupIcon name={i} className="size-5" />
-            </motion.button>
-          ))}
-        </div>
-        <div className="mt-3 flex flex-wrap gap-2" role="radiogroup" aria-label="Color">
-          {colors.map((c) => (
+
+        {editing || kind === 'tasks' ? (
+          look
+        ) : (
+          <>
             <button
-              key={c}
               type="button"
-              role="radio"
-              aria-checked={color === c}
-              aria-label={c}
-              onClick={() => setColor(c)}
-              className={`grid size-10 place-items-center rounded-full ${tone(c)}`}
+              onClick={() => setShowLook((v) => !v)}
+              aria-expanded={showLook}
+              className="mt-3 flex w-full items-center gap-3 rounded-full py-2 pr-2 pl-1 text-sm font-medium text-primary"
             >
-              {color === c && <Check className="size-5" aria-hidden />}
+              <span className={`grid size-8 place-items-center rounded-xl ${tone(color)}`}>
+                <GroupIcon name={icon} className="size-4" />
+              </span>
+              <span className="flex-1 text-left">Change the icon or color</span>
+              <motion.span animate={{ rotate: showLook ? 180 : 0 }} transition={expressive.fastSpatial}>
+                <ExpandMore className="size-5" aria-hidden />
+              </motion.span>
             </button>
-          ))}
-        </div>
+            <AnimatePresence initial={false}>
+              {showLook && (
+                <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={expressive.fastSpatial} className="overflow-hidden">
+                  {look}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </>
+        )}
         <div className="h-2" />
       </form>
     </Sheet>

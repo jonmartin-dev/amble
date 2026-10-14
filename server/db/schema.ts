@@ -54,6 +54,8 @@ export const groups = sqliteTable('groups', {
   color: text('color').notNull().default('green'),
   kind: text('kind', { enum: ['tasks', 'list'] }).notNull().default('tasks'),
   template: text('template'),
+  // A list's own sections, in order, when someone changed its template's.
+  sections: text('sections', { mode: 'json' }).$type<string[]>(),
   privateTo: text('private_to').references(() => members.id, { onDelete: 'cascade' }),
   sortOrder: integer('sort_order').notNull().default(0),
   archivedAt: integer('archived_at', { mode: 'timestamp_ms' }),
@@ -93,6 +95,8 @@ export const tasks = sqliteTable(
     completedById: text('completed_by_id').references(() => members.id, { onDelete: 'set null' }),
     handedBackNote: text('handed_back_note'),
     seriesId: text('series_id').references(() => series.id, { onDelete: 'set null' }),
+    // A trip for a list, like a grocery run: the task opens the list and counts what's left on it.
+    listId: text('list_id').references(() => groups.id, { onDelete: 'set null' }),
     sortOrder: integer('sort_order').notNull().default(0),
     createdAt: createdAt(),
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
@@ -154,6 +158,10 @@ export const listItems = sqliteTable(
     section: text('section'),
     url: text('url'),
     price: text('price'),
+    // Where to buy it, on lists with stores.
+    store: text('store'),
+    // A meal's ingredients, on a meal plan.
+    parts: text('parts', { mode: 'json' }).$type<string[]>(),
     addedById: text('added_by_id').references(() => members.id, { onDelete: 'set null' }),
     checkedAt: integer('checked_at', { mode: 'timestamp_ms' }),
     checkedById: text('checked_by_id').references(() => members.id, { onDelete: 'set null' }),

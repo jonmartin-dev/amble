@@ -46,6 +46,8 @@ Smart add, estimates and the planner's wording need `ANTHROPIC_API_KEY`. Without
 | `scripts/` | Demo data, screenshots, browser checks and the smart add eval |
 | `docs/` | Guides for self-hosters |
 
+A new list template makes a good first change: one entry in `shared/templates.ts`, plus its icon in `GROUP_ICONS` (`server/domain/household.ts`) and `web/src/components/icons.tsx`. The tests check that the three agree.
+
 ## Before you open a pull request
 
 ```sh

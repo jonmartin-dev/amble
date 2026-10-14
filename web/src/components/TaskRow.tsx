@@ -14,6 +14,7 @@ import Sun from '~icons/material-symbols/wb-sunny-outline-rounded';
 import type { Task } from '../lib/api.ts';
 import { dayLabel, daysFrom, firstName, reminderLabel } from '../lib/dates.ts';
 import { useTaskActions } from '../lib/mutations.ts';
+import { TripBadge } from './TripList.tsx';
 import { Checkbox } from './ui.tsx';
 
 // How far the finger has to travel to finish or move a task. The row follows at half that, so it
@@ -188,6 +189,7 @@ export function TaskRow({ task, today, meId, onMove, showDay = false, showGroup 
               </span>
             )}
             {showGroup && task.groupName && <span>{task.groupName}</span>}
+            {task.listId && <TripBadge task={task} />}
             {showDay && task.plannedDate && (
               <span className="flex items-center gap-1">
                 <Sun className="size-4" aria-hidden />

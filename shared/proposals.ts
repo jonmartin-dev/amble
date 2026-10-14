@@ -42,7 +42,7 @@ export interface TaskChanges {
 
 export type Proposal =
   | { kind: 'task'; task: ProposedTask }
-  | { kind: 'list_item'; listId: string; name: string; quantity: string | null; section: string | null; note: string | null }
+  | { kind: 'list_item'; listId: string; name: string; quantity: string | null; section: string | null; note: string | null; store?: string | null }
   | { kind: 'update'; taskId: string; title: string; changes: TaskChanges }
   | { kind: 'complete'; taskId: string; title: string }
   | { kind: 'check'; listId: string; itemId: string; name: string };

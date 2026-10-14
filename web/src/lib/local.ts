@@ -238,6 +238,8 @@ export function newTask(qc: QueryClient, fields: Partial<Task> & { id: string; t
     ...fields,
     assigneeId,
     groupName: groupName(qc, fields.groupId ?? null),
+    listId: fields.listId ?? null,
+    listName: groupName(qc, fields.listId ?? null),
     assigneeName: memberName(qc, assigneeId),
     createdById: me?.id ?? null,
     createdByName: me?.name ?? null,
@@ -286,7 +288,7 @@ export function addListItem(qc: QueryClient, groupId: string, item: Partial<List
       outcome = 'back on the list';
       return { ...data, open: [...data.open, { ...old, ...details, checkedAt: null }], checked: data.checked.filter((i) => i !== old) };
     }
-    const fresh: ListItem = { quantity: null, note: null, section: null, url: null, price: null, ...item, groupId, checkedAt: null };
+    const fresh: ListItem = { quantity: null, note: null, section: null, url: null, price: null, store: null, parts: null, ...item, groupId, checkedAt: null };
     return { ...data, open: [...data.open, fresh] };
   });
   return outcome;

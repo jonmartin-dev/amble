@@ -13,6 +13,8 @@ export type TimeOfDay = NonNullable<Task['timeOfDay']>;
 
 export interface TaskDetail extends Task {
   groupName: string | null;
+  /** The list this task is a trip for, like Groceries for a grocery run. */
+  listName: string | null;
   assigneeName: string | null;
   createdByName: string | null;
   subtasks: { id: string; title: string; done: boolean }[];
@@ -44,9 +46,12 @@ export interface TaskFilter {
 }
 
 const creators = alias(members, 'creators');
+const lists = alias(groups, 'lists');
 const columns = {
   task: tasks,
   groupName: groups.name,
+  listName: lists.name,
+  listPrivateTo: lists.privateTo,
   assigneeName: members.name,
   createdByName: creators.name,
   repeat: series.rule,
@@ -55,6 +60,8 @@ const columns = {
 type Row = {
   task: Task;
   groupName: string | null;
+  listName: string | null;
+  listPrivateTo: string | null;
   assigneeName: string | null;
   createdByName: string | null;
   repeat: Repeat | null;
@@ -68,6 +75,7 @@ function selectTasks(db: Db) {
     .leftJoin(groups, eq(tasks.groupId, groups.id))
     .leftJoin(members, eq(tasks.assigneeId, members.id))
     .leftJoin(creators, eq(tasks.createdById, creators.id))
+    .leftJoin(lists, eq(tasks.listId, lists.id))
     .leftJoin(series, eq(tasks.seriesId, series.id));
 }
 
@@ -135,9 +143,11 @@ function withDetails(db: Db, rows: Row[], viewerId: string): TaskDetail[] {
   const links = db.select().from(taskLinks).where(inArray(taskLinks.taskId, ids)).orderBy(asc(taskLinks.createdAt)).all();
   const reminders = remindersFor(db, viewerId, ids);
   const files = attachmentsFor(db, ids);
-  return rows.map(({ task, groupName, assigneeName, createdByName, repeat, pausedUntil }) => ({
+  return rows.map(({ task, groupName, listName, listPrivateTo, assigneeName, createdByName, repeat, pausedUntil }) => ({
     ...task,
     groupName,
+    // Someone else's private list stays theirs, even on a task they can see.
+    listName: listPrivateTo && listPrivateTo !== viewerId ? null : listName,
     assigneeName,
     createdByName,
     repeat: task.seriesId ? repeat : null,
@@ -212,6 +222,8 @@ export interface NewTask {
   repeat?: Repeat | null;
   /** A reminder for the person adding it. */
   remindAt?: Date | null;
+  /** The list it's a trip for. */
+  listId?: string | null;
 }
 
 // ---- changes sent late --------------------------------------------------------------------
@@ -284,6 +296,7 @@ export function createTasks(db: Db, actor: Actor, inputs: NewTask[]): TaskDetail
           title,
           notes: input.notes?.trim() || null,
           groupId: input.groupId ?? null,
+          listId: input.listId ?? null,
           assigneeId: input.assigneeId === undefined ? actor.member.id : input.assigneeId,
           createdById: actor.member.id,
           dueDate: input.dueDate ?? null,
@@ -513,6 +526,8 @@ function spawnNext(db: Db, actor: Actor, task: TaskDetail) {
       title: task.title,
       notes: task.notes,
       groupId: task.groupId,
+      // A weekly grocery run stays a trip for the same list.
+      listId: task.listId,
       assigneeId: task.assigneeId,
       createdById: task.createdById,
       timeOfDay: task.timeOfDay,

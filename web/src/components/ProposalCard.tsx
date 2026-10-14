@@ -11,7 +11,7 @@ import Bell from '~icons/material-symbols/notifications-outline-rounded';
 import Repeat from '~icons/material-symbols/repeat-rounded';
 import TaskIcon from '~icons/material-symbols/task-alt-rounded';
 import { describeRepeat, repeatOn } from '../../../shared/repeat.ts';
-import { listTemplate } from '../../../shared/templates.ts';
+import { listSections, listTemplate } from '../../../shared/templates.ts';
 import type { Group, HouseholdMember, Proposal } from '../lib/api.ts';
 import { dayLabel, firstName, reminderLabel, reminderPhrase } from '../lib/dates.ts';
 import { expressive } from '../lib/motion.ts';
@@ -86,7 +86,11 @@ function summary(p: Proposal, ctx: Ctx): { icon: ReactNode; title: string; meta:
     return {
       icon: <Cart className="size-5" />,
       title: p.quantity ? `${p.name} · ${p.quantity}` : p.name,
-      meta: [<Meta key="l">{group(p.listId)?.name ?? 'List'}</Meta>, p.section && <Meta key="s">{p.section}</Meta>].filter(Boolean),
+      meta: [
+        <Meta key="l">{group(p.listId)?.name ?? 'List'}</Meta>,
+        p.section && <Meta key="s">{p.section}</Meta>,
+        p.store && <Meta key="t">{p.store}</Meta>,
+      ].filter(Boolean),
     };
   }
   if (p.kind === 'update') {
@@ -165,7 +169,9 @@ function ItemEditor({ draft, ctx, onChange }: { draft: Draft & { proposal: { kin
   const it = draft.proposal;
   const set = (patch: Partial<typeof it>) => onChange({ ...it, ...patch });
   const lists = ctx.groups.filter((g) => g.kind === 'list');
-  const sections = listTemplate(lists.find((l) => l.id === it.listId)?.template).sections ?? [];
+  const list = lists.find((l) => l.id === it.listId);
+  const sections = list ? listSections(list, [it.section]) : [];
+  const label = listTemplate(list?.template).sections?.label ?? 'Section';
   return (
     <div className="pb-1">
       <div className="mt-1 flex gap-2">
@@ -188,7 +194,7 @@ function ItemEditor({ draft, ctx, onChange }: { draft: Draft & { proposal: { kin
         </ChipRow>
       )}
       {sections.length > 0 && (
-        <ChipRow tight label="Aisle">
+        <ChipRow tight label={label}>
           {sections.map((s) => (
             <Chip key={s} selected={s === it.section} onClick={() => set({ section: s === it.section ? null : s })}>
               {s}

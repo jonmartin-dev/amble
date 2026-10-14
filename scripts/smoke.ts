@@ -184,8 +184,45 @@ await check('the grocery list adds and checks off items', async (p) => {
   await p.getByLabel('Quantity', { exact: true }).fill('1');
   await p.getByRole('button', { name: 'Add item' }).click();
   await until(p, ITEM);
-  await p.getByRole('checkbox', { name: `Got ${ITEM}` }).click();
-  await p.getByRole('checkbox', { name: `Got ${ITEM}` }).waitFor({ state: 'detached', timeout: 5000 });
+  await p.getByRole('checkbox', { name: `Check off ${ITEM}` }).click();
+  await p.getByRole('checkbox', { name: `Check off ${ITEM}` }).waitFor({ state: 'detached', timeout: 5000 });
+  // Nobody said where blueberries go, so they land in Produce on their own.
+  await p.getByLabel('Item', { exact: true }).fill('Blueberries');
+  await p.getByLabel('Item', { exact: true }).press('Enter');
+  await p.getByRole('region', { name: 'Produce' }).getByText('Blueberries').waitFor({ timeout: 5000 });
+  await p.getByRole('checkbox', { name: 'Check off Blueberries' }).click();
+});
+
+await check('the grocery list plans its run as one task', async (p) => {
+  await p.getByRole('button', { name: 'Plan the grocery run' }).click();
+  await p.getByRole('dialog', { name: 'Plan Grocery run' }).getByText('Tomorrow').click();
+  await p.getByRole('link', { name: 'Grocery run · Tomorrow' }).click();
+  await p.getByRole('link', { name: /^Groceries/ }).waitFor({ timeout: 5000 });
+  const { tasks } = (await (await p.request.get(`${base}/api/tasks?q=Grocery%20run`)).json()) as { tasks: { id: string; listName: string | null }[] };
+  if (tasks[0]?.listName !== 'Groceries') throw new Error('the grocery run is not linked to Groceries');
+  await p.request.post(`${base}/api/tasks/${tasks[0].id}/archive`, { data: {} });
+});
+
+await check("a meal's ingredients go to Groceries, each in its aisle", async (p) => {
+  const { group } = (await (await p.request.post(`${base}/api/groups`, { data: { name: `Meals ${run}`, kind: 'list', template: 'meals' } })).json()) as { group: { id: string } };
+  await p.request.post(`${base}/api/lists/${group.id}/items`, { data: { name: 'Tacos', section: 'Friday', parts: ['Tortillas', 'Salsa'] } });
+  await p.goto(`${base}/list/${group.id}`);
+  await p.getByRole('button', { name: /^Tacos/ }).click({ button: 'right' });
+  await p.getByRole('button', { name: 'Add all 2 to Groceries' }).click();
+  await until(p, 'Added 2 to Groceries');
+  for (let i = 0; i < 20; i++) {
+    await p.waitForTimeout(250);
+    const groceries = (await (await p.request.get(`${base}/api/groups`)).json()) as { groups: { id: string; template: string | null }[] };
+    const id = groceries.groups.find((g) => g.template === 'groceries')!.id;
+    const { open } = (await (await p.request.get(`${base}/api/lists/${id}`)).json()) as { open: { name: string; section: string | null }[] };
+    const placed = Object.fromEntries(open.map((i) => [i.name, i.section]));
+    if (placed.Tortillas === 'Bakery' && placed.Salsa === 'Pantry') {
+      for (const name of ['Tortillas', 'Salsa']) await p.request.post(`${base}/api/lists/${id}/items/${encodeURIComponent(name)}/check`, { data: { checked: true } });
+      await p.request.post(`${base}/api/groups/${group.id}/archive`, { data: {} });
+      return;
+    }
+  }
+  throw new Error('the ingredients did not reach Groceries in their aisles');
 });
 
 await check('creating a group from the backlog', async (p) => {
@@ -309,17 +346,17 @@ await check('a packing list starts from its template and resets for the next tri
   const name = `Trip ${run}`;
   await p.goto(`${base}/backlog`);
   await p.getByRole('button', { name: 'New group or list' }).click();
-  await p.getByRole('button', { name: 'Shopping-style list' }).click();
-  await p.getByRole('radio', { name: /^Packing/ }).click();
+  await p.getByRole('radio', { name: 'List', exact: true }).click();
+  await p.getByRole('radio', { name: 'Packing' }).click();
   await p.getByLabel('Name', { exact: true }).fill(name);
   await p.getByRole('button', { name: 'Create' }).click();
   await until(p, `Made ${name}`);
   await p.getByRole('link', { name: new RegExp(name) }).click();
   await p.getByRole('heading', { name: 'Toiletries' }).waitFor({ timeout: 5000 });
-  await p.getByRole('checkbox', { name: 'Got Toothbrush' }).click();
-  await p.getByRole('checkbox', { name: 'Got Toothbrush' }).waitFor({ state: 'detached', timeout: 5000 });
-  await p.getByRole('button', { name: 'Reset' }).click();
-  await p.getByRole('checkbox', { name: 'Got Toothbrush' }).waitFor({ timeout: 5000 });
+  await p.getByRole('checkbox', { name: 'Check off Toothbrush' }).click();
+  await p.getByRole('checkbox', { name: 'Check off Toothbrush' }).waitFor({ state: 'detached', timeout: 5000 });
+  await p.getByRole('button', { name: 'Start over' }).click();
+  await p.getByRole('checkbox', { name: 'Check off Toothbrush' }).waitFor({ timeout: 5000 });
 });
 
 await check('smart add reads what was typed and saves it after review', async (p) => {

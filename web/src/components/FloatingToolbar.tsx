@@ -21,7 +21,7 @@ const items = [
 // Each button is 48px wide with 4px between them.
 const STEP = 52;
 
-export function FloatingToolbar({ onAdd }: { onAdd: () => void }) {
+export function FloatingToolbar({ onAdd, label }: { onAdd: () => void; label: string }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const isActive = (to: string) => (to === '/' ? pathname === '/' : pathname.startsWith(to));
   const active = items.findIndex(({ to }) => isActive(to));
@@ -60,7 +60,7 @@ export function FloatingToolbar({ onAdd }: { onAdd: () => void }) {
       </nav>
       <motion.button
         type="button"
-        aria-label="Add a task"
+        aria-label={label}
         onClick={onAdd}
         whileTap={{ scale: 0.9, borderRadius: '40%' }}
         transition={expressive.fastSpatial}

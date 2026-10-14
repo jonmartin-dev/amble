@@ -66,6 +66,7 @@ describe('local connector over stdio', () => {
       'get_task',
       'get_today',
       'move_tasks',
+      'plan_list_trip',
       'plan_week',
       'read_file',
       'search_tasks',
@@ -112,7 +113,15 @@ describe('local connector over stdio', () => {
     const listed = await call('add_to_list', { items: [{ name: 'Oat milk', quantity: '2' }, { name: 'Coffee' }] });
     expect(listed.list).toBe('Groceries');
     await call('check_off_list_items', { items: ['coffee'] });
-    expect((await call('get_list')).items).toEqual([expect.objectContaining({ name: 'Oat milk', quantity: '2' })]);
+    expect((await call('get_list')).items).toEqual([expect.objectContaining({ name: 'Oat milk', quantity: '2', section: 'Dairy & eggs' })]);
+
+    await call('create_group', { name: 'Meal plan', kind: 'list', template: 'meals' });
+    const meal = await call('add_to_list', { list: 'Meal plan', items: [{ name: 'Tacos', section: 'Friday', ingredients: ['Tortillas', 'Salsa'] }] });
+    expect(meal.items).toEqual([expect.objectContaining({ name: 'Tacos', section: 'Friday', ingredients: ['Tortillas', 'Salsa'], outcome: 'added' })]);
+    const trip = await call('plan_list_trip', { day: 'tomorrow' });
+    expect(trip).toMatchObject({ title: 'Grocery run', tripFor: 'Groceries', outcome: 'planned' });
+    expect((await call('get_list')).trip).toMatchObject({ title: 'Grocery run' });
+    expect(await call('plan_list_trip', { list: 'Meal plan', day: 'today' })).toMatchObject({ error: expect.stringMatching(/plans as a trip/) });
 
     const gap = await call('find_gap', { due: 'tomorrow', estimate_minutes: 45 });
     expect(gap.fits).toBe(true);

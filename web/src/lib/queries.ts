@@ -126,10 +126,11 @@ export function useStats() {
   return useQuery({ queryKey: ['stats'], queryFn: () => get<Stats>(`/stats?weeks=12&weekStart=${weekStartDay()}`) });
 }
 
-export function useList(groupId: string) {
+export function useList(groupId: string, enabled = true) {
   return useQuery({
     queryKey: ['list', groupId],
     queryFn: () => get<{ group: Group; open: ListItem[]; checked: ListItem[] }>(`/lists/${groupId}`),
+    enabled: enabled && !!groupId,
   });
 }
 

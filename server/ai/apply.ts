@@ -56,7 +56,8 @@ export function applyProposals(db: Db, actor: Actor, proposals: Proposal[]): App
         result.completed++;
       } else if (p.kind === 'list_item') {
         const list = resolveGroup(db, me, p.listId, 'list');
-        addListItems(db, actor, list, [{ name: p.name, quantity: p.quantity, section: p.section, note: p.note }]);
+        // No section picked: where it went before, or a guess from its name.
+        addListItems(db, actor, list, [{ name: p.name, quantity: p.quantity, section: p.section ?? undefined, note: p.note, store: p.store }]);
         result.listed++;
       } else if (p.kind === 'check') {
         const list = resolveGroup(db, me, p.listId, 'list');

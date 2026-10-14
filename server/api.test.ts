@@ -44,6 +44,7 @@ function as(member: Member) {
     get: (path: string) => call('GET', path),
     post: (path: string, data: unknown = {}) => call('POST', path, data),
     patch: (path: string, data: unknown) => call('PATCH', path, data),
+    put: (path: string, data: unknown) => call('PUT', path, data),
     del: (path: string) => call('DELETE', path),
   };
 }
@@ -146,6 +147,19 @@ describe('lists API', () => {
     expect((await api.post(`/lists/${groceries.id}/items/${json.open[0].id}/check`, { checked: true })).status).toBe(204);
     expect((await api.get(`/lists/${groceries.id}`)).json).toMatchObject({ open: [], checked: [{ name: 'Eggs' }] });
     expect((await api.get('/groups')).json.groups.find((g: { kind: string }) => g.kind === 'list').open).toBe(0);
+  });
+
+  it("changes a list's sections, and a task can be a trip for a list", async () => {
+    const api = as(jon);
+    const groceries = (await api.get('/groups')).json.groups.find((g: { kind: string }) => g.kind === 'list');
+    await api.post(`/lists/${groceries.id}/items`, { name: 'Apples', section: 'Produce', store: 'Costco', parts: null });
+    const put = await api.put(`/lists/${groceries.id}/sections`, { sections: ['Fruit', 'Frozen'], renames: [{ from: 'Produce', to: 'Fruit' }] });
+    expect(put.json.group.sections).toEqual(['Fruit', 'Frozen']);
+    expect((await api.get(`/lists/${groceries.id}`)).json.open).toMatchObject([{ name: 'Apples', section: 'Fruit', store: 'Costco' }]);
+    const { json } = await api.post('/tasks', { title: 'Grocery run', listId: groceries.id });
+    expect(json.task).toMatchObject({ listId: groceries.id, listName: 'Groceries' });
+    expect((await api.get(`/lists/${groceries.id}`)).json.trip).toMatchObject({ id: json.task.id, title: 'Grocery run' });
+    expect((await api.post('/tasks', { title: 'Nope', listId: 'Home' })).status).toBe(400);
   });
 });
 

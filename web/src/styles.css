@@ -220,6 +220,15 @@ body {
 .press:active:not(:disabled) {
   transform: scale(0.94);
 }
+/* The same for something as wide as a row, which only needs to give a little. */
+.press-soft {
+  transition:
+    transform 350ms var(--spring-fast),
+    background-color 150ms;
+}
+.press-soft:active {
+  transform: scale(0.98);
+}
 
 /* The pill behind the current tab in the toolbar. */
 .toolbar-pill {
@@ -261,6 +270,7 @@ body {
   .fill-glide,
   .sheet-keyboard,
   .press,
+  .press-soft,
   .toolbar-pill,
   .check,
   .check-mark {

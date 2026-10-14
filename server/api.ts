@@ -44,7 +44,7 @@ import {
   visibleGroups,
   type Actor,
 } from './domain/household.ts';
-import { addListItems, checkListItems, getListItems, listHistory, resetList, updateListItem } from './domain/lists.ts';
+import { addListItems, checkListItems, getListItems, listHistory, openTrip, resetList, setListSections, updateListItem } from './domain/lists.ts';
 import { defaultCapacity, findGap, getLoad, learnedCapacity } from './domain/load.ts';
 import { dismissSuggestion, findGaps, getBriefing, markBriefingSeen } from './domain/planner.ts';
 import { snoozeReminder, upcomingReminders } from './domain/reminders.ts';
@@ -89,6 +89,7 @@ const newTask = z.object({
   links: z.array(link).max(20).optional(),
   repeat: repeatSchema.nullable().optional(),
   remindAt: instant.nullable().optional(),
+  listId: z.string().nullable().optional(),
 });
 
 const taskPatch = z.object({
@@ -162,6 +163,7 @@ const proposal = z.discriminatedUnion('kind', [
     quantity: z.string().max(40).nullable(),
     section: z.string().max(60).nullable(),
     note: z.string().max(300).nullable(),
+    store: z.string().max(60).nullable().optional(),
   }),
   z.object({
     kind: z.literal('update'),
@@ -202,6 +204,8 @@ const listItemFields = {
   section: z.string().max(60).nullable().optional(),
   url: z.string().max(2000).nullable().optional(),
   price: z.string().max(40).nullable().optional(),
+  store: z.string().max(60).nullable().optional(),
+  parts: z.array(z.string().max(200)).max(50).nullable().optional(),
 };
 
 // Opening the app syncs calendars that haven't been for this long, waiting at most a few seconds.
@@ -320,6 +324,7 @@ export function registerApi(
         color: z.enum(GROUP_COLORS).optional(),
         private: z.boolean().optional(),
         template: z.string().max(40).optional(),
+        kit: z.string().max(60).nullable().optional(),
       }),
     );
     return c.json({ group: createGroup(db, actor(c), input) }, 201);
@@ -410,6 +415,7 @@ export function registerApi(
         groupId: groupId(viewer, input.groupId),
         assigneeId: memberId(viewer, input.assigneeId),
         remindAt: when(input.remindAt),
+        listId: input.listId == null ? input.listId : resolveGroup(db, viewer, input.listId, 'list').id,
       },
     ]);
     return c.json({ task }, 201);
@@ -602,7 +608,19 @@ export function registerApi(
 
   app.get('/api/lists/:groupId', (c) => {
     const group = resolveGroup(db, me(c), c.req.param('groupId'), 'list');
-    return c.json({ group, ...getListItems(db, group, true) });
+    return c.json({ group, ...getListItems(db, group, true), trip: openTrip(db, group) });
+  });
+
+  app.put('/api/lists/:groupId/sections', async (c) => {
+    const group = resolveGroup(db, me(c), c.req.param('groupId'), 'list');
+    const input = await body(
+      c,
+      z.object({
+        sections: z.array(z.string().trim().min(1).max(60)).max(40),
+        renames: z.array(z.object({ from: z.string().max(60), to: z.string().trim().min(1).max(60) })).max(40).optional(),
+      }),
+    );
+    return c.json({ group: setListSections(db, actor(c), group, input.sections, input.renames) });
   });
 
   app.post('/api/lists/:groupId/items', async (c) => {

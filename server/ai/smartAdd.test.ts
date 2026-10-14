@@ -79,8 +79,8 @@ describe('turning answers into proposals', () => {
         items: [
           task({ title: 'call mom.', group: 'g3', for: 'm2', planned: addDays(today, 1), time_of_day: 'evening', estimate_minutes: 12, links: ['https://example.com', 'javascript:alert(1)'] }),
           task({ title: 'Yesterday thing', planned: addDays(today, -1), group: 'g99', repeat: { ...none, mode: 'schedule', every: 1, unit: 'week', weekdays: [7], months: [] } }),
-          { kind: 'add_to_list', list: 'l1', name: 'chicken thighs', quantity: '2 lbs', section: 'meat & seafood', note: '' },
-          { kind: 'add_to_list', list: 'l9', name: 'Nowhere', quantity: '', section: '', note: '' },
+          { kind: 'add_to_list', list: 'l1', name: 'chicken thighs', quantity: '2 lbs', section: 'meat & seafood', store: '', note: '' },
+          { kind: 'add_to_list', list: 'l9', name: 'Nowhere', quantity: '', section: '', store: '', note: '' },
           { kind: 'update_task', task: 't1', title: '', notes: '', group: '', for: '', planned: 'none', due: '', time_of_day: '', must_do: 'yes', estimate_minutes: 0, add_steps: [], repeat: none, remind: '' },
           { kind: 'update_task', task: 't99', title: 'Ghost', notes: '', group: '', for: '', planned: '', due: '', time_of_day: '', must_do: '', estimate_minutes: 0, add_steps: [], repeat: none, remind: '' },
           { kind: 'complete_task', task: 't1' },
@@ -142,6 +142,38 @@ describe('reminders in smart add', () => {
     const call = listTasks(db, jon).find((t) => t.title === 'Call mom')!;
     expect(call.reminder?.at.toISOString()).toBe(sixPm);
     expect(fence).toBeTruthy();
+  });
+
+  it('takes new people and places on lists sorted by them, and stores only where a list has them', () => {
+    const gifts = createGroup(db, asJon, { name: 'Gift ideas', kind: 'list', template: 'gifts' });
+    addListItems(db, asJon, gifts, [{ name: 'Scarf', section: 'Mom' }]);
+    const { text, refs } = buildContext(db, jon);
+    expect(text).toMatch(/Gift ideas \(gift ideas list; sections are by for: Mom, and new ones are fine\)/);
+    expect(text).toMatch(/Groceries \(groceries list; aisle sections: Produce, .*; has stores\)/);
+    const groceriesRef = [...refs.lists].find(([, l]) => l.id === resolveGroup(db, jon, 'Groceries', 'list').id)![0];
+    const giftsRef = [...refs.lists].find(([, l]) => l.id === gifts.id)![0];
+    const proposals = toProposals(
+      {
+        items: [
+          { kind: 'add_to_list', list: giftsRef, name: 'Puzzle', quantity: '', section: 'mom', store: 'Target', note: '' },
+          { kind: 'add_to_list', list: giftsRef, name: 'Hat', quantity: '', section: 'grandpa', store: '', note: '' },
+          { kind: 'add_to_list', list: groceriesRef, name: 'Rice', quantity: '', section: 'Aisle 9', store: 'Costco', note: '' },
+        ],
+        unclear: '',
+      },
+      refs,
+      jon,
+      today,
+    );
+    expect(proposals).toEqual([
+      expect.objectContaining({ name: 'Puzzle', section: 'Mom' }),
+      expect.objectContaining({ name: 'Hat', section: 'Grandpa' }),
+      expect.objectContaining({ name: 'Rice', section: null, store: 'Costco' }),
+    ]);
+    expect(proposals[0]).not.toHaveProperty('store');
+    // No aisle from Haiku: the server guesses one when it's saved.
+    applyProposals(db, asJon, [proposals[2]!]);
+    expect(getListItems(db, resolveGroup(db, jon, 'Groceries', 'list')).open).toEqual([expect.objectContaining({ name: 'Rice', section: 'Pantry', store: 'Costco' })]);
   });
 
   it('tells Haiku the time now, so "in an hour" works', () => {
