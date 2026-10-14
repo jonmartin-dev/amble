@@ -4,7 +4,7 @@ import { addDays, dateRange, daysBetween, isWeekend, planningDate, weekday } fro
 import { DomainError } from './household.ts';
 import { listTasks } from './tasks.ts';
 
-// Until Almanac learns real capacity and estimates (phase 5), these stand in.
+// Until Almanac learns real capacity and estimates (phase 7), these stand in.
 export const DEFAULT_ESTIMATE_MINUTES = 30;
 const WEEKDAY_CAPACITY = 180;
 const WEEKEND_CAPACITY = 240;

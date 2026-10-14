@@ -2,7 +2,7 @@
 
 A calm, shared, self-hosted planner for a household. It knows how full each day already is, from your tasks and your Google Calendar, and suggests what to do today and which day has room for something due later. It never nags.
 
-Status: early but usable. The day list, backlog, task details, shopping lists, handing tasks to each other and the Claude connector work. Recurring tasks, list templates, the calendar and the AI planner are next (see [SPEC.md](SPEC.md) for the plan and build order).
+Status: early but usable. The day list, backlog, task details, shopping lists, handing tasks to each other and the Claude connector work. The calendar, stats, activity, settings and offline use are next, then recurring tasks, list templates and the AI planner (see [SPEC.md](SPEC.md) for the plan and build order).
 
 ## Features so far
 
