@@ -58,16 +58,23 @@ for (const v of variants) {
 
   // A task with the most detail and the first list, when the data has them.
   const { tasks } = (await (await page.request.get(`${base}/api/tasks`)).json()) as { tasks: { id: string; subtasks: unknown[]; links: unknown[] }[] };
-  const { groups } = (await (await page.request.get(`${base}/api/groups`)).json()) as { groups: { id: string; kind: string }[] };
+  const { groups } = (await (await page.request.get(`${base}/api/groups`)).json()) as { groups: { id: string; kind: string; template: string | null }[] };
   const rich = [...tasks].sort((a, b) => b.subtasks.length + b.links.length - (a.subtasks.length + a.links.length))[0];
   const list = groups.find((g) => g.kind === 'list');
   const named: [string, string][] = routes.map((r) => [r === '/' ? 'today' : r.slice(1).replace('/', '-'), r]);
   if (rich) named.push(['task', `/task/${rich.id}`]);
   if (list) named.push(['list', `/list/${list.id}`]);
+  const packing = groups.find((g) => g.template === 'packing');
+  if (packing) named.push(['list-packing', `/list/${packing.id}`]);
 
-  const shoot = async (name: string) => {
+  // Closing a sheet takes its history entry back; let that land before navigating.
+  const closeSheet = async () => {
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(500);
+  };
+  const shoot = async (name: string, fullPage = true) => {
     const file = `${out}/${v.name}-${name}.png`;
-    await page.screenshot({ path: file, fullPage: true });
+    await page.screenshot({ path: file, fullPage });
     console.log(file);
   };
   for (const [name, route] of named) {
@@ -83,6 +90,33 @@ for (const v of variants) {
   await page.getByRole('button', { name: 'Add a task' }).click();
   await page.waitForTimeout(800);
   await shoot('add');
+  // With the keyboard up (faked: phones shrink the visual viewport), then smart add's review.
+  await page.evaluate(() => {
+    const vv = window.visualViewport!;
+    Object.defineProperty(vv, 'height', { get: () => window.innerHeight - 320, configurable: true });
+    vv.dispatchEvent(new Event('resize'));
+  });
+  const smart = await page.getByLabel('What to add').count();
+  await page.getByLabel(smart ? 'What to add' : 'Task', { exact: true }).fill('pick up a birthday gift for Sam on saturday, and 2 lbs chicken thighs');
+  await page.getByRole('button', { name: 'Group', exact: true }).click();
+  await page.waitForTimeout(500);
+  await shoot('add-keyboard', false);
+  if (smart) {
+    await page.getByRole('button', { name: 'Group', exact: true }).click();
+    await page.keyboard.press('Enter');
+    await page.evaluate(() => {
+      Object.defineProperty(window.visualViewport!, 'height', { get: () => window.innerHeight, configurable: true });
+      window.visualViewport!.dispatchEvent(new Event('resize'));
+    });
+    await page.getByText("Here's what I got").waitFor({ timeout: 30000 });
+    await page.waitForTimeout(600);
+    await shoot('add-review', false);
+    await page.locator('li button[aria-expanded]').last().click();
+    await page.waitForTimeout(600);
+    await shoot('add-edit', false);
+  }
+  await closeSheet();
+  await page.reload();
   if (rich) {
     await page.goto(`${base}/task/${rich.id}`);
     await page.waitForLoadState('networkidle');
@@ -90,7 +124,22 @@ for (const v of variants) {
     await page.waitForTimeout(900);
     await page.screenshot({ path: `${out}/${v.name}-move.png` });
     console.log(`${out}/${v.name}-move.png`);
+    await closeSheet();
+    await page.waitForTimeout(400);
+    await page.getByRole('button', { name: /Doesn't repeat|Every|Weekly|Monthly|after it's done/ }).first().click();
+    await page.waitForTimeout(900);
+    await shoot('repeat', false);
+    await closeSheet();
   }
+  // Making a list from a template.
+  await page.goto(`${base}/backlog`);
+  await page.waitForLoadState('networkidle');
+  await page.getByRole('button', { name: 'New group or list' }).click();
+  await page.getByRole('button', { name: 'Shopping-style list' }).click();
+  await page.waitForTimeout(800);
+  await shoot('new-list', false);
+  await closeSheet();
+
   // The calendar's month view and a day's plan.
   await page.goto(`${base}/calendar`);
   await page.waitForLoadState('networkidle');
@@ -101,7 +150,7 @@ for (const v of variants) {
   await page.waitForTimeout(900);
   await page.screenshot({ path: `${out}/${v.name}-day.png` });
   console.log(`${out}/${v.name}-day.png`);
-  await page.keyboard.press('Escape');
+  await closeSheet();
   await page.getByRole('radio', { name: 'Week' }).click();
 
   // The connector consent page, as Claude's sign-in would open it (never approved here).

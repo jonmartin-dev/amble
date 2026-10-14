@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import Sparkle from '~icons/material-symbols/auto-awesome-outline-rounded';
 import Folder from '~icons/material-symbols/folder-outline-rounded';
+import Bolt from '~icons/material-symbols/bolt-outline-rounded';
 import Group from '~icons/material-symbols/group-outline-rounded';
 import History from '~icons/material-symbols/history-rounded';
 import Logout from '~icons/material-symbols/logout-rounded';
@@ -11,11 +12,12 @@ import Trophy from '~icons/material-symbols/trophy-outline-rounded';
 import { ListGroup, SectionTitle, SubpageHeader, Switch, minutesLabel } from '../components/ui.tsx';
 import { api, signOut, type Member } from '../lib/api.ts';
 import { useSnackbar } from '../lib/snackbar.tsx';
-import { useGroups, useMe, useMembers } from '../lib/queries.ts';
+import { useAi, useGroups, useMe, useMembers } from '../lib/queries.ts';
 
 export function capacitySummary(me: Member | null) {
-  const custom = Object.keys(me?.capacity ?? {}).length > 0;
-  return custom ? 'Set by you, day by day' : `About ${minutesLabel(180)} on weekdays and ${minutesLabel(240)} on weekends`;
+  const pinned = Object.keys(me?.capacity ?? {}).length;
+  if (!pinned) return 'Learned from what you finish';
+  return pinned === 7 ? 'Pinned by you, every day' : `Learned, with ${pinned} ${pinned === 1 ? 'day' : 'days'} pinned`;
 }
 
 export function Settings() {
@@ -37,6 +39,17 @@ export function Settings() {
   });
   const showStreaks = streaks.isPending ? streaks.variables : (me?.showStreaks ?? true);
 
+  const { data: ai } = useAi();
+  const smartAdd = useMutation({
+    mutationFn: (on: boolean) => api('/me', { method: 'PATCH', body: JSON.stringify({ smartAdd: on }) }),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: ['session'] });
+      void qc.invalidateQueries({ queryKey: ['ai'] });
+    },
+    onError: (e: Error) => snack({ message: e.message }),
+  });
+  const smartOn = smartAdd.isPending ? smartAdd.variables : (me?.smartAdd ?? true);
+
   return (
     <>
       <SubpageHeader title="Settings" back="/" />
@@ -46,6 +59,18 @@ export function Settings() {
         rows={[
           { icon: <Palette className="size-6" />, title: 'Appearance', subtitle: 'Color, style, light and dark', to: '/appearance' },
           { icon: <Timer className="size-6" />, title: 'Daily capacity', subtitle: capacitySummary(me), to: '/settings/capacity' },
+          ai?.available
+            ? {
+                icon: <Sparkle className="size-6" />,
+                title: 'Smart add',
+                subtitle: 'Haiku turns what you type into tasks and list items for you to check',
+                trailing: <Switch checked={smartOn} onChange={(v) => smartAdd.mutate(v)} label="Smart add" />,
+              }
+            : {
+                icon: <Sparkle className="size-6" />,
+                title: 'Smart add',
+                subtitle: 'Off: the server has no Anthropic API key',
+              },
           {
             icon: <Trophy className="size-6" />,
             title: 'Streaks and records',
@@ -72,6 +97,15 @@ export function Settings() {
           },
           { icon: <Sparkle className="size-6" />, title: 'Connect Claude', subtitle: 'Plan from any Claude chat', to: '/connections' },
           { icon: <History className="size-6" />, title: 'Activity', subtitle: 'What changed, and who changed it', to: '/activity' },
+          ...(ai?.available
+            ? [
+                {
+                  icon: <Bolt className="size-6" />,
+                  title: 'AI this month',
+                  subtitle: `$${ai.monthSpendUsd.toFixed(2)} of the $${ai.monthlyCapUsd} cap. Smart add pauses past it until next month.`,
+                },
+              ]
+            : []),
         ]}
       />
 

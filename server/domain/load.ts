@@ -13,7 +13,9 @@ export const MAX_CAPACITY_MINUTES = 720;
 const LEARN_WEEKS = 12;
 // This many same-weekday samples (about six weeks of use) and the default no longer counts.
 const FULL_WEIGHT_SAMPLES = 6;
-const MIN_LEARNED_MINUTES = 60;
+// Learning never takes a day below half its starting point: a few quiet weeks shouldn't turn an
+// ordinary plan into "Too much". Pinning a number (0 for a day off) is how to go lower.
+const MIN_LEARNED_SHARE = 0.5;
 const MAX_RANGE_DAYS = 62;
 
 export type LoadLevel = 'light' | 'moderate' | 'full' | 'over';
@@ -84,7 +86,7 @@ export function learnedCapacity(db: Db, member: Member, today = planningDate(mem
     const base = defaultCapacity(dow);
     if (samples.length === 0) return { weekday: dow, minutes: base, samples: 0, confidence: 0 };
     const confidence = Math.min(samples.length / FULL_WEIGHT_SAMPLES, 1);
-    const observed = Math.max(percentile(samples, 0.75), MIN_LEARNED_MINUTES);
+    const observed = Math.max(percentile(samples, 0.75), base * MIN_LEARNED_SHARE);
     const blended = (1 - confidence) * base + confidence * observed;
     const minutes = Math.min(Math.round(blended / 15) * 15, MAX_CAPACITY_MINUTES);
     return { weekday: dow, minutes, samples: samples.length, confidence: Math.round(confidence * 100) / 100 };

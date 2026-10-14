@@ -1,11 +1,12 @@
 import { Link, useRouter } from '@tanstack/react-router';
 import { AnimatePresence, motion, useDragControls, type PanInfo } from 'motion/react';
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import ArrowBack from '~icons/material-symbols/arrow-back-rounded';
 import Check from '~icons/material-symbols/check-rounded';
 import ChevronRight from '~icons/material-symbols/chevron-right-rounded';
 import type { DayLoad } from '../lib/api.ts';
-import { expressive } from '../lib/motion.ts';
+import { expressive, standard } from '../lib/motion.ts';
+import { useBackToClose, useScrollLock, useVisualViewport } from '../lib/viewport.ts';
 
 /** Header for a page reached from somewhere else: back arrow and title. */
 export function SubpageHeader({ title, back = '/settings', action }: { title: ReactNode; back?: string; action?: ReactNode }) {
@@ -152,10 +153,31 @@ export function ButtonGroup<T extends string | number>({
   );
 }
 
-/** M3 bottom sheet with a scrim. Drag it down, tap outside, or press Escape to close. */
-export function Sheet({ open, onClose, label, children }: { open: boolean; onClose: () => void; label: string; children: ReactNode }) {
+/**
+ * M3 bottom sheet with a scrim. Drag the handle down, tap outside, press Escape or the phone's
+ * Back to close. It rides on top of the on-screen keyboard, and `footer` (a text box, the main
+ * buttons) stays pinned just above it while the body scrolls.
+ */
+export function Sheet({
+  open,
+  onClose,
+  label,
+  children,
+  footer,
+  header,
+}: {
+  open: boolean;
+  onClose: () => void;
+  label: string;
+  children?: ReactNode;
+  footer?: ReactNode;
+  header?: ReactNode;
+}) {
   // Only the handle starts a drag, so scrolling inside the sheet still works.
   const controls = useDragControls();
+  const view = useVisualViewport(open);
+  useScrollLock(open);
+  useBackToClose(open, onClose);
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
@@ -166,6 +188,9 @@ export function Sheet({ open, onClose, label, children }: { open: boolean; onClo
   const onDragEnd = (_: unknown, info: PanInfo) => {
     if (info.offset.y > 120 || info.velocity.y > 600) onClose();
   };
+  const keyboardUp = view.keyboard > 0;
+  const maxHeight = Math.max(240, view.height - (keyboardUp ? 8 : view.height * 0.1));
+  const natural = useNaturalHeight(open);
 
   return (
     <AnimatePresence>
@@ -182,12 +207,17 @@ export function Sheet({ open, onClose, label, children }: { open: boolean; onClo
           <motion.div
             role="dialog"
             aria-label={label}
-            className="fixed inset-x-0 bottom-0 z-30 mx-auto max-h-[88dvh] max-w-xl overflow-y-auto rounded-t-[2rem] bg-surface-low px-5 pt-3"
-            style={{ paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))' }}
-            initial={{ y: '100%' }}
-            animate={{ y: 0 }}
+            className="fixed inset-x-0 z-30 mx-auto flex max-w-xl flex-col overflow-hidden rounded-t-[2rem] bg-surface-low shadow-2xl"
+            // The sheet glides to fit what's in it, and rides up with the keyboard.
+            initial={{ y: '100%', bottom: view.keyboard }}
+            animate={{
+              y: 0,
+              bottom: view.keyboard,
+              ...(natural.height ? { height: Math.min(natural.height, maxHeight) } : {}),
+            }}
             exit={{ y: '100%', pointerEvents: 'none' }}
-            transition={expressive.defaultSpatial}
+            transition={{ ...expressive.defaultSpatial, bottom: standard.fastSpatial, height: expressive.defaultSpatial }}
+            style={{ maxHeight }}
             drag="y"
             dragListener={false}
             dragControls={controls}
@@ -195,14 +225,20 @@ export function Sheet({ open, onClose, label, children }: { open: boolean; onClo
             dragElastic={{ top: 0, bottom: 0.6 }}
             onDragEnd={onDragEnd}
           >
-            <div
-              onPointerDown={(e) => controls.start(e)}
-              className="-mx-5 -mt-3 mb-2 flex cursor-grab touch-none justify-center pt-3 pb-3"
-              aria-hidden
-            >
-              <div className="h-1 w-8 rounded-full bg-outline-variant" />
+            <div ref={natural.header} onPointerDown={(e) => controls.start(e)} className="shrink-0 cursor-grab touch-none px-5 pt-3 pb-1">
+              <div className="mx-auto mb-2 h-1 w-8 rounded-full bg-outline-variant" aria-hidden />
+              {header}
             </div>
-            {children}
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5">
+              <div ref={natural.body} className={children ? 'pb-1' : ''}>
+                {children}
+              </div>
+            </div>
+            <div ref={natural.footer} className={`shrink-0 px-5 ${footer ? 'pt-2' : ''}`}>
+              {footer}
+            </div>
+            {/* Room for the home indicator, which the keyboard hides while it's up. */}
+            <div ref={natural.spacer} className="shrink-0" style={{ height: keyboardUp ? 10 : 'max(1.25rem, env(safe-area-inset-bottom))' }} />
           </motion.div>
         </>
       )}
@@ -210,8 +246,32 @@ export function Sheet({ open, onClose, label, children }: { open: boolean; onClo
   );
 }
 
+/** Measures how tall a sheet's parts want to be, so the sheet can animate to fit them. */
+function useNaturalHeight(open: boolean) {
+  const header = useRef<HTMLDivElement>(null);
+  const body = useRef<HTMLDivElement>(null);
+  const footer = useRef<HTMLDivElement>(null);
+  const spacer = useRef<HTMLDivElement>(null);
+  const [height, setHeight] = useState(0);
+  useLayoutEffect(() => {
+    if (!open) {
+      setHeight(0);
+      return;
+    }
+    const parts = [header, body, footer, spacer].map((r) => r.current).filter((el): el is HTMLDivElement => !!el);
+    const measure = () => setHeight(parts.reduce((sum, el) => sum + el.offsetHeight, 0));
+    const ro = new ResizeObserver(measure);
+    parts.forEach((el) => ro.observe(el));
+    measure();
+    return () => ro.disconnect();
+  }, [open]);
+  return { header, body, footer, spacer, height };
+}
+
 /** Round when open, morphing to a rounded square with a check when done (M3 Expressive shape morph). */
 export function Checkbox({ checked, onChange, label, size = 28 }: { checked: boolean; onChange: () => void; label: string; size?: number }) {
+  // A tick the person just made gets a small burst; ones that load already ticked don't.
+  const [burst, setBurst] = useState(0);
   return (
     <motion.button
       type="button"
@@ -220,13 +280,14 @@ export function Checkbox({ checked, onChange, label, size = 28 }: { checked: boo
       aria-label={label}
       onClick={(e) => {
         e.stopPropagation();
+        if (!checked) setBurst((b) => b + 1);
         onChange();
       }}
       whileTap={{ scale: 0.85 }}
       animate={{ borderRadius: checked ? size * 0.32 : size / 2 }}
       transition={expressive.fastSpatial}
       style={{ width: size, height: size }}
-      className={`grid shrink-0 place-items-center border-2 transition-colors ${
+      className={`relative grid shrink-0 place-items-center border-2 transition-colors ${
         checked ? 'border-primary bg-primary text-on-primary' : 'border-outline text-transparent'
       }`}
     >
@@ -237,7 +298,30 @@ export function Checkbox({ checked, onChange, label, size = 28 }: { checked: boo
           </motion.span>
         )}
       </AnimatePresence>
+      {burst > 0 && checked && <Burst key={burst} size={size} />}
     </motion.button>
+  );
+}
+
+/** Eight dots that spring out from the middle and fade: the moment of finishing something. */
+function Burst({ size }: { size: number }) {
+  return (
+    <span className="pointer-events-none absolute inset-0" aria-hidden>
+      {Array.from({ length: 8 }, (_, i) => {
+        const angle = (i / 8) * Math.PI * 2;
+        const reach = size * 0.95;
+        return (
+          <motion.span
+            key={i}
+            className="absolute top-1/2 left-1/2 size-1.5 rounded-full bg-primary"
+            style={{ marginLeft: -3, marginTop: -3 }}
+            initial={{ x: 0, y: 0, scale: 0.4, opacity: 1 }}
+            animate={{ x: Math.cos(angle) * reach, y: Math.sin(angle) * reach, scale: [0.4, 1.2, 0], opacity: [1, 1, 0] }}
+            transition={{ duration: 0.55, ease: [0.2, 0, 0, 1] }}
+          />
+        );
+      })}
+    </span>
   );
 }
 

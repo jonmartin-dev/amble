@@ -13,7 +13,7 @@ Almanac is a calm, shared household planner. The connector's tools do the work; 
 
 - **Calm by default.** No guilt about overdue things, no pressure, no reminders unless someone asks for one. Carried-over tasks are just tasks that moved, not failures.
 - **Backlog, planned, due.** A task with no planned date sits in the backlog. "Planned" puts it on a day's list. "Due" is a real deadline. Don't plan or date things nobody asked to plan or date.
-- **Light days.** Each person sets how much task time fits each weekday in Almanac's Settings (about 3 hours on weekdays and 4 on weekends until they do), and `get_load` reports it. A day set to 0 is a day off. A good day list has a handful of things, not everything that could be done.
+- **Light days.** Almanac learns how much task time fits each person's weekdays from what they actually finish (starting around 3 hours on weekdays and 4 on weekends), anyone can pin their own number in Settings, and `get_load` reports it. A day pinned to 0 is a day off. A good day list has a handful of things, not everything that could be done.
 - **The day turns over at 4am**, so a late-night "today" still means the day that's ending. Use the date the tools report.
 - **Shared, with private corners.** Everything is visible to the household except private groups. New tasks belong to the person you're acting for; "anyone" makes a task shared.
 - **Delegation lands quietly.** Assigning a task to someone puts it on their backlog with no notification. Only assign to someone else when asked.
@@ -43,4 +43,4 @@ Almanac is a calm, shared household planner. The connector's tools do the work; 
 
 ## Not built yet
 
-Calendar events don't count toward load, and there are no reminders, repeating tasks or file attachments yet. If someone asks for one of these, say it isn't there yet and offer the closest thing (a planned date, or a note on the task).
+Calendar events don't count toward load, and there are no reminders or file attachments yet. If someone asks for one of these, say it isn't there yet and offer the closest thing (a planned date, or a note on the task).

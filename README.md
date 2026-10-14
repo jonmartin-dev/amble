@@ -2,14 +2,17 @@
 
 A calm, shared, self-hosted planner for a household. It knows how full each day already is, from your tasks and your Google Calendar, and suggests what to do today and which day has room for something due later. It never nags.
 
-Status: early but usable. The day list, backlog, task details, shopping lists, handing tasks to each other, the calendar, stats, the activity feed, settings and the Claude connector work. Next is smart add (type anything and Haiku turns it into tasks and list items for you to approve), capacity learned from what you finish, repeating tasks and list templates, then offline use and the calendar-aware planner (see [SPEC.md](SPEC.md) for the plan and build order).
+Status: early but usable. The day list, backlog, task details, smart add, repeating tasks, list templates, handing tasks to each other, the calendar, stats, the activity feed, settings and the Claude connector work, and capacity is learned from what gets done. Offline use is next, then the calendar-aware planner (see [SPEC.md](SPEC.md) for the plan and build order).
 
 ## Features so far
 
 - Today: your day list by time of day, a load meter, what carried over and what's due. Swipe right to finish a task, swipe left or long-press to move it, with Undo for both
 - Backlog in collapsible groups with search, a quick-add sheet, and a task page for notes, steps, links, deadlines, time of day, must-do and estimates
 - Moving a task shows the next two weeks with how full each day already is
-- Shopping-style lists (groceries) where bought items stay as history for re-adding
+- Smart add: type anything into quick add ("call mom tomorrow evening, out of milk and eggs, Alex should mow every Saturday") and Claude Haiku turns it into tasks, list items and changes to existing tasks, using what's already in the household. You review and edit each one before anything is saved. Optional; it needs an Anthropic API key and has a monthly spending cap
+- Repeating tasks: on a schedule (every Sunday, the 1st, the 2nd Thursday, weekdays, seasonal months) or a set time after the last one was done, with skip and pause
+- Capacity learned from what each person finishes, so how full a day looks needs no setup; anyone can pin their own numbers
+- Lists from templates: groceries sorted by aisle, shopping with links and prices, packing lists that reset for the next trip, with autocomplete from what you've bought before
 - A household: hand tasks to each other with a note, or share them with anyone; admins add people before they've signed in
 - Sign in with Google, or any OpenID Connect provider, limited to an allowlist of emails
 - Installable app (PWA) designed in Material 3 Expressive, with its spring motion tokens
@@ -26,7 +29,7 @@ cp .env.example .env    # dev sign-in is on by default, so no OIDC setup is need
 pnpm dev                # http://localhost:5173
 ```
 
-`pnpm test` runs the tests, including contrast checks for every theme. For a realistic household to look at, `node scripts/demo.ts <empty-folder> <your-email>` writes a demo database; run the app on it with `ALMANAC_DATA_DIR=<that-folder> pnpm dev`. With that running (and Chrome installed), `node scripts/screens.ts <email>` captures every screen at phone size in several themes, and `node scripts/smoke.ts <email>` clicks through the core loop and fails on any broken step or console error.
+`pnpm test` runs the tests, including contrast checks for every theme. `node --env-file=.env scripts/eval-smart-add.ts` scores smart add against real household phrasing at each effort level (it calls Haiku, a fraction of a cent per case). For a realistic household to look at, `node scripts/demo.ts <empty-folder> <your-email>` writes a demo database; run the app on it with `ALMANAC_DATA_DIR=<that-folder> pnpm dev`. With that running (and Chrome installed), `node scripts/screens.ts <email>` captures every screen at phone size in several themes, and `node scripts/smoke.ts <email>` clicks through the core loop and fails on any broken step or console error.
 
 ## Use it from Claude
 
@@ -50,6 +53,7 @@ For the Claude desktop app, add the same command under `mcpServers` in its confi
 cp .env.example .env    # set ALMANAC_PUBLIC_URL, the emails, OIDC_CLIENT_ID, and ALMANAC_DEV_LOGIN=0
 mkdir -p data secrets
 printf '%s' 'your-client-secret' > secrets/oidc_client_secret
+printf '%s' 'sk-ant-...' > secrets/anthropic_api_key   # optional, for smart add
 docker compose up -d --build
 ```
 

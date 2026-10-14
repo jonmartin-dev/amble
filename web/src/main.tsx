@@ -10,12 +10,13 @@ import {
   useParams,
   useRouterState,
 } from '@tanstack/react-router';
-import { MotionConfig } from 'motion/react';
+import { motion, MotionConfig } from 'motion/react';
 import { StrictMode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AddSheet } from './components/AddSheet.tsx';
 import { FloatingToolbar } from './components/FloatingToolbar.tsx';
 import { appUrl, basePath } from './lib/api.ts';
+import { expressive } from './lib/motion.ts';
 import { useSession } from './lib/queries.ts';
 import { SnackbarProvider } from './lib/snackbar.tsx';
 import { applyTheme, loadLocalTheme } from './lib/theme.ts';
@@ -52,7 +53,10 @@ function Root() {
   return (
     <div className="min-h-dvh">
       <main className="mx-auto max-w-xl px-4 pt-6 pb-36" style={{ paddingTop: 'max(1.5rem, env(safe-area-inset-top))' }}>
-        <Outlet />
+        {/* Each page rises in softly; the springs settle quickly so it never feels slow. */}
+        <motion.div key={pathname} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={expressive.defaultSpatial}>
+          <Outlet />
+        </motion.div>
       </main>
       <FloatingToolbar onAdd={() => setAdding(true)} />
       <AddSheet open={adding} onClose={() => setAdding(false)} plannedByDefault={pathname === '/'} />

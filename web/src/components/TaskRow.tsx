@@ -8,6 +8,7 @@ import Flag from '~icons/material-symbols/flag-rounded';
 import LinkIcon from '~icons/material-symbols/link-rounded';
 import Notes from '~icons/material-symbols/notes-rounded';
 import Person from '~icons/material-symbols/person-outline-rounded';
+import RepeatIcon from '~icons/material-symbols/repeat-rounded';
 import Sun from '~icons/material-symbols/wb-sunny-outline-rounded';
 import type { Task } from '../lib/api.ts';
 import { dayLabel, daysFrom, firstName } from '../lib/dates.ts';
@@ -134,6 +135,7 @@ export function TaskRow({ task, today, meId, onMove, showDay = false, showGroup 
                 {subtasksDone}/{task.subtasks.length}
               </span>
             )}
+            {task.repeat && <RepeatIcon className="size-4" aria-label="Repeats" />}
             {task.links.length > 0 && <LinkIcon className="size-4" aria-label="Has links" />}
             {task.notes && <Notes className="size-4" aria-label="Has notes" />}
             {task.assigneeId !== meId && (

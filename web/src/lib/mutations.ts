@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, type Task, type TimeOfDay } from './api.ts';
-import { dayLabel } from './dates.ts';
+import { api, type Repeat, type Task, type TimeOfDay } from './api.ts';
+import { dayLabel, todayIso } from './dates.ts';
 import { useSnackbar } from './snackbar.tsx';
 
 export interface NewTask {
@@ -22,6 +22,8 @@ export type TaskPatch = Partial<Omit<NewTask, 'assigneeId'>> & {
   removeSubtasks?: string[];
   addLinks?: { url: string }[];
   removeLinks?: string[];
+  repeat?: Repeat | null;
+  pausedUntil?: string | null;
 };
 
 const post = <T,>(path: string, data: unknown) => api<T>(path, { method: 'POST', body: JSON.stringify(data) });
@@ -87,6 +89,19 @@ export function useTaskActions() {
     ...opts,
   });
 
+  const skip = useMutation({
+    mutationFn: (task: Task) => post<{ task: Task }>(`/tasks/${task.id}/skip`, {}).then((r) => r.task),
+    onSuccess: (next, task) =>
+      snack({
+        message: `Skipped. Next one ${next.plannedDate ?? next.dueDate ? dayLabel((next.plannedDate ?? next.dueDate)!, todayIso(), true) : 'later'}`,
+        action: {
+          label: 'Undo',
+          run: () => undo([api(`/tasks/${task.id}`, { method: 'PATCH', body: JSON.stringify({ plannedDate: task.plannedDate, dueDate: task.dueDate }) })]),
+        },
+      }),
+    ...opts,
+  });
+
   const archive = useMutation({
     mutationFn: (task: Task) => post(`/tasks/${task.id}/archive`, {}),
     onSuccess: (_, task) =>
@@ -105,5 +120,6 @@ export function useTaskActions() {
     move: (task: Task, plannedDate: string | null, today: string) => move.mutate({ tasks: [task], plannedDate, today }),
     moveAll: (tasks: Task[], plannedDate: string | null, today: string) => move.mutate({ tasks, plannedDate, today }),
     archive: (task: Task) => archive.mutate(task),
+    skip: (task: Task) => skip.mutate(task),
   };
 }

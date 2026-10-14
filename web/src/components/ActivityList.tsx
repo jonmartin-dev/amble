@@ -29,6 +29,8 @@ const editPhrases: Record<string, [string, string?]> = {
   removeSubtasks: ['updated the steps on'],
   addLinks: ['added a link to'],
   removeLinks: ['updated the links on'],
+  repeat: ['changed how often', 'repeats'],
+  pausedUntil: ['paused'],
 };
 
 const kindWord = (d: Record<string, unknown>) => (d.kind === 'list' ? 'list' : 'group');
@@ -74,8 +76,13 @@ function describe(e: ActivityEntry, ctx: Context): { text: ReactNode; note?: str
       const phrase = fields.length === 1 ? editPhrases[fields[0]!] : undefined;
       return { text: phrase ? s(phrase[0], task, ...(phrase[1] ? [phrase[1]] : [])) : s('edited', task) };
     }
-    case 'task.completed':
-      return { text: s('finished', task) };
+    case 'task.completed': {
+      // A repeating task says when the next one is.
+      const next = d.next as { date?: string } | undefined;
+      return { text: next?.date ? s('finished', task, `(next one ${dayLabel(next.date, ctx.today, true)})`) : s('finished', task) };
+    }
+    case 'task.skipped':
+      return { text: d.to ? s('skipped', task, `to ${dayLabel(d.to as string, ctx.today, true)}`) : s('skipped', task) };
     case 'task.reopened':
       return { text: s('reopened', task) };
     case 'task.moved':
@@ -106,6 +113,10 @@ function describe(e: ActivityEntry, ctx: Context): { text: ReactNode; note?: str
       return { text: s(`got ${items(d)} from ${d.list}`) };
     case 'list.items_unchecked':
       return { text: s(`put ${items(d)} back on ${d.list}`) };
+    case 'list.item_updated':
+      return { text: s(`changed ${items(d)} on ${d.list}`) };
+    case 'list.reset':
+      return { text: s(`reset ${d.list} for next time`) };
     default:
       return { text: e.action };
   }

@@ -1,4 +1,8 @@
+import type { Proposal } from '../../../shared/proposals.ts';
+import type { Repeat } from '../../../shared/repeat.ts';
 import type { ThemePrefs } from './theme.ts';
+
+export type { Repeat, Proposal };
 
 declare global {
   interface Window {
@@ -42,6 +46,7 @@ export interface Member {
   /** Task minutes per ISO weekday ("1" is Monday); missing days use the default. */
   capacity: Partial<Record<string, number>> | null;
   showStreaks: boolean;
+  smartAdd: boolean;
 }
 
 export interface Session {
@@ -78,6 +83,7 @@ export interface Task {
   timeOfDay: TimeOfDay | null;
   mustDo: boolean;
   estimateMinutes: number | null;
+  estimateSource: 'ai' | 'user' | 'learned' | null;
   status: 'open' | 'done' | 'archived';
   completedAt: string | null;
   handedBackNote: string | null;
@@ -85,6 +91,8 @@ export interface Task {
   updatedAt: string;
   subtasks: { id: string; title: string; done: boolean }[];
   links: { id: string; url: string; title: string | null }[];
+  repeat: Repeat | null;
+  pausedUntil: string | null;
 }
 
 export interface DayLoad {
@@ -123,7 +131,33 @@ export interface ListItem {
   name: string;
   quantity: string | null;
   note: string | null;
+  section: string | null;
+  url: string | null;
+  price: string | null;
   checkedAt: string | null;
+}
+
+export interface AiStatus {
+  available: boolean;
+  /** Available and switched on for this person. */
+  smartAdd: boolean;
+  model: string;
+  effort: string;
+  monthSpendUsd: number;
+  monthlyCapUsd: number;
+}
+
+export type SmartAddResponse =
+  | { proposals: Proposal[]; unclear: string | null; usage: { inputTokens: number; outputTokens: number; ms: number } }
+  | { fallback: string };
+
+export interface CapacityDay {
+  weekday: number;
+  minutes: number;
+  samples: number;
+  confidence: number;
+  default: number;
+  pinned: number | null;
 }
 
 export interface ActivityEntry {
@@ -167,4 +201,12 @@ export interface Stats {
 export async function signOut() {
   await fetch(appUrl('/auth/logout'), { method: 'POST' });
   window.location.assign(appUrl('/'));
+}
+
+export interface ListHistoryItem {
+  name: string;
+  quantity: string | null;
+  section: string | null;
+  /** On the list right now, rather than checked off before. */
+  onList: boolean;
 }

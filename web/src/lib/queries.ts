@@ -2,9 +2,12 @@ import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-qu
 import {
   api,
   type ActivityPage,
+  type AiStatus,
+  type CapacityDay,
   type DayLoad,
   type Group,
   type HouseholdMember,
+  type ListHistoryItem,
   type ListItem,
   type Session,
   type Stats,
@@ -102,4 +105,22 @@ export function useList(groupId: string) {
     queryKey: ['list', groupId],
     queryFn: () => api<{ group: Group; open: ListItem[]; checked: ListItem[] }>(`/lists/${groupId}`),
   });
+}
+
+export function useListHistory(groupId: string | null) {
+  return useQuery({
+    queryKey: ['list', groupId, 'history'],
+    queryFn: () => api<{ items: ListHistoryItem[] }>(`/lists/${groupId}/history`),
+    select: (d) => d.items,
+    enabled: !!groupId,
+    staleTime: 60_000,
+  });
+}
+
+export function useAi() {
+  return useQuery({ queryKey: ['ai'], queryFn: () => api<AiStatus>('/ai'), staleTime: 60_000 });
+}
+
+export function useCapacity() {
+  return useQuery({ queryKey: ['capacity'], queryFn: () => api<{ days: CapacityDay[] }>('/capacity'), select: (d) => d.days });
 }

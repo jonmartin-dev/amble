@@ -11,11 +11,14 @@ import Folder from '~icons/material-symbols/folder-outline-rounded';
 import LinkIcon from '~icons/material-symbols/link-rounded';
 import OpenInNew from '~icons/material-symbols/open-in-new-rounded';
 import Person from '~icons/material-symbols/person-outline-rounded';
+import RepeatIcon from '~icons/material-symbols/repeat-rounded';
 import Schedule from '~icons/material-symbols/schedule-outline-rounded';
 import Timer from '~icons/material-symbols/timer-outline-rounded';
 import { ActivityRow } from '../components/ActivityList.tsx';
 import { GroupIcon } from '../components/icons.tsx';
 import { MoveSheet } from '../components/MoveSheet.tsx';
+import { RepeatSheet } from '../components/RepeatSheet.tsx';
+import { describeRepeat, repeatOn } from '../../../shared/repeat.ts';
 import { Checkbox, Chip, minutesLabel, SectionTitle } from '../components/ui.tsx';
 import type { Task, TimeOfDay } from '../lib/api.ts';
 import { dayLabel, firstName, todayIso } from '../lib/dates.ts';
@@ -55,6 +58,7 @@ function Detail({ task }: { task: Task }) {
   const actions = useTaskActions();
   const today = todayIso();
   const [moving, setMoving] = useState(false);
+  const [repeating, setRepeating] = useState(false);
   const [handOff, setHandOff] = useState<{ id: string | null; note: string } | null>(null);
   const [newSubtask, setNewSubtask] = useState('');
   const [newLink, setNewLink] = useState('');
@@ -152,6 +156,38 @@ function Detail({ task }: { task: Task }) {
           </div>
         </Field>
 
+        <Field icon={<RepeatIcon className="size-5" />} label="Repeats">
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => setRepeating(true)} className="rounded-full bg-surface-high px-4 py-2 text-sm font-medium">
+              {task.repeat ? describeRepeat(task.repeat, repeatOn(task.repeat) === 'due' ? task.dueDate : task.plannedDate) : "Doesn't repeat"}
+            </button>
+            {task.repeat && task.status === 'open' && (
+              <>
+                <button type="button" onClick={() => actions.skip(task)} className="rounded-full px-3 py-2 text-sm font-medium text-primary hover:bg-surface-high">
+                  Skip next
+                </button>
+                {task.pausedUntil && task.pausedUntil > today ? (
+                  <Chip selected onClick={() => patch({ pausedUntil: null })} icon={<Close className="size-4" />}>
+                    Paused until {dayLabel(task.pausedUntil, today, true)}
+                  </Chip>
+                ) : (
+                  <label className="relative cursor-pointer rounded-full px-3 py-2 text-sm font-medium text-primary hover:bg-surface-high">
+                    Pause
+                    <input
+                      type="date"
+                      min={today}
+                      onChange={(e) => e.target.value && patch({ pausedUntil: e.target.value })}
+                      onClick={(e) => (e.target as HTMLInputElement).showPicker?.()}
+                      className="absolute inset-0 opacity-0"
+                      aria-label="Pause until"
+                    />
+                  </label>
+                )}
+              </>
+            )}
+          </div>
+        </Field>
+
         <Field icon={<Folder className="size-5" />} label="Group">
           <ChipRow>
             <Chip selected={task.groupId === null} onClick={() => patch({ groupId: null })}>
@@ -217,9 +253,11 @@ function Detail({ task }: { task: Task }) {
           </Field>
         )}
 
-        <Field icon={<Timer className="size-5" />} label="Takes about">
+        <Field icon={<Timer className="size-5" />} label={task.estimateSource === 'ai' && task.estimateMinutes ? "Takes about (Haiku's guess)" : 'Takes about'}>
           <ChipRow>
-            {[null, 5, 15, 30, 60, 120].map((m) => (
+            {[null, 5, 15, 30, 60, 120, ...(task.estimateMinutes && ![5, 15, 30, 60, 120].includes(task.estimateMinutes) ? [task.estimateMinutes] : [])]
+              .sort((a, b) => (a ?? 0) - (b ?? 0))
+              .map((m) => (
               <Chip key={m ?? 'none'} selected={task.estimateMinutes === m} onClick={() => patch({ estimateMinutes: m })}>
                 {m ? minutesLabel(m) : 'Not sure'}
               </Chip>
@@ -319,6 +357,13 @@ function Detail({ task }: { task: Task }) {
       <History task={task} />
 
       <MoveSheet task={moving ? task : null} today={today} onClose={() => setMoving(false)} />
+      <RepeatSheet
+        open={repeating}
+        onClose={() => setRepeating(false)}
+        value={task.repeat}
+        date={(task.repeat && repeatOn(task.repeat) === 'due' ? task.dueDate : task.plannedDate) ?? task.dueDate ?? task.plannedDate ?? today}
+        onSave={(repeat) => patch({ repeat })}
+      />
     </>
   );
 }

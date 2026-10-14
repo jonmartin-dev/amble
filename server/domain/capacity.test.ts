@@ -36,39 +36,39 @@ describe('learned capacity', () => {
   });
 
   it("moves toward a good day's worth as weeks of history build up", () => {
-    // Six weeks of this weekday: 60, 60, 90, 90, 120, 120 minutes finished.
-    // Unestimated tasks count as 30, so the first day is two of them.
-    finished(weeksAgo(1), null, null);
-    [60, 90, 90, 120, 120].forEach((m, i) => finished(weeksAgo(i + 2), m));
+    // Six weeks of this weekday: 120, 150, 150, 200, 240, 240 minutes finished.
+    // Unestimated tasks count as 30, so the first day is four of them.
+    finished(weeksAgo(1), null, null, null, null);
+    [150, 150, 200, 240, 240].forEach((m, i) => finished(weeksAgo(i + 2), m));
     const day = learnedCapacity(db, jon).find((d) => d.weekday === dow())!;
     expect(day).toMatchObject({ samples: 6, confidence: 1 });
-    // The 75th percentile of [60, 60, 90, 90, 120, 120] is 112.5, rounded to 15 minutes.
-    expect(day.minutes).toBe(120);
-    expect(getLoad(db, jon, jon, today, today)[0]!.capacityMinutes).toBe(120);
+    // The 75th percentile of [120, 150, 150, 200, 240, 240] is 230, rounded to 15 minutes.
+    expect(day.minutes).toBe(225);
+    expect(getLoad(db, jon, jon, today, today)[0]!.capacityMinutes).toBe(225);
   });
 
   it('blends with the default while history is thin, and ignores days Almanac went unused', () => {
-    finished(weeksAgo(1), 60);
-    finished(weeksAgo(2), 60);
+    finished(weeksAgo(1), 300);
+    finished(weeksAgo(2), 300);
     const day = learnedCapacity(db, jon).find((d) => d.weekday === dow())!;
     const base = defaultCapacity(dow());
     expect(day.samples).toBe(2);
-    expect(day.minutes).toBe(Math.round(((2 / 3) * base + (1 / 3) * 60) / 15) * 15);
+    expect(day.minutes).toBe(Math.round(((2 / 3) * base + (1 / 3) * 300) / 15) * 15);
   });
 
-  it('counts a day used without finishing anything as a light day', () => {
+  it('counts a day used without finishing anything as a light day, down to half the start', () => {
     for (let i = 1; i <= 6; i++) {
       const at = new Date(planningDayStart(jon, weeksAgo(i)).getTime() + 3600_000);
       db.insert(activity).values({ memberId: jon.id, action: 'task.created', createdAt: at }).run();
     }
-    // Nothing finished, so it bottoms out at the floor rather than zero.
-    expect(learnedCapacity(db, jon).find((d) => d.weekday === dow())!.minutes).toBe(60);
+    // Nothing finished, so it bottoms out at half the starting point rather than zero.
+    expect(learnedCapacity(db, jon).find((d) => d.weekday === dow())!.minutes).toBe(defaultCapacity(dow()) / 2);
   });
 
   it('lets a pinned number win over what was learned', () => {
-    for (let i = 1; i <= 6; i++) finished(weeksAgo(i), 120);
+    for (let i = 1; i <= 6; i++) finished(weeksAgo(i), 300);
     const learned = learnedCapacity(db, jon);
-    expect(capacityFor(today, jon, learned)).toBe(120);
+    expect(capacityFor(today, jon, learned)).toBe(300);
     expect(capacityFor(today, { capacity: { [String(dow())]: 45 } }, learned)).toBe(45);
   });
 });

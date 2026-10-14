@@ -36,14 +36,42 @@ const GROUP = `Garden ${run}`;
 await page.goto(`${base}/auth/dev?email=${encodeURIComponent(email)}`);
 await page.waitForLoadState('networkidle');
 
+// Plain quick add first; smart add (which calls Haiku) gets its own step below.
+await page.request.patch(`${base}/api/me`, { data: { smartAdd: false } });
+await page.reload();
+
 await check('quick add puts a task on today', async (p) => {
   await p.getByRole('button', { name: 'Add a task' }).click();
   await p.getByLabel('Task', { exact: true }).fill(TASK);
+  await p.getByRole('button', { name: 'Any time' }).click();
   await p.getByRole('button', { name: 'Morning' }).click();
   await p.getByRole('button', { name: 'Add', exact: true }).click();
   await until(p, `Added "${TASK}"`);
-  await p.getByRole('button', { name: 'Done', exact: true }).click();
+  await p.keyboard.press('Escape');
   await p.getByRole('main').getByText(TASK).waitFor({ timeout: 5000 });
+});
+
+await check('the add sheet rides on the keyboard, and Back closes it', async (p) => {
+  const url = p.url();
+  await p.getByRole('button', { name: 'Add a task' }).click();
+  const sheet = p.getByRole('dialog', { name: 'Add' });
+  await sheet.waitFor();
+  // Phones shrink the visual viewport when the keyboard opens; fake a 300px keyboard.
+  await p.evaluate(() => {
+    const vv = window.visualViewport!;
+    Object.defineProperty(vv, 'height', { get: () => window.innerHeight - 300, configurable: true });
+    vv.dispatchEvent(new Event('resize'));
+  });
+  await p.waitForTimeout(400);
+  const box = (await sheet.boundingBox())!;
+  const viewport = p.viewportSize()!;
+  if (Math.abs(box.y + box.height - (viewport.height - 300)) > 2) throw new Error(`sheet bottom at ${box.y + box.height}, keyboard top at ${viewport.height - 300}`);
+  const input = (await p.getByLabel('Task', { exact: true }).boundingBox())!;
+  if (input.y + input.height > viewport.height - 300) throw new Error('the text box is under the keyboard');
+  await p.goBack();
+  await sheet.waitFor({ state: 'detached', timeout: 5000 });
+  if (p.url() !== url) throw new Error(`Back left the page for ${p.url()}`);
+  await p.reload();
 });
 
 await check('completing moves it to done, and Undo brings it back', async (p) => {
@@ -133,7 +161,8 @@ await check('swiping a task right completes it', async (p) => {
   await p.getByRole('button', { name: 'Add a task' }).click();
   await p.getByLabel('Task', { exact: true }).fill(title);
   await p.getByRole('button', { name: 'Add', exact: true }).click();
-  await p.getByRole('button', { name: 'Done', exact: true }).click();
+  await until(p, `Added "${title}"`);
+  await p.keyboard.press('Escape');
   const row = p.getByRole('main').getByText(title);
   await row.waitFor({ timeout: 5000 });
   await row.evaluate((el) => el.scrollIntoView({ block: 'center' }));
@@ -198,20 +227,74 @@ await check('settings rename a group, archive it and bring it back', async (p) =
   if (!groups.some((g) => g.name === `${GROUP} beds`)) throw new Error('group was not restored');
 });
 
-await check("capacity changes how full today is", async (p) => {
+await check('pinning capacity changes how full today is, and unpinning goes back to learning', async (p) => {
   await p.goto(`${base}/settings/capacity`);
   const day = await p.evaluate(() => {
     const d = new Date();
     if (d.getHours() < 4) d.setDate(d.getDate() - 1);
     return d.toLocaleDateString(undefined, { weekday: 'long' });
   });
-  const before = ((await (await p.request.get(`${base}/api/today`)).json()) as { load: { capacityMinutes: number } }).load.capacityMinutes;
+  const capacity = async () => ((await (await p.request.get(`${base}/api/today`)).json()) as { load: { capacityMinutes: number } }).load.capacityMinutes;
+  const before = await capacity();
   await p.getByRole('button', { name: `More time on ${day}` }).click();
   await p.waitForTimeout(1200);
-  const after = ((await (await p.request.get(`${base}/api/today`)).json()) as { load: { capacityMinutes: number } }).load.capacityMinutes;
+  const after = await capacity();
   if (after !== before + 30) throw new Error(`capacity went from ${before} to ${after}`);
-  await p.getByRole('button', { name: `Less time on ${day}` }).click();
+  await p.getByRole('button', { name: `Let Almanac learn ${day}` }).click();
   await p.waitForTimeout(1200);
+  if ((await capacity()) !== before) throw new Error('unpinning did not go back to the learned number');
+});
+
+await check('a repeating task comes back after it is finished', async (p) => {
+  const title = `Smoke ${run}: bins out`;
+  const created = await p.request.post(`${base}/api/tasks`, { data: { title, repeat: { mode: 'schedule', every: 1, unit: 'day' } } });
+  const { task } = (await created.json()) as { task: { id: string } };
+  await p.goto(`${base}/task/${task.id}`);
+  await until(p, 'Every day');
+  await p.getByRole('checkbox', { name: 'Complete' }).click();
+  await p.waitForTimeout(800);
+  const { tasks } = (await (await p.request.get(`${base}/api/tasks?q=${encodeURIComponent(title)}`)).json()) as { tasks: { id: string }[] };
+  if (tasks.length !== 1 || tasks[0]!.id === task.id) throw new Error('no next one was made');
+  await p.goto(`${base}/task/${tasks[0]!.id}`);
+  await p.getByRole('button', { name: 'Skip next' }).click();
+  await until(p, /Skipped. Next one/);
+  await p.getByRole('button', { name: 'Every day' }).click();
+  await p.getByRole('button', { name: 'Stop repeating' }).click();
+  await until(p, "Doesn't repeat");
+});
+
+await check('a packing list starts from its template and resets for the next trip', async (p) => {
+  const name = `Trip ${run}`;
+  await p.goto(`${base}/backlog`);
+  await p.getByRole('button', { name: 'New group or list' }).click();
+  await p.getByRole('button', { name: 'Shopping-style list' }).click();
+  await p.getByRole('radio', { name: /^Packing/ }).click();
+  await p.getByLabel('Name', { exact: true }).fill(name);
+  await p.getByRole('button', { name: 'Create' }).click();
+  await until(p, `Made ${name}`);
+  await p.getByRole('link', { name: new RegExp(name) }).click();
+  await p.getByRole('heading', { name: 'Toiletries' }).waitFor({ timeout: 5000 });
+  await p.getByRole('checkbox', { name: 'Got Toothbrush' }).click();
+  await p.getByRole('checkbox', { name: 'Got Toothbrush' }).waitFor({ state: 'detached', timeout: 5000 });
+  await p.getByRole('button', { name: 'Reset' }).click();
+  await p.getByRole('checkbox', { name: 'Got Toothbrush' }).waitFor({ timeout: 5000 });
+});
+
+await check('smart add reads what was typed and saves it after review', async (p) => {
+  const ai = (await (await p.request.get(`${base}/api/ai`)).json()) as { available: boolean };
+  if (!ai.available) return console.log('   (skipped: no Anthropic key on this server)');
+  await p.request.patch(`${base}/api/me`, { data: { smartAdd: true } });
+  await p.goto(`${base}/`);
+  await p.getByRole('button', { name: 'Add a task' }).click();
+  await p.getByLabel('What to add').fill('water the ferns every sunday');
+  await p.keyboard.press('Enter');
+  await until(p, "Here's what I got");
+  await p.getByRole('button', { name: /^Add (all )?\d+$/ }).click();
+  await p.getByRole('dialog', { name: 'Add' }).waitFor({ state: 'detached', timeout: 8000 });
+  const { tasks } = (await (await p.request.get(`${base}/api/tasks?q=ferns`)).json()) as { tasks: { id: string; repeat: { weekdays?: number[] } | null }[] };
+  const ferns = tasks.find((t) => t.repeat?.weekdays?.includes(7));
+  if (!ferns) throw new Error('no repeating ferns task');
+  await p.request.post(`${base}/api/tasks/${ferns.id}/archive`, { data: {} });
 });
 
 await browser.close();
