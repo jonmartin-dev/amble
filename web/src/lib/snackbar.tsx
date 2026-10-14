@@ -31,7 +31,7 @@ export function SnackbarProvider({ children }: { children: ReactNode }) {
       <div
         aria-live="polite"
         className="pointer-events-none fixed inset-x-0 z-40 flex justify-center px-4"
-        style={{ bottom: 'calc(max(1.25rem, env(safe-area-inset-bottom)) + 5.5rem)' }}
+        style={{ bottom: 'calc(max(1.25rem, env(safe-area-inset-bottom)) + 5.5rem + var(--status-pill, 0rem))', transition: 'bottom 0.25s ease' }}
       >
         <AnimatePresence>
           {snack && (

@@ -5,6 +5,7 @@ import Sparkle from '~icons/material-symbols/auto-awesome-outline-rounded';
 import Check from '~icons/material-symbols/check-rounded';
 import Copy from '~icons/material-symbols/content-copy-outline-rounded';
 import { SubpageHeader } from '../components/ui.tsx';
+import { useSnackbar } from '../lib/snackbar.tsx';
 import { api } from '../lib/api.ts';
 import { expressive } from '../lib/motion.ts';
 
@@ -26,9 +27,11 @@ function ago(iso: string | null) {
 
 export function ConnectionsPage() {
   const queryClient = useQueryClient();
+  const snack = useSnackbar();
   const { data } = useQuery({ queryKey: ['connections'], queryFn: () => api<Connections>('/connections') });
   const disconnect = useMutation({
     mutationFn: (id: string) => api(`/connections/${id}`, { method: 'DELETE' }),
+    onError: (e: Error) => snack({ message: e.message }),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['connections'] }),
   });
   const [copied, setCopied] = useState(false);

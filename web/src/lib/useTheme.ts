@@ -1,20 +1,14 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, type Member, type Session } from './api.ts';
+import { useSaveMe } from './mutations.ts';
 import { useMe } from './queries.ts';
 import { applyTheme, defaultTheme, loadLocalTheme, type ThemePrefs } from './theme.ts';
 
-/** Current theme with a setter that applies instantly and saves to the member (debounced). */
+/** Current theme with a setter that applies instantly and saves to the member (debounced, and offline too). */
 export function useTheme() {
   const me = useMe();
-  const queryClient = useQueryClient();
+  const saveMe = useSaveMe();
   const [prefs, setPrefs] = useState<ThemePrefs>(() => ({ ...defaultTheme, ...(me?.theme ?? loadLocalTheme()) }));
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
-
-  const save = useMutation({
-    mutationFn: (theme: ThemePrefs) => api<{ member: Member }>('/me', { method: 'PATCH', body: JSON.stringify({ theme }) }),
-    onSuccess: ({ member }) => queryClient.setQueryData<Session>(['session'], (s) => (s ? { ...s, member } : s)),
-  });
 
   const update = useCallback(
     (patch: Partial<ThemePrefs>) => {
@@ -22,16 +16,16 @@ export function useTheme() {
         const next = { ...current, ...patch };
         applyTheme(next);
         clearTimeout(timer.current);
-        timer.current = setTimeout(() => save.mutate(next), 500);
+        timer.current = setTimeout(() => saveMe({ theme: next }, 'Change the theme'), 500);
         return next;
       });
     },
-    [save],
+    [saveMe],
   );
 
   useEffect(() => () => clearTimeout(timer.current), []);
 
-  return { prefs, update, saving: save.isPending, error: save.error };
+  return { prefs, update };
 }
 
 /** Applies the signed-in member's saved theme when it differs from this device's copy. */

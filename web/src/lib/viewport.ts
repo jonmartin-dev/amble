@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 
 interface View {
   /** Height of the part of the screen that's visible, above the keyboard. */
@@ -19,7 +19,8 @@ function read(): View {
  */
 export function useVisualViewport(active: boolean): View {
   const [view, setView] = useState(read);
-  useEffect(() => {
+  // Listen from the moment the sheet is on the page, so a keyboard that opens straight away isn't missed.
+  useLayoutEffect(() => {
     if (!active) return;
     const vv = window.visualViewport;
     const update = () => setView(read());

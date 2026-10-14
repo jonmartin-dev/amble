@@ -1,15 +1,14 @@
-import { useQueryClient } from '@tanstack/react-query';
 import { motion } from 'motion/react';
 import { useEffect, useRef, useState } from 'react';
 import Add from '~icons/material-symbols/add-rounded';
 import PushPin from '~icons/material-symbols/keep-rounded';
 import Remove from '~icons/material-symbols/remove-rounded';
 import { minutesLabel, segment, SubpageHeader } from '../components/ui.tsx';
-import { api, type CapacityDay } from '../lib/api.ts';
+import { type CapacityDay } from '../lib/api.ts';
 import { weekdayName, weekStartDay } from '../lib/dates.ts';
 import { expressive } from '../lib/motion.ts';
+import { useSaveMe } from '../lib/mutations.ts';
 import { useCapacity, useMe } from '../lib/queries.ts';
-import { useSnackbar } from '../lib/snackbar.tsx';
 
 const STEP = 30;
 const MAX = 720;
@@ -24,8 +23,7 @@ function learnedNote(day: CapacityDay) {
 export function Capacity() {
   const me = useMe();
   const { data: learned } = useCapacity();
-  const qc = useQueryClient();
-  const snack = useSnackbar();
+  const saveMe = useSaveMe();
   const days = Array.from({ length: 7 }, (_, i) => ((weekStartDay() - 1 + i) % 7) + 1);
   const [pins, setPins] = useState<Record<number, number | undefined>>({});
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -41,12 +39,7 @@ export function Capacity() {
     // Wait for a pause in tapping, then save the pinned days.
     timer.current = setTimeout(() => {
       const pinned = Object.fromEntries(Object.entries(next).filter(([, m]) => m !== undefined));
-      void api('/me', { method: 'PATCH', body: JSON.stringify({ capacity: Object.keys(pinned).length ? pinned : null }) }).then(
-        () => {
-          for (const key of ['session', 'load', 'today', 'capacity']) void qc.invalidateQueries({ queryKey: [key] });
-        },
-        (e: Error) => snack({ message: e.message }),
-      );
+      saveMe({ capacity: Object.keys(pinned).length ? pinned : null }, 'Change your capacity');
     }, 500);
   };
 

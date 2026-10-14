@@ -22,11 +22,20 @@ export class ApiError extends Error {
   }
 }
 
+/** Status 0: the request never reached the server. */
+export const OFFLINE_MESSAGE = "You're offline, so that didn't go through. Try again once you're connected.";
+
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(appUrl(`/api${path}`), {
-    ...init,
-    headers: { 'Content-Type': 'application/json', ...init?.headers },
-  });
+  let res: Response;
+  try {
+    res = await fetch(appUrl(`/api${path}`), {
+      ...init,
+      headers: { 'Content-Type': 'application/json', ...init?.headers },
+    });
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') throw e;
+    throw new ApiError(0, OFFLINE_MESSAGE);
+  }
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { error?: string } | null;
     throw new ApiError(res.status, body?.error ?? `Request failed (${res.status})`);
@@ -93,6 +102,7 @@ export interface Task {
   links: { id: string; url: string; title: string | null }[];
   repeat: Repeat | null;
   pausedUntil: string | null;
+  sortOrder?: number;
 }
 
 export interface DayLoad {
@@ -196,11 +206,6 @@ export interface Stats {
     totalDone: number;
     since: string | null;
   } | null;
-}
-
-export async function signOut() {
-  await fetch(appUrl('/auth/logout'), { method: 'POST' });
-  window.location.assign(appUrl('/'));
 }
 
 export interface ListHistoryItem {

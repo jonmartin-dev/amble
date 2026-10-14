@@ -54,7 +54,7 @@ function Swatch({ hex, selected, prefs, onPick, label }: { hex: string; selected
 }
 
 export function Appearance() {
-  const { prefs, update, error } = useTheme();
+  const { prefs, update } = useTheme();
   const custom = !seeds.some((s) => s.hex === prefs.seed);
 
   return (
@@ -151,7 +151,6 @@ export function Appearance() {
         />
       </Section>
 
-      {error && <p className="mt-6 px-1 text-sm text-error">Couldn't save to your account. It's still applied on this device.</p>}
       <p className="mt-6 px-1 text-sm text-on-surface-variant">Saved to your account, so it follows you to every device.</p>
     </>
   );

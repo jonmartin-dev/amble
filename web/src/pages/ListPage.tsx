@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useMemo, useState } from 'react';
@@ -12,8 +12,10 @@ import { listTemplate, type ListTemplate } from '../../../shared/templates.ts';
 import { ChipRow } from '../components/fields.tsx';
 import { GroupIcon, tone } from '../components/icons.tsx';
 import { Checkbox, Chip, SectionTitle, Sheet } from '../components/ui.tsx';
-import { api, type ListItem } from '../lib/api.ts';
+import { type ListItem } from '../lib/api.ts';
+import { addListItem, checkListItem, editListItem, resetListItems } from '../lib/local.ts';
 import { expressive } from '../lib/motion.ts';
+import { useSend } from '../lib/mutations.ts';
 import { useList, useListHistory } from '../lib/queries.ts';
 import { useSnackbar } from '../lib/snackbar.tsx';
 
@@ -80,36 +82,31 @@ export function ListPage({ groupId }: { groupId: string }) {
   const [quantity, setQuantity] = useState('');
   const [showChecked, setShowChecked] = useState(false);
   const [editing, setEditing] = useState<ListItem | null>(null);
-  const refresh = () => {
-    void qc.invalidateQueries({ queryKey: ['list', groupId] });
-    void qc.invalidateQueries({ queryKey: ['groups'] });
-  };
+  const send = useSend();
 
   const group = data?.group;
   const template = listTemplate(group?.template);
 
-  const add = useMutation({
-    mutationFn: (item: { name: string; quantity?: string | null; section?: string | null }) =>
-      api<{ outcome: string }>(`/lists/${groupId}/items`, { method: 'POST', body: JSON.stringify(item) }),
-    onSuccess: (r, item) => r.outcome !== 'added' && snack({ message: `${item.name} is ${r.outcome}` }),
-    onSettled: refresh,
-  });
-  const check = useMutation({
-    mutationFn: ({ item, checked }: { item: ListItem; checked: boolean }) =>
-      api(`/lists/${groupId}/items/${item.id}/check`, { method: 'POST', body: JSON.stringify({ checked }) }),
-    onSettled: refresh,
-  });
-  const edit = useMutation({
-    mutationFn: ({ item, patch }: { item: ListItem; patch: Partial<ListItem> }) =>
-      api(`/lists/${groupId}/items/${item.id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
-    onError: (e: Error) => snack({ message: e.message }),
-    onSettled: refresh,
-  });
-  const reset = useMutation({
-    mutationFn: () => api<{ reset: number }>(`/lists/${groupId}/reset`, { method: 'POST', body: '{}' }),
-    onSuccess: (r) => snack({ message: r.reset ? `${r.reset} ${r.reset === 1 ? 'item is' : 'items are'} back on the list` : 'Everything was already on the list' }),
-    onSettled: refresh,
-  });
+  // Each change shows at once and syncs through the outbox, so the list works in a store with no signal.
+  const add = (item: { name: string; quantity?: string | null; section?: string | null }) => {
+    const id = crypto.randomUUID();
+    const outcome = addListItem(qc, groupId, { id, ...item });
+    if (outcome !== 'added') snack({ message: `${item.name} is ${outcome}` });
+    send('POST', `/lists/${groupId}/items`, { id, ...item }, `Add ${item.name}`);
+  };
+  const check = (item: ListItem, checked: boolean) => {
+    checkListItem(qc, groupId, item.id, checked);
+    send('POST', `/lists/${groupId}/items/${item.id}/check`, { checked }, `${checked ? 'Check off' : 'Put back'} ${item.name}`);
+  };
+  const edit = (item: ListItem, patch: Partial<ListItem>) => {
+    editListItem(qc, groupId, item.id, patch);
+    send('PATCH', `/lists/${groupId}/items/${item.id}`, patch, `Change ${item.name}`);
+  };
+  const reset = () => {
+    const n = resetListItems(qc, groupId);
+    snack({ message: n ? `${n} ${n === 1 ? 'item is' : 'items are'} back on the list` : 'Everything was already on the list' });
+    send('POST', `/lists/${groupId}/reset`, {}, `Reset ${group?.name ?? 'the list'}`);
+  };
 
   // Things bought before that match what's being typed, and aren't on the list now.
   const q = name.trim().toLowerCase();
@@ -120,7 +117,7 @@ export function ListPage({ groupId }: { groupId: string }) {
   const addItem = (item: { name: string; quantity?: string | null }) => {
     // Remembered aisles come back with the item.
     const known = history.find((h) => h.name.toLowerCase() === item.name.toLowerCase());
-    add.mutate({ ...item, section: known?.section ?? null });
+    add({ ...item, section: known?.section ?? null });
     setName('');
     setQuantity('');
   };
@@ -152,7 +149,7 @@ export function ListPage({ groupId }: { groupId: string }) {
             {template.resettable && (
               <button
                 type="button"
-                onClick={() => reset.mutate()}
+                onClick={reset}
                 className="flex shrink-0 items-center gap-1.5 rounded-full bg-surface-high px-3.5 py-2 text-sm font-medium"
               >
                 <RestartAlt className="size-5" aria-hidden />
@@ -226,7 +223,7 @@ export function ListPage({ groupId }: { groupId: string }) {
                   transition={expressive.defaultSpatial}
                   className="flex items-center gap-3 rounded-3xl bg-surface-low px-4 py-3"
                 >
-                  <Checkbox checked={false} label={`Got ${item.name}`} onChange={() => setTimeout(() => check.mutate({ item, checked: true }), 250)} />
+                  <Checkbox checked={false} label={`Got ${item.name}`} onChange={() => setTimeout(() => check(item, true), 250)} />
                   <button type="button" onClick={() => setEditing(item)} className="min-w-0 flex-1 text-left">
                     {item.name}
                     {(item.note || item.price) && (
@@ -273,7 +270,7 @@ export function ListPage({ groupId }: { groupId: string }) {
                   <button
                     key={item.id}
                     type="button"
-                    onClick={() => check.mutate({ item, checked: false })}
+                    onClick={() => check(item, false)}
                     className="rounded-full border border-outline-variant px-4 py-2 text-sm text-on-surface-variant"
                   >
                     {item.name}
@@ -285,7 +282,7 @@ export function ListPage({ groupId }: { groupId: string }) {
         </>
       )}
 
-      <ItemSheet item={editing} template={template} onClose={() => setEditing(null)} onSave={(patch) => editing && edit.mutate({ item: editing, patch })} />
+      <ItemSheet item={editing} template={template} onClose={() => setEditing(null)} onSave={(patch) => editing && edit(editing, patch)} />
     </>
   );
 }

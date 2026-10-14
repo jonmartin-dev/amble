@@ -63,7 +63,7 @@ function Detail({ task }: { task: Task }) {
   const [newSubtask, setNewSubtask] = useState('');
   const [newLink, setNewLink] = useState('');
 
-  const patch = (p: TaskPatch) => actions.update.mutate({ id: task.id, patch: p });
+  const patch = (p: TaskPatch) => actions.update(task.id, p);
   const title = useDraft(task.title, (v) => v.trim() && patch({ title: v.trim() }));
   const notes = useDraft(task.notes ?? '', (v) => patch({ notes: v.trim() || null }));
   const back = () => (window.history.length > 1 ? router.history.back() : void navigate({ to: '/' }));
@@ -206,7 +206,7 @@ function Detail({ task }: { task: Task }) {
         {(others.length > 0 || task.assigneeId !== me?.id) && (
           <Field icon={<Person className="size-5" />} label="For">
             <ChipRow>
-              <Chip selected={task.assigneeId === me?.id} onClick={() => actions.assign.mutate({ id: task.id, assigneeId: me!.id })}>
+              <Chip selected={task.assigneeId === me?.id} onClick={() => actions.assign(task.id, me!.id)}>
                 Me
               </Chip>
               {others.map((o) => (
@@ -214,7 +214,7 @@ function Detail({ task }: { task: Task }) {
                   {firstName(o.name)}
                 </Chip>
               ))}
-              <Chip selected={task.assigneeId === null} onClick={() => actions.assign.mutate({ id: task.id, assigneeId: null })}>
+              <Chip selected={task.assigneeId === null} onClick={() => actions.assign(task.id, null)}>
                 Anyone
               </Chip>
             </ChipRow>
@@ -228,7 +228,7 @@ function Detail({ task }: { task: Task }) {
                   className="overflow-hidden"
                   onSubmit={(e) => {
                     e.preventDefault();
-                    actions.assign.mutate({ id: task.id, assigneeId: handOff.id, note: handOff.note.trim() || null });
+                    actions.assign(task.id, handOff.id, handOff.note.trim() || null);
                     setHandOff(null);
                   }}
                 >

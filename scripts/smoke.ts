@@ -62,10 +62,16 @@ await check('the add sheet rides on the keyboard, and Back closes it', async (p)
     Object.defineProperty(vv, 'height', { get: () => window.innerHeight - 300, configurable: true });
     vv.dispatchEvent(new Event('resize'));
   });
-  await p.waitForTimeout(400);
-  const box = (await sheet.boundingBox())!;
   const viewport = p.viewportSize()!;
-  if (Math.abs(box.y + box.height - (viewport.height - 300)) > 2) throw new Error(`sheet bottom at ${box.y + box.height}, keyboard top at ${viewport.height - 300}`);
+  // The sheet springs up onto the keyboard; give it a moment to settle there.
+  let bottom = 0;
+  for (let i = 0; i < 20; i++) {
+    await p.waitForTimeout(100);
+    const box = (await sheet.boundingBox())!;
+    bottom = box.y + box.height;
+    if (Math.abs(bottom - (viewport.height - 300)) <= 2) break;
+  }
+  if (Math.abs(bottom - (viewport.height - 300)) > 2) throw new Error(`sheet bottom at ${bottom}, keyboard top at ${viewport.height - 300}`);
   const input = (await p.getByLabel('Task', { exact: true }).boundingBox())!;
   if (input.y + input.height > viewport.height - 300) throw new Error('the text box is under the keyboard');
   await p.goBack();

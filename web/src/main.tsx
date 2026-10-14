@@ -1,6 +1,7 @@
 import '@fontsource-variable/google-sans-flex/rond.css';
 import './styles.css';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { onlineManager, QueryClient, useQueryClient } from '@tanstack/react-query';
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import {
   createRootRoute,
   createRoute,
@@ -11,14 +12,19 @@ import {
   useRouterState,
 } from '@tanstack/react-router';
 import { motion, MotionConfig } from 'motion/react';
-import { StrictMode, useState } from 'react';
+import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AddSheet } from './components/AddSheet.tsx';
 import { FloatingToolbar } from './components/FloatingToolbar.tsx';
-import { appUrl, basePath } from './lib/api.ts';
+import { StatusPill } from './components/StatusPill.tsx';
+import { basePath } from './lib/api.ts';
 import { expressive } from './lib/motion.ts';
-import { useSession } from './lib/queries.ts';
-import { SnackbarProvider } from './lib/snackbar.tsx';
+import { refreshViews } from './lib/mutations.ts';
+import { CACHE_MAX_AGE_MS, CACHE_VERSION, claimDevice, idbPersister, prefetchForOffline, shouldSave } from './lib/persist.ts';
+import { registerServiceWorker } from './lib/pwa.ts';
+import { get, useSession } from './lib/queries.ts';
+import { SnackbarProvider, useSnackbar } from './lib/snackbar.tsx';
+import { startSync } from './lib/sync.ts';
 import { applyTheme, loadLocalTheme } from './lib/theme.ts';
 import { useSyncMemberTheme } from './lib/useTheme.ts';
 import { Activity } from './pages/Activity.tsx';
@@ -38,14 +44,59 @@ import { SignIn } from './pages/SignIn.tsx';
 import { Stats } from './pages/Stats.tsx';
 import { Today } from './pages/Today.tsx';
 
+/** Sends the outbox for as long as the app runs, and says when the server turned a change down. */
+function SyncBridge() {
+  const qc = useQueryClient();
+  const snack = useSnackbar();
+  useEffect(
+    () =>
+      startSync({
+        onSent: () => refreshViews(qc),
+        onFailed: (failures) => {
+          const [first] = failures;
+          snack({
+            message:
+              failures.length === 1
+                ? `Couldn't save "${first!.label}": ${first!.message}`
+                : `${failures.length} changes couldn't be saved. The first: ${first!.message}`,
+          });
+          refreshViews(qc);
+        },
+        onSignedOut: () => void qc.invalidateQueries({ queryKey: ['session'] }),
+      }),
+    [qc, snack],
+  );
+  return null;
+}
+
+function Offline() {
+  return (
+    <div className="grid min-h-dvh place-items-center px-8 text-center">
+      <div>
+        <p className="display text-2xl font-medium">You're offline</p>
+        <p className="mt-2 text-on-surface-variant">Almanac needs a connection the first time it opens on this device. After that it works offline too.</p>
+      </div>
+    </div>
+  );
+}
+
 function Root() {
+  const qc = useQueryClient();
   const session = useSession();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [adding, setAdding] = useState(false);
+  const memberId = session.data?.member?.id;
   useSyncMemberTheme();
+
+  useEffect(() => {
+    if (!memberId) return;
+    // Whatever should open offline gets loaded now, while there's a connection.
+    void claimDevice(qc, memberId).then(() => navigator.onLine && prefetchForOffline(qc, get));
+  }, [qc, memberId]);
 
   if (pathname === '/privacy') return <Privacy />;
   if (session.isPending) return <div className="min-h-dvh" />;
+  if (!session.data && session.isError) return <Offline />;
   if (!session.data?.member || pathname === '/signin') return <SignIn />;
   // The consent page stands alone, without the app's toolbar.
   if (pathname.startsWith('/connect/')) return <Outlet />;
@@ -58,6 +109,7 @@ function Root() {
           <Outlet />
         </motion.div>
       </main>
+      <StatusPill />
       <FloatingToolbar onAdd={() => setAdding(true)} />
       <AddSheet open={adding} onClose={() => setAdding(false)} plannedByDefault={pathname === '/'} />
     </div>
@@ -108,8 +160,14 @@ const routeTree = rootRoute.addChildren([
 // Apply the saved theme before the first paint so there's no flash of the default colors.
 applyTheme(loadLocalTheme());
 
-// Same-document View Transitions crossfade between screens where the browser supports them.
-const router = createRouter({ routeTree, basepath: basePath || '/', defaultViewTransition: true });
+// Same-document View Transitions crossfade between screens where the browser supports them. Only
+// for a new screen: a sheet's history entry coming and going isn't one, and a transition then would
+// swallow the next tap or swipe while it plays.
+const router = createRouter({
+  routeTree,
+  basepath: basePath || '/',
+  defaultViewTransition: { types: ({ pathChanged }) => (pathChanged ? ['screen'] : false) },
+});
 
 declare module '@tanstack/react-router' {
   interface Register {
@@ -118,21 +176,35 @@ declare module '@tanstack/react-router' {
 }
 
 const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: true } },
+  defaultOptions: {
+    // Kept as long as the saved copy on the device, so what was loaded still opens offline.
+    queries: { retry: 1, refetchOnWindowFocus: true, gcTime: CACHE_MAX_AGE_MS },
+  },
 });
+// TanStack Query assumes it starts online; tell it the truth so offline reads don't spin.
+onlineManager.setOnline(navigator.onLine);
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
+    <PersistQueryClientProvider
+      client={queryClient}
+      persistOptions={{
+        persister: idbPersister(),
+        maxAge: CACHE_MAX_AGE_MS,
+        buster: CACHE_VERSION,
+        dehydrateOptions: { shouldDehydrateQuery: shouldSave },
+      }}
+      // The saved copy shows at once; everything on screen still refreshes from the server.
+      onSuccess={() => void queryClient.invalidateQueries()}
+    >
       <MotionConfig reducedMotion="user">
         <SnackbarProvider>
+          <SyncBridge />
           <RouterProvider router={router} />
         </SnackbarProvider>
       </MotionConfig>
-    </QueryClientProvider>
+    </PersistQueryClientProvider>
   </StrictMode>,
 );
 
-if ('serviceWorker' in navigator && import.meta.env.PROD) {
-  void navigator.serviceWorker.register(appUrl('/sw.js'), { scope: `${basePath}/` });
-}
+registerServiceWorker();

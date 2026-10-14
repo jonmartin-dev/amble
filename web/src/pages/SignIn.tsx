@@ -3,6 +3,7 @@ import ErrorIcon from '~icons/material-symbols/error-outline-rounded';
 import { appUrl, basePath } from '../lib/api.ts';
 import { expressive } from '../lib/motion.ts';
 import { useSession } from '../lib/queries.ts';
+import { useSyncState } from '../lib/sync.ts';
 
 const errors: Record<string, string> = {
   'not-allowed': "That account isn't on this household's list. Ask whoever runs Almanac to add it.",
@@ -11,6 +12,7 @@ const errors: Record<string, string> = {
 };
 
 export function SignIn() {
+  const { pending } = useSyncState();
   const { data } = useSession();
   const params = new URLSearchParams(window.location.search);
   const error = params.get('error');
@@ -32,6 +34,11 @@ export function SignIn() {
       />
       <h1 className="display mt-8 text-[3.5rem] leading-none font-medium">Almanac</h1>
       <p className="mt-3 text-lg text-on-surface-variant">A calm planner for your household that knows how full your days are.</p>
+      {pending > 0 && (
+        <p className="mt-4 rounded-2xl bg-secondary-container px-4 py-3 text-on-secondary-container">
+          {pending} {pending === 1 ? 'change' : 'changes'} made on this phone {pending === 1 ? 'is' : 'are'} waiting. Sign in to send {pending === 1 ? 'it' : 'them'}.
+        </p>
+      )}
 
       {error && errors[error] && (
         <div role="alert" className="mt-8 flex gap-3 rounded-3xl bg-warm-container p-4 text-on-warm-container">

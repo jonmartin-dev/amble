@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import Sparkle from '~icons/material-symbols/auto-awesome-outline-rounded';
 import Folder from '~icons/material-symbols/folder-outline-rounded';
 import Bolt from '~icons/material-symbols/bolt-outline-rounded';
@@ -10,8 +10,9 @@ import Policy from '~icons/material-symbols/policy-outline-rounded';
 import Timer from '~icons/material-symbols/timer-outline-rounded';
 import Trophy from '~icons/material-symbols/trophy-outline-rounded';
 import { ListGroup, SectionTitle, SubpageHeader, Switch, minutesLabel } from '../components/ui.tsx';
-import { api, signOut, type Member } from '../lib/api.ts';
-import { useSnackbar } from '../lib/snackbar.tsx';
+import { type Member } from '../lib/api.ts';
+import { useSaveMe } from '../lib/mutations.ts';
+import { signOut } from '../lib/persist.ts';
 import { useAi, useGroups, useMe, useMembers } from '../lib/queries.ts';
 
 export function capacitySummary(me: Member | null) {
@@ -23,32 +24,15 @@ export function capacitySummary(me: Member | null) {
 export function Settings() {
   const me = useMe();
   const qc = useQueryClient();
-  const snack = useSnackbar();
+  const saveMe = useSaveMe();
   const { data: household } = useMembers();
   const { data: groups } = useGroups();
   const lists = groups?.filter((g) => g.kind === 'list').length ?? 0;
   const taskGroups = (groups?.length ?? 0) - lists;
 
-  const streaks = useMutation({
-    mutationFn: (showStreaks: boolean) => api('/me', { method: 'PATCH', body: JSON.stringify({ showStreaks }) }),
-    onSettled: () => {
-      void qc.invalidateQueries({ queryKey: ['session'] });
-      void qc.invalidateQueries({ queryKey: ['stats'] });
-    },
-    onError: (e: Error) => snack({ message: e.message }),
-  });
-  const showStreaks = streaks.isPending ? streaks.variables : (me?.showStreaks ?? true);
-
+  const showStreaks = me?.showStreaks ?? true;
   const { data: ai } = useAi();
-  const smartAdd = useMutation({
-    mutationFn: (on: boolean) => api('/me', { method: 'PATCH', body: JSON.stringify({ smartAdd: on }) }),
-    onSettled: () => {
-      void qc.invalidateQueries({ queryKey: ['session'] });
-      void qc.invalidateQueries({ queryKey: ['ai'] });
-    },
-    onError: (e: Error) => snack({ message: e.message }),
-  });
-  const smartOn = smartAdd.isPending ? smartAdd.variables : (me?.smartAdd ?? true);
+  const smartOn = me?.smartAdd ?? true;
 
   return (
     <>
@@ -64,7 +48,7 @@ export function Settings() {
                 icon: <Sparkle className="size-6" />,
                 title: 'Smart add',
                 subtitle: 'Haiku turns what you type into tasks and list items for you to check',
-                trailing: <Switch checked={smartOn} onChange={(v) => smartAdd.mutate(v)} label="Smart add" />,
+                trailing: <Switch checked={smartOn} onChange={(v) => saveMe({ smartAdd: v }, `Turn smart add ${v ? 'on' : 'off'}`)} label="Smart add" />,
               }
             : {
                 icon: <Sparkle className="size-6" />,
@@ -75,7 +59,7 @@ export function Settings() {
             icon: <Trophy className="size-6" />,
             title: 'Streaks and records',
             subtitle: 'Shown on your Stats page',
-            trailing: <Switch checked={showStreaks} onChange={(v) => streaks.mutate(v)} label="Show streaks and records" />,
+            trailing: <Switch checked={showStreaks} onChange={(v) => saveMe({ showStreaks: v }, `${v ? 'Show' : 'Hide'} streaks`)} label="Show streaks and records" />,
           },
         ]}
       />
@@ -113,7 +97,7 @@ export function Settings() {
       <ListGroup
         rows={[
           { icon: <Policy className="size-6" />, title: 'Privacy', subtitle: 'What Almanac keeps and why', to: '/privacy' },
-          { icon: <Logout className="size-6" />, title: 'Sign out', onClick: () => void signOut() },
+          { icon: <Logout className="size-6" />, title: 'Sign out', onClick: () => void signOut(qc) },
         ]}
       />
     </>

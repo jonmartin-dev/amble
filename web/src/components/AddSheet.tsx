@@ -8,12 +8,14 @@ import Sparkle from '~icons/material-symbols/auto-awesome-rounded';
 import ArrowUp from '~icons/material-symbols/arrow-upward-rounded';
 import Flag from '~icons/material-symbols/flag-rounded';
 import type { AddHints } from '../../../shared/proposals.ts';
-import { api, type Proposal, type SmartAddResponse, type TimeOfDay } from '../lib/api.ts';
+import { api, ApiError, type Proposal, type SmartAddResponse, type TimeOfDay } from '../lib/api.ts';
 import { dayLabel, firstName, todayIso } from '../lib/dates.ts';
+import { editTask } from '../lib/local.ts';
 import { expressive } from '../lib/motion.ts';
-import { useTaskActions } from '../lib/mutations.ts';
+import { useSend, useTaskActions } from '../lib/mutations.ts';
 import { useAi, useGroups, useMe, useMembers } from '../lib/queries.ts';
 import { useSnackbar } from '../lib/snackbar.tsx';
+import { useSyncState } from '../lib/sync.ts';
 import { ChipRow, DateChip, GroupChips, PersonChips, TimeChips, WhenChips } from './fields.tsx';
 import { ProposalCard, type Draft } from './ProposalCard.tsx';
 import { Sheet } from './ui.tsx';
@@ -156,12 +158,16 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
   const { data: household } = useMembers();
   const { data: ai } = useAi();
   const actions = useTaskActions();
+  const send = useSend();
   const qc = useQueryClient();
   const snack = useSnackbar();
+  const { online } = useSyncState();
   const input = useRef<HTMLTextAreaElement>(null);
   const abort = useRef<AbortController | null>(null);
   const today = todayIso();
-  const smart = ai?.smartAdd ?? false;
+  // Smart add needs Haiku, so offline everything goes in as typed.
+  const smart = (ai?.smartAdd ?? false) && online;
+  const smartOffline = (ai?.smartAdd ?? false) && !online;
   const members = household?.members ?? [];
 
   const [text, setText] = useState('');
@@ -229,7 +235,7 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
       .map((l) => l.trim())
       .filter(Boolean);
     for (const title of titles) {
-      actions.create.mutate({ title, plannedDate: planned, dueDate: due, groupId, assigneeId: assignee, timeOfDay: time, mustDo });
+      actions.create({ title, plannedDate: planned, dueDate: due, groupId, assigneeId: assignee, timeOfDay: time, mustDo });
     }
     setText('');
     setMustDo(false);
@@ -274,6 +280,7 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
       setPhase('review');
     } catch (e) {
       if (ctrl.signal.aborted) return;
+      if (e instanceof ApiError && e.status === 0) return addAsTyped(t, "You're offline, so it went in as typed.");
       setPhase('compose');
       setNotice(e instanceof Error ? e.message : 'Something went wrong.');
     }
@@ -305,8 +312,12 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
             action: onlyTasks
               ? {
                   label: 'Undo',
-                  run: () =>
-                    void Promise.all(r.taskIds.map((id) => api(`/tasks/${id}/archive`, { method: 'POST', body: '{}' }))).then(refresh),
+                  run: () => {
+                    for (const id of r.taskIds) {
+                      editTask(qc, id, () => ({ status: 'archived' }));
+                      send('POST', `/tasks/${id}/archive`, {}, 'Undo smart add');
+                    }
+                  },
                 }
               : undefined,
           });
@@ -448,7 +459,15 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
   const header = (
     <div className="flex items-center gap-1.5 pb-1 text-sm text-on-surface-variant">
       {smart && <Sparkle className="size-4 text-primary" aria-hidden />}
-      {phase === 'done' ? 'Saved' : phase === 'review' ? "Here's what I got. Tap one to change it." : smart ? 'Tasks, groceries, plans: type it however you say it' : 'Add a task'}
+      {phase === 'done'
+        ? 'Saved'
+        : phase === 'review'
+          ? "Here's what I got. Tap one to change it."
+          : smart
+            ? 'Tasks, groceries, plans: type it however you say it'
+            : smartOffline
+              ? "Add a task. You're offline, so it goes in as typed."
+              : 'Add a task'}
     </div>
   );
 

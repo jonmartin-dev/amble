@@ -1,7 +1,9 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, type Repeat, type Task, type TimeOfDay } from './api.ts';
+import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { api, ApiError, type Member, type Repeat, type Session, type Task, type TimeOfDay } from './api.ts';
 import { dayLabel, todayIso } from './dates.ts';
+import { editTask, findTask, groupName, memberName, newTask, putTask } from './local.ts';
 import { useSnackbar } from './snackbar.tsx';
+import { queue } from './sync.ts';
 
 export interface NewTask {
   title: string;
@@ -28,98 +30,159 @@ export type TaskPatch = Partial<Omit<NewTask, 'assigneeId'>> & {
 
 const post = <T,>(path: string, data: unknown) => api<T>(path, { method: 'POST', body: JSON.stringify(data) });
 
-interface MoveVars {
-  tasks: Task[];
-  plannedDate: string | null;
-  today: string;
+/** Every view a task change can touch, refreshed from the server once it has the change. */
+export const TASK_VIEWS = ['today', 'tasks', 'task', 'load', 'groups', 'activity', 'stats', 'list', 'session', 'capacity', 'ai'];
+
+export function refreshViews(qc: QueryClient, keys = TASK_VIEWS) {
+  for (const key of keys) void qc.invalidateQueries({ queryKey: [key] });
 }
 
 /**
- * Every task change, each refreshing the views it touches. Completing, moving and removing offer
- * Undo. Confirmations live on the mutations themselves, not on the screen that started them, so
- * they still appear when that screen has gone away (a swiped row, a closed task page).
+ * Hands a change to the outbox, which sends it now or once there's a connection. If this device
+ * can't store it (no IndexedDB), it's sent straight away instead.
+ */
+export function useSend() {
+  const qc = useQueryClient();
+  const snack = useSnackbar();
+  return (method: 'POST' | 'PATCH' | 'DELETE', path: string, body: unknown, label: string) => {
+    const memberId = qc.getQueryData<Session>(['session'])?.member?.id;
+    if (!memberId) return;
+    queue({ memberId, method, path, body, label }).catch(() =>
+      api(path, { method, body: JSON.stringify(body) }).then(
+        () => refreshViews(qc),
+        (e: Error) => {
+          snack({ message: e.message });
+          refreshViews(qc);
+        },
+      ),
+    );
+  };
+}
+
+/** Saves the signed-in person's own settings: on screen at once, then to the server through the outbox. */
+export function useSaveMe() {
+  const qc = useQueryClient();
+  const send = useSend();
+  return (patch: Partial<Pick<Member, 'theme' | 'capacity' | 'showStreaks' | 'smartAdd'>>, label: string) => {
+    qc.setQueryData<Session>(['session'], (s) => (s?.member ? { ...s, member: { ...s.member, ...patch } } : s));
+    send('PATCH', '/me', patch, label);
+  };
+}
+
+/** A patch as it lands on a cached task; new steps and links get ids here so later changes can name them. */
+function patched(qc: QueryClient, t: Task, patch: TaskPatch, steps: { id: string; title: string }[], links: { id: string; url: string }[]): Partial<Task> {
+  const scalar = Object.fromEntries(
+    Object.entries(patch).filter(([k]) => !['addSubtasks', 'checkSubtasks', 'uncheckSubtasks', 'removeSubtasks', 'addLinks', 'removeLinks'].includes(k)),
+  ) as Partial<Task>;
+  const checked = new Set(patch.checkSubtasks ?? []);
+  const unchecked = new Set(patch.uncheckSubtasks ?? []);
+  const removed = new Set(patch.removeSubtasks ?? []);
+  const gone = new Set(patch.removeLinks ?? []);
+  return {
+    ...scalar,
+    ...(patch.groupId !== undefined && { groupName: groupName(qc, patch.groupId) }),
+    ...(patch.estimateMinutes !== undefined && { estimateSource: patch.estimateMinutes == null ? null : 'user' }),
+    subtasks: [
+      ...t.subtasks
+        .filter((s) => !removed.has(s.id))
+        .map((s) => (checked.has(s.id) ? { ...s, done: true } : unchecked.has(s.id) ? { ...s, done: false } : s)),
+      ...steps.map((s) => ({ ...s, done: false })),
+    ],
+    links: [...t.links.filter((l) => !gone.has(l.id)), ...links.map((l) => ({ ...l, title: null }))],
+  };
+}
+
+/**
+ * Every task change. Each shows at once in every view (local.ts) and goes out through the outbox,
+ * so it works the same offline. Completing, moving and removing offer Undo. Confirmations live
+ * here, not on the screen that started them, so they still appear when that screen has gone away
+ * (a swiped row, a closed task page).
  */
 export function useTaskActions() {
   const qc = useQueryClient();
   const snack = useSnackbar();
-  const refresh = () => {
-    for (const key of ['today', 'tasks', 'task', 'load', 'groups', 'activity', 'stats']) void qc.invalidateQueries({ queryKey: [key] });
+  const send = useSend();
+
+  const create = (t: NewTask) => {
+    const id = crypto.randomUUID();
+    const task = newTask(qc, { ...t, id, estimateSource: t.estimateMinutes != null ? 'user' : null });
+    putTask(qc, null, task);
+    send('POST', '/tasks', { ...t, id }, `Add ${t.title}`);
+    return task;
   };
-  const fail = (e: Error) => snack({ message: e.message });
-  const undo = (calls: Promise<unknown>[]) => void Promise.all(calls).then(refresh, fail);
-  const opts = { onSettled: refresh, onError: fail };
 
-  const create = useMutation({ mutationFn: (t: NewTask) => post<{ task: Task }>('/tasks', t).then((r) => r.task), ...opts });
-  const update = useMutation({
-    mutationFn: ({ id, patch }: { id: string; patch: TaskPatch }) =>
-      api<{ task: Task }>(`/tasks/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }).then((r) => r.task),
-    ...opts,
-  });
-  const assign = useMutation({
-    mutationFn: ({ id, assigneeId, note }: { id: string; assigneeId: string | null; note?: string | null }) =>
-      post<{ task: Task }>(`/tasks/${id}/assign`, { assigneeId, note }).then((r) => r.task),
-    ...opts,
-  });
+  const update = (id: string, patch: TaskPatch) => {
+    const steps = (patch.addSubtasks ?? []).map((title) => ({ id: crypto.randomUUID(), title }));
+    const links = (patch.addLinks ?? []).map((l) => ({ id: crypto.randomUUID(), url: l.url }));
+    const change = editTask(qc, id, (t) => patched(qc, t, patch, steps, links));
+    const body = { ...patch, ...(steps.length && { addSubtasks: steps }), ...(links.length && { addLinks: links }) };
+    send('PATCH', `/tasks/${id}`, body, `Change ${change?.before.title ?? 'a task'}`);
+  };
 
-  const complete = useMutation({
-    mutationFn: ({ task, done }: { task: Task; done: boolean }) => post(`/tasks/${task.id}/complete`, { done }),
-    onSuccess: (_, { task, done }) => {
-      if (done) {
-        snack({
-          message: `Done: ${task.title}`,
-          action: { label: 'Undo', run: () => undo([post(`/tasks/${task.id}/complete`, { done: false })]) },
-        });
-      }
-    },
-    ...opts,
-  });
+  const assign = (id: string, assigneeId: string | null, note?: string | null) => {
+    const change = editTask(qc, id, () => ({ assigneeId, assigneeName: memberName(qc, assigneeId), handedBackNote: note?.trim() || null }));
+    send('POST', `/tasks/${id}/assign`, { assigneeId, note }, `Hand over ${change?.before.title ?? 'a task'}`);
+  };
 
-  const move = useMutation({
-    mutationFn: ({ tasks, plannedDate }: MoveVars) => Promise.all(tasks.map((t) => post(`/tasks/${t.id}/move`, { plannedDate }))),
-    onSuccess: (_, { tasks, plannedDate, today }) => {
-      const where = plannedDate ? dayLabel(plannedDate, today, true) : 'the backlog';
-      snack({
-        message: tasks.length === 1 ? `Moved to ${where}` : `Moved ${tasks.length} tasks to ${where}`,
-        action: {
-          label: 'Undo',
-          run: () => undo(tasks.map((t) => post(`/tasks/${t.id}/move`, { plannedDate: t.plannedDate }))),
-        },
-      });
-    },
-    ...opts,
-  });
+  const setDone = (task: Task, done: boolean) => {
+    editTask(qc, task.id, () => (done ? { status: 'done', completedAt: new Date().toISOString() } : { status: 'open', completedAt: null }));
+    send('POST', `/tasks/${task.id}/complete`, { done }, `${done ? 'Finish' : 'Reopen'} ${task.title}`);
+  };
 
+  const complete = (task: Task, done = task.status !== 'done') => {
+    setDone(task, done);
+    if (done) snack({ message: `Done: ${task.title}`, action: { label: 'Undo', run: () => setDone(task, false) } });
+  };
+
+  const setPlanned = (task: Task, plannedDate: string | null) => {
+    editTask(qc, task.id, () => ({ plannedDate }));
+    send('POST', `/tasks/${task.id}/move`, { plannedDate }, `Move ${task.title}`);
+  };
+
+  const moveAll = (tasks: Task[], plannedDate: string | null, today: string) => {
+    // Undo puts each back where it was, from the copy on screen when it was moved.
+    const was = tasks.map((t) => findTask(qc, t.id) ?? t);
+    for (const t of was) setPlanned(t, plannedDate);
+    const where = plannedDate ? dayLabel(plannedDate, today, true) : 'the backlog';
+    snack({
+      message: tasks.length === 1 ? `Moved to ${where}` : `Moved ${tasks.length} tasks to ${where}`,
+      action: { label: 'Undo', run: () => was.forEach((t) => setPlanned(t, t.plannedDate)) },
+    });
+  };
+
+  const setArchived = (task: Task, archived: boolean) => {
+    editTask(qc, task.id, (t) => ({ status: archived ? 'archived' : t.completedAt ? 'done' : 'open' }));
+    send('POST', `/tasks/${task.id}/archive`, archived ? {} : { restore: true }, `${archived ? 'Remove' : 'Restore'} ${task.title}`);
+  };
+
+  const archive = (task: Task) => {
+    setArchived(task, true);
+    snack({ message: `Removed ${task.title}`, action: { label: 'Undo', run: () => setArchived(task, false) } });
+  };
+
+  // Skipping works out the next date from the repeat rule, which only the server knows how to do.
   const skip = useMutation({
     mutationFn: (task: Task) => post<{ task: Task }>(`/tasks/${task.id}/skip`, {}).then((r) => r.task),
-    onSuccess: (next, task) =>
+    onSuccess: (next, task) => {
+      putTask(qc, findTask(qc, task.id) ?? task, next);
       snack({
         message: `Skipped. Next one ${next.plannedDate ?? next.dueDate ? dayLabel((next.plannedDate ?? next.dueDate)!, todayIso(), true) : 'later'}`,
-        action: {
-          label: 'Undo',
-          run: () => undo([api(`/tasks/${task.id}`, { method: 'PATCH', body: JSON.stringify({ plannedDate: task.plannedDate, dueDate: task.dueDate }) })]),
-        },
-      }),
-    ...opts,
-  });
-
-  const archive = useMutation({
-    mutationFn: (task: Task) => post(`/tasks/${task.id}/archive`, {}),
-    onSuccess: (_, task) =>
-      snack({
-        message: `Removed ${task.title}`,
-        action: { label: 'Undo', run: () => undo([post(`/tasks/${task.id}/archive`, { restore: true })]) },
-      }),
-    ...opts,
+        action: { label: 'Undo', run: () => update(task.id, { plannedDate: task.plannedDate, dueDate: task.dueDate }) },
+      });
+    },
+    onError: (e: Error) =>
+      snack({ message: e instanceof ApiError && e.status === 0 ? "Skipping needs a connection. Try again once you're online." : e.message }),
+    onSettled: () => refreshViews(qc),
   });
 
   return {
     create,
     update,
     assign,
-    complete: (task: Task, done = task.status !== 'done') => complete.mutate({ task, done }),
-    move: (task: Task, plannedDate: string | null, today: string) => move.mutate({ tasks: [task], plannedDate, today }),
-    moveAll: (tasks: Task[], plannedDate: string | null, today: string) => move.mutate({ tasks, plannedDate, today }),
-    archive: (task: Task) => archive.mutate(task),
+    complete,
+    move: (task: Task, plannedDate: string | null, today: string) => moveAll([task], plannedDate, today),
+    moveAll,
+    archive,
     skip: (task: Task) => skip.mutate(task),
   };
 }
