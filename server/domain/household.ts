@@ -10,6 +10,11 @@ export class DomainError extends Error {}
 export interface Actor {
   member: Member;
   via: 'app' | 'claude';
+  /**
+   * When the change was made, for one the app queued offline and is sending later. Activity and
+   * completion times use it, and fields someone changed after it are left as they are.
+   */
+  at?: Date;
 }
 
 export function firstName(member: Pick<Member, 'name'>) {
@@ -229,6 +234,6 @@ export function logActivity(
   detail?: Record<string, unknown>,
 ) {
   db.insert(activity)
-    .values({ memberId: actor.member.id, via: actor.via, action, taskId, detail: detail ?? null })
+    .values({ memberId: actor.member.id, via: actor.via, action, taskId, detail: detail ?? null, ...(actor.at && { createdAt: actor.at }) })
     .run();
 }

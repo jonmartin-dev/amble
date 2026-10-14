@@ -1,9 +1,9 @@
-import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lt, lte, ne, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, ne, or, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/sqlite-core';
 import type { Db } from '../db/index.ts';
 import { repeatOn } from '../../shared/repeat.ts';
 import { activity, groups, members, series, subtasks, taskLinks, tasks, type Member, type Task } from '../db/schema.ts';
-import { addDays, daysBetween, planningDate, planningDayStart } from '../lib/dates.ts';
+import { addDays, dateOf, daysBetween, planningDate, planningDayStart } from '../lib/dates.ts';
 import { DomainError, logActivity, type Actor } from './household.ts';
 import { anchorRule, cleanRepeat, firstOccurrence, nextDate, type Repeat } from './repeat.ts';
 
@@ -174,7 +174,18 @@ export function getToday(db: Db, me: Member, who: Member | 'everyone' = me) {
   return { today, planned, carriedOver, due, done };
 }
 
+/** A step to add: its title, or an id the app chose so it can change the step before it syncs. */
+export type NewSubtask = string | { id: string; title: string };
+
+export interface NewLink {
+  id?: string;
+  url: string;
+  title?: string | null;
+}
+
 export interface NewTask {
+  /** Chosen by the app, so a task made offline keeps one id once it syncs. */
+  id?: string;
   title: string;
   notes?: string | null;
   groupId?: string | null;
@@ -187,9 +198,41 @@ export interface NewTask {
   estimateMinutes?: number | null;
   /** Who sized it: the person (the default) or Haiku. */
   estimateSource?: 'user' | 'ai';
-  subtasks?: string[];
-  links?: { url: string; title?: string | null }[];
+  subtasks?: NewSubtask[];
+  links?: NewLink[];
   repeat?: Repeat | null;
+}
+
+// ---- changes sent late --------------------------------------------------------------------
+
+/** The planning day a change belongs to: today, or the day it was made when the app sends it late. */
+function actorToday(actor: Actor) {
+  return actor.at ? dateOf(actor.member, actor.at) : planningDate(actor.member);
+}
+
+/** Fields compared one by one when a change arrives late. Steps and links are sets, so they merge. */
+const SCALAR_FIELDS = new Set(['title', 'notes', 'groupId', 'dueDate', 'plannedDate', 'timeOfDay', 'mustDo', 'estimateMinutes', 'repeat', 'pausedUntil']);
+
+/**
+ * What someone changed on a task after a late change was made (the app was offline). The later
+ * change wins, so the late one leaves these fields alone.
+ */
+function changedSince(db: Db, actor: Actor, taskId: string): Set<string> {
+  const out = new Set<string>();
+  if (!actor.at) return out;
+  const rows = db
+    .select({ action: activity.action, detail: activity.detail })
+    .from(activity)
+    .where(and(eq(activity.taskId, taskId), gt(activity.createdAt, actor.at)))
+    .all();
+  for (const { action, detail } of rows) {
+    if (action === 'task.updated') for (const f of (detail as { fields?: string[] } | null)?.fields ?? []) out.add(f);
+    else if (action === 'task.moved') out.add('plannedDate');
+    else if (action === 'task.skipped') out.add('plannedDate').add('dueDate');
+    else if (action === 'task.assigned') out.add('assigneeId');
+    else if (['task.completed', 'task.reopened', 'task.archived', 'task.restored'].includes(action)) out.add('status');
+  }
+  return out;
 }
 
 /** The date field a rule's tasks use, as a patch. */
@@ -207,7 +250,7 @@ function seriesDate(task: Pick<Task, 'plannedDate' | 'dueDate'>, rule: Repeat) {
  */
 function startSeries(db: Db, actor: Actor, input: Repeat, task: Pick<Task, 'plannedDate' | 'dueDate'>) {
   const rule = cleanRepeat(input);
-  const today = planningDate(actor.member);
+  const today = actorToday(actor);
   const given = seriesDate(task, rule);
   const first = given ?? (rule.mode === 'schedule' ? firstOccurrence(rule, today, today) : null);
   const anchor = first ?? today;
@@ -221,9 +264,12 @@ export function createTasks(db: Db, actor: Actor, inputs: NewTask[]): TaskDetail
       const now = new Date();
       const title = input.title.trim();
       if (!title) throw new DomainError('A task needs a title.');
+      // Sent twice (the first answer was lost): the first one stands.
+      if (input.id && db.select({ id: tasks.id }).from(tasks).where(eq(tasks.id, input.id)).get()) return input.id;
       const task = db
         .insert(tasks)
         .values({
+          ...(input.id && { id: input.id }),
           title,
           notes: input.notes?.trim() || null,
           groupId: input.groupId ?? null,
@@ -235,6 +281,7 @@ export function createTasks(db: Db, actor: Actor, inputs: NewTask[]): TaskDetail
           mustDo: input.mustDo ?? false,
           estimateMinutes: input.estimateMinutes ?? null,
           estimateSource: input.estimateMinutes != null ? (input.estimateSource ?? 'user') : null,
+          createdAt: actor.at ?? now,
           updatedAt: now,
         })
         .returning()
@@ -252,8 +299,10 @@ export function createTasks(db: Db, actor: Actor, inputs: NewTask[]): TaskDetail
   return ids.map((id) => getTask(db, actor.member, id));
 }
 
-function addSubtasks(db: Db, taskId: string, titles: string[]) {
-  const clean = titles.map((t) => t.trim()).filter(Boolean);
+function addSubtasks(db: Db, taskId: string, items: NewSubtask[]) {
+  const clean = items
+    .map((s) => (typeof s === 'string' ? { id: undefined, title: s.trim() } : { id: s.id, title: s.title.trim() }))
+    .filter((s) => s.title);
   if (clean.length === 0) return;
   const [last] = db
     .select({ max: sql<number>`coalesce(max(${subtasks.sortOrder}), -1)` })
@@ -262,11 +311,12 @@ function addSubtasks(db: Db, taskId: string, titles: string[]) {
     .all();
   const start = (last?.max ?? -1) + 1;
   db.insert(subtasks)
-    .values(clean.map((title, i) => ({ taskId, title, sortOrder: start + i })))
+    .values(clean.map(({ id, title }, i) => ({ ...(id && { id }), taskId, title, sortOrder: start + i })))
+    .onConflictDoNothing()
     .run();
 }
 
-function addLinks(db: Db, taskId: string, links: { url: string; title?: string | null }[]) {
+function addLinks(db: Db, taskId: string, links: NewLink[]) {
   for (const link of links) {
     let url: URL;
     try {
@@ -276,7 +326,8 @@ function addLinks(db: Db, taskId: string, links: { url: string; title?: string |
     }
     if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new DomainError('Links must be http or https.');
     db.insert(taskLinks)
-      .values({ taskId, url: url.toString(), title: link.title?.trim() || null })
+      .values({ ...(link.id && { id: link.id }), taskId, url: url.toString(), title: link.title?.trim() || null })
+      .onConflictDoNothing()
       .run();
   }
 }
@@ -290,11 +341,11 @@ export interface TaskPatch {
   timeOfDay?: TimeOfDay | null;
   mustDo?: boolean;
   estimateMinutes?: number | null;
-  addSubtasks?: string[];
+  addSubtasks?: NewSubtask[];
   checkSubtasks?: string[];
   uncheckSubtasks?: string[];
   removeSubtasks?: string[];
-  addLinks?: { url: string; title?: string | null }[];
+  addLinks?: NewLink[];
   removeLinks?: string[];
   /** A new rule, or null to stop repeating. */
   repeat?: Repeat | null;
@@ -302,19 +353,24 @@ export interface TaskPatch {
   pausedUntil?: string | null;
 }
 
-function subtaskIds(task: TaskDetail, refs: string[]) {
-  return refs.map((ref) => {
+/** Step ids from refs. A late change skips steps that are gone rather than failing. */
+function subtaskIds(task: TaskDetail, refs: string[], lenient = false) {
+  return refs.flatMap((ref) => {
     const q = ref.trim().toLowerCase();
     const hit =
       task.subtasks.find((s) => s.id === ref || (q.length >= 6 && s.id.startsWith(q))) ??
       task.subtasks.find((s) => s.title.toLowerCase() === q);
+    if (!hit && lenient) return [];
     if (!hit) throw new DomainError(`"${task.title}" has no subtask "${ref}".`);
-    return hit.id;
+    return [hit.id];
   });
 }
 
-export function updateTask(db: Db, actor: Actor, ref: string, patch: TaskPatch): TaskDetail {
+export function updateTask(db: Db, actor: Actor, ref: string, input: TaskPatch): TaskDetail {
   const task = getTask(db, actor.member, ref);
+  const later = changedSince(db, actor, task.id);
+  const patch = Object.fromEntries(Object.entries(input).filter(([k]) => !(SCALAR_FIELDS.has(k) && later.has(k)))) as TaskPatch;
+  const lenient = actor.at != null;
   db.transaction(() => {
     const fields: Partial<Task> = {};
     if (patch.title !== undefined) {
@@ -340,30 +396,31 @@ export function updateTask(db: Db, actor: Actor, ref: string, patch: TaskPatch):
       if (!refs?.length) return;
       db.update(subtasks)
         .set({ done })
-        .where(and(eq(subtasks.taskId, task.id), inArray(subtasks.id, subtaskIds(task, refs))))
+        .where(and(eq(subtasks.taskId, task.id), inArray(subtasks.id, subtaskIds(task, refs, lenient))))
         .run();
     };
     check(patch.checkSubtasks, true);
     check(patch.uncheckSubtasks, false);
     if (patch.removeSubtasks?.length) {
       db.delete(subtasks)
-        .where(and(eq(subtasks.taskId, task.id), inArray(subtasks.id, subtaskIds(task, patch.removeSubtasks))))
+        .where(and(eq(subtasks.taskId, task.id), inArray(subtasks.id, subtaskIds(task, patch.removeSubtasks, lenient))))
         .run();
     }
     addLinks(db, task.id, patch.addLinks ?? []);
     if (patch.removeLinks?.length) {
-      const ids = patch.removeLinks.map((ref) => {
+      const ids = patch.removeLinks.flatMap((ref) => {
         const url = URL.canParse(ref) ? new URL(ref).toString() : ref;
         const hit = task.links.find((l) => l.id === ref || l.url === url || (ref.length >= 6 && l.id.startsWith(ref)));
+        if (!hit && lenient) return [];
         if (!hit) throw new DomainError(`"${task.title}" has no link "${ref}".`);
-        return hit.id;
+        return [hit.id];
       });
       db.delete(taskLinks).where(inArray(taskLinks.id, ids)).run();
     }
     if (patch.repeat !== undefined) setRepeat(db, actor, task.id, patch.repeat);
     if (patch.pausedUntil !== undefined) pauseSeries(db, task.id, patch.pausedUntil);
     const changed = Object.entries(patch).filter(([, v]) => v !== undefined).map(([k]) => k);
-    logActivity(db, actor, 'task.updated', task.id, { fields: changed });
+    if (changed.length) logActivity(db, actor, 'task.updated', task.id, { fields: changed });
   });
   return getTask(db, actor.member, task.id);
 }
@@ -400,7 +457,7 @@ function setRepeat(db: Db, actor: Actor, taskId: string, input: Repeat | null) {
   const anchor = current ?? existing.anchor;
   db.update(series).set({ rule: anchorRule(rule, anchor), anchor }).where(eq(series.id, existing.id)).run();
   if (!current && rule.mode === 'schedule') {
-    const first = firstOccurrence(rule, anchor, planningDate(actor.member), existing.pausedUntil);
+    const first = firstOccurrence(rule, anchor, actorToday(actor), existing.pausedUntil);
     if (first) db.update(tasks).set(onDate(rule, first)).where(eq(tasks.id, taskId)).run();
   }
 }
@@ -428,7 +485,7 @@ function spawnNext(db: Db, actor: Actor, task: TaskDetail) {
     .where(and(eq(tasks.seriesId, s.id), eq(tasks.status, 'open'), ne(tasks.id, task.id)))
     .get();
   if (open) return null;
-  const date = nextDate(s.rule, s.anchor, seriesDate(task, s.rule), planningDate(actor.member), s.pausedUntil);
+  const date = nextDate(s.rule, s.anchor, seriesDate(task, s.rule), actorToday(actor), s.pausedUntil);
   if (!date) return null;
   const now = new Date();
   const next = db
@@ -504,13 +561,14 @@ export function completeTasks(db: Db, actor: Actor, refs: string[], done = true)
   const found = refs.map((ref) => getTask(db, actor.member, ref));
   db.transaction(() => {
     for (const task of found) {
+      if (changedSince(db, actor, task.id).has('status')) continue;
       if (task.status === 'archived') throw new DomainError(`"${task.title}" was removed. Restore it first.`);
       if ((task.status === 'done') === done) continue;
       const now = new Date();
       db.update(tasks)
         .set(
           done
-            ? { status: 'done', completedAt: now, completedById: actor.member.id, updatedAt: now }
+            ? { status: 'done', completedAt: actor.at ?? now, completedById: actor.member.id, updatedAt: now }
             : { status: 'open', completedAt: null, completedById: null, updatedAt: now },
         )
         .where(eq(tasks.id, task.id))
@@ -532,6 +590,7 @@ export function moveTasks(db: Db, actor: Actor, refs: string[], plannedDate: str
   const found = refs.map((ref) => getTask(db, actor.member, ref));
   db.transaction(() => {
     for (const task of found) {
+      if (changedSince(db, actor, task.id).has('plannedDate')) continue;
       db.update(tasks).set({ plannedDate, updatedAt: new Date() }).where(eq(tasks.id, task.id)).run();
       logActivity(db, actor, 'task.moved', task.id, { from: task.plannedDate, to: plannedDate });
     }
@@ -542,6 +601,7 @@ export function moveTasks(db: Db, actor: Actor, refs: string[], plannedDate: str
 /** Hands a task to someone (or to no one in particular). A note travels with it, e.g. when handing it back. */
 export function assignTask(db: Db, actor: Actor, ref: string, assigneeId: string | null, note?: string | null) {
   const task = getTask(db, actor.member, ref);
+  if (changedSince(db, actor, task.id).has('assigneeId')) return task;
   db.transaction(() => {
     db.update(tasks)
       .set({ assigneeId, handedBackNote: note?.trim() || null, updatedAt: new Date() })
@@ -557,6 +617,7 @@ export function archiveTasks(db: Db, actor: Actor, refs: string[], restore = fal
   const found = refs.map((ref) => getTask(db, actor.member, ref));
   db.transaction(() => {
     for (const task of found) {
+      if (changedSince(db, actor, task.id).has('status')) continue;
       const status = restore ? (task.completedAt ? 'done' : 'open') : 'archived';
       db.update(tasks).set({ status, updatedAt: new Date() }).where(eq(tasks.id, task.id)).run();
       logActivity(db, actor, restore ? 'task.restored' : 'task.archived', task.id);

@@ -45,12 +45,16 @@ import {
   updateTask,
 } from './domain/tasks.ts';
 import { addDays, planningDate } from './lib/dates.ts';
+import { madeAt } from './requests.ts';
 
 const date = z.iso.date();
 const timeOfDay = z.enum(['morning', 'afternoon', 'evening']);
-const link = z.object({ url: z.string().max(2000), title: z.string().max(300).nullable().optional() });
+const link = z.object({ id: z.uuid().optional(), url: z.string().max(2000), title: z.string().max(300).nullable().optional() });
+// A step's title, or an id and title when the app made it offline and may change it before it syncs.
+const newSubtask = z.union([z.string().max(300), z.object({ id: z.uuid(), title: z.string().max(300) })]);
 
 const newTask = z.object({
+  id: z.uuid().optional(),
   title: z.string().trim().min(1).max(500),
   notes: z.string().max(20_000).nullable().optional(),
   groupId: z.string().nullable().optional(),
@@ -60,7 +64,7 @@ const newTask = z.object({
   timeOfDay: timeOfDay.nullable().optional(),
   mustDo: z.boolean().optional(),
   estimateMinutes: z.number().int().min(1).max(1440).nullable().optional(),
-  subtasks: z.array(z.string().max(300)).max(50).optional(),
+  subtasks: z.array(newSubtask).max(50).optional(),
   links: z.array(link).max(20).optional(),
   repeat: repeatSchema.nullable().optional(),
 });
@@ -74,7 +78,7 @@ const taskPatch = z.object({
   timeOfDay: timeOfDay.nullable().optional(),
   mustDo: z.boolean().optional(),
   estimateMinutes: z.number().int().min(1).max(1440).nullable().optional(),
-  addSubtasks: z.array(z.string().max(300)).max(50).optional(),
+  addSubtasks: z.array(newSubtask).max(50).optional(),
   checkSubtasks: z.array(z.string()).optional(),
   uncheckSubtasks: z.array(z.string()).optional(),
   removeSubtasks: z.array(z.string()).optional(),
@@ -159,7 +163,11 @@ const listItemFields = {
 
 export function registerApi(app: Hono<Env>, { db, config, ai }: { db: Db; config: Config; ai: Ai }) {
   const me = (c: Context<Env>) => c.get('member')!;
-  const actor = (c: Context<Env>): Actor => ({ member: me(c), via: 'app' });
+  // A change the app queued offline says how long ago it was made.
+  const actor = (c: Context<Env>): Actor => {
+    const at = madeAt(c.req.header('almanac-age'));
+    return { member: me(c), via: 'app', ...(at && { at }) };
+  };
   // Group and member ids come from the app, but still have to be ones this member can use.
   const groupId = (m: Member, id: string | null | undefined) => (id == null ? id : resolveGroup(db, m, id, 'tasks').id);
   const memberId = (m: Member, id: string | null | undefined) => (id == null ? id : resolveMember(db, m, id)?.id ?? null);
@@ -405,7 +413,7 @@ export function registerApi(app: Hono<Env>, { db, config, ai }: { db: Db; config
 
   app.post('/api/lists/:groupId/items', async (c) => {
     const group = resolveGroup(db, me(c), c.req.param('groupId'), 'list');
-    const input = await body(c, z.object({ name: z.string().trim().min(1).max(200), ...listItemFields }));
+    const input = await body(c, z.object({ id: z.uuid().optional(), name: z.string().trim().min(1).max(200), ...listItemFields }));
     const [added] = addListItems(db, actor(c), group, [input]);
     return c.json(added, 201);
   });

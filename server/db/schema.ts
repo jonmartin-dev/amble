@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { index, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 import type { Repeat } from '../../shared/repeat.ts';
 
 const id = () =>
@@ -179,6 +179,23 @@ export const aiUsage = sqliteTable(
     createdAt: createdAt(),
   },
   (t) => [index('ai_usage_created_idx').on(t.createdAt)],
+);
+
+// Writes the app queued while offline carry a key, so a retry after a lost response isn't applied
+// twice: the first answer is kept and sent again.
+export const appliedRequests = sqliteTable(
+  'applied_requests',
+  {
+    memberId: text('member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade' }),
+    key: text('key').notNull(),
+    // Null while the first attempt is still running.
+    status: integer('status'),
+    body: text('body'),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.memberId, t.key] }), index('applied_requests_created_idx').on(t.createdAt)],
 );
 
 // Apps allowed to act for a member through the remote Claude connector (OAuth 2.1).

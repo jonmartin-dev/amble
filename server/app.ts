@@ -14,6 +14,7 @@ import { createSession, deleteSession, resolveSession, SESSION_COOKIE, SESSION_T
 import type { Config } from './config.ts';
 import { registerApi } from './api.ts';
 import { registerConnector } from './connector.ts';
+import { queuedWrites } from './requests.ts';
 import type { Db } from './db/index.ts';
 import type { Env } from './env.ts';
 import { z } from 'zod';
@@ -151,6 +152,7 @@ export function createApp({
     if (!c.get('member')) return c.json({ error: 'Sign in first.' }, 401);
     await next();
   });
+  app.use('/api/*', queuedWrites(db));
 
   const themeSchema = z.object({
     mode: z.enum(['system', 'light', 'dark']),
@@ -211,6 +213,11 @@ export function createApp({
     // Registered before serveStatic, which would otherwise answer "/" with the raw index.html.
     app.get('/', serveIndex);
     app.get('/index.html', serveIndex);
+    // The service worker checks for a new version on every visit, so it must never come from a cache.
+    app.use('/sw.js', async (c, next) => {
+      await next();
+      c.header('Cache-Control', 'no-cache');
+    });
     app.use(
       '/assets/*',
       async (c, next) => {
