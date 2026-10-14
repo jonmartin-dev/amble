@@ -5,3 +5,6 @@ data/
 *.log
 .DS_Store
 design/screens/
+
+# Household notes for the Almanac skill, added by scripts/sync-skill.ts
+skill/household.md

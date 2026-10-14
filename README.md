@@ -60,7 +60,7 @@ claude mcp add almanac --scope user -e ALMANAC_MEMBER=you@example.com -- node /p
 
 For the Claude desktop app, add the same command under `mcpServers` in its config (Settings, Developer, Edit Config) and restart it. Set `ALMANAC_DATA_DIR` if the database isn't in the repo's `data/` folder.
 
-**The Almanac skill.** `skill/almanac/` teaches Claude how to use the connector the calm way: what goes in the backlog versus on a day, keeping days light, lists versus tasks, and short replies. Zip that folder and upload it in Claude under Customize, Skills, or copy it into a local skills folder with `node scripts/sync-skill.ts <skills-dir>`. Remove its Household notes section first; that part describes one household.
+**The Almanac skill.** `skill/almanac/` teaches Claude how to use the connector the calm way: what goes in the backlog versus on a day, keeping days light, lists versus tasks, and short replies. Zip that folder and upload it in Claude under Customize, Skills, or copy it into a local skills folder with `node scripts/sync-skill.ts <skills-dir>`. To tell Claude about your own household (who's who, your time zone, what you'd rather not hear about), write it under a `## Household notes` heading in `skill/household.md`. Git ignores that file, and `sync-skill.ts` adds it to the end of the skill it copies.
 
 ## Self-host with Docker
 
