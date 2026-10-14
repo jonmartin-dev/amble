@@ -9,6 +9,9 @@ const errors: Record<string, string> = {
   'not-allowed': "That account isn't on this household's list. Ask whoever runs Almanac to add it.",
   expired: 'That sign-in took too long. Try again.',
   failed: "Sign-in didn't go through. Try again.",
+  unavailable: "Almanac couldn't reach the sign-in provider. Try again in a moment.",
+  unverified: "Your sign-in provider says this email address isn't verified. Whoever runs Almanac can mark it verified there.",
+  'no-email': "Your sign-in provider didn't share an email address. Whoever runs Almanac needs to let it share one.",
 };
 
 export function SignIn() {

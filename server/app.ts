@@ -13,7 +13,7 @@ import { ConnectError, createCalendarSync, type CalendarSync } from './calendar/
 import { createFileStore, type FileStore } from './domain/files.ts';
 import { createPush, type Push } from './notify/push.ts';
 import { allowedEmails, isAllowed, upsertMember } from './auth/members.ts';
-import type { Oidc } from './auth/oidc.ts';
+import { describeError, type Oidc, SignInError } from './auth/oidc.ts';
 import { createSession, deleteSession, resolveSession, SESSION_COOKIE, SESSION_TTL_MS } from './auth/sessions.ts';
 import type { Config } from './config.ts';
 import { registerApi } from './api.ts';
@@ -101,7 +101,14 @@ export function createApp({
       if (config.devLogin) return c.redirect(appUrl(`/signin?return=${encodeURIComponent(returnTo)}`));
       return c.text('Sign-in is not configured. Set OIDC_CLIENT_ID and OIDC_CLIENT_SECRET.', 503);
     }
-    const { url, state } = await oidc.begin(returnTo);
+    let started;
+    try {
+      started = await oidc.begin(returnTo);
+    } catch (err) {
+      console.warn('Sign-in could not start:', describeError(err));
+      return c.redirect(appUrl('/signin?error=unavailable'));
+    }
+    const { url, state } = started;
     setCookie(c, STATE_COOKIE, state, {
       path: cookiePath,
       httpOnly: true,
@@ -133,9 +140,9 @@ export function createApp({
     try {
       identity = await oidc.finish(state, new URL(c.req.url).search);
     } catch (err) {
-      console.warn('Sign-in failed:', err instanceof Error ? err.message : err);
+      console.warn('Sign-in failed:', describeError(err));
       if (c.get('member')) return c.redirect(appUrl(`/settings/calendars?error=${declined ? 'declined' : 'failed'}`));
-      return c.redirect(appUrl('/signin?error=failed'));
+      return c.redirect(appUrl(`/signin?error=${err instanceof SignInError ? err.code : 'failed'}`));
     }
     if (identity.kind === 'calendar') {
       if (c.get('member')?.id !== identity.memberId) return c.redirect(appUrl('/signin?error=expired'));
