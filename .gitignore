@@ -8,3 +8,6 @@ design/screens/
 
 # Household notes for the Almanac skill, added by scripts/sync-skill.ts
 skill/household.md
+
+# The spec and build notes stay on this machine
+SPEC.md

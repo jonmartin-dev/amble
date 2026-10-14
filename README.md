@@ -2,7 +2,7 @@
 
 A calm, shared, self-hosted planner for a household. It knows how full each day already is, from your tasks and your Google Calendar, and suggests what to do today and which day has room for something due later. It never nags.
 
-Status: early but usable. The day list, backlog, task details, smart add, repeating tasks, list templates, handing tasks to each other, the calendar, stats, the activity feed, settings and the Claude connector work, offline too. Capacity is learned from what gets done, Google Calendar shapes how full each day is, and the planner suggests what to do today and where things fit. Reminders and files on tasks work too. An Android app is next (see [SPEC.md](SPEC.md) for the plan and build order).
+Status: early but usable. The day list, backlog, task details, smart add, repeating tasks, list templates, handing tasks to each other, the calendar, stats, the activity feed, settings and the Claude connector work, offline too. Capacity is learned from what gets done, Google Calendar shapes how full each day is, and the planner suggests what to do today and where things fit. Reminders and files on tasks work too. An Android app is next.
 
 <p>
   <img src="docs/screenshots/briefing.png" width="160" alt="Here's today: the day's load, calendar events, a task handed over and a suggestion">

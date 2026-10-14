@@ -1,6 +1,16 @@
 # Contributing
 
-Thanks for wanting to help with Almanac. It's a small project for households, built to stay calm: it never nags, keeps days light, and does nothing behind anyone's back. [SPEC.md](SPEC.md) has the principles, the data model and the plan, and is the first thing to read before a bigger change.
+Thanks for wanting to help with Almanac. It's a small project for households, built to stay calm: it never nags, keeps days light, and does nothing behind anyone's back. For a bigger change, open an issue first so we can talk it through.
+
+## Principles
+
+Every change should keep these true:
+
+1. **Calm by default.** No red overdue counts, no badges, no notifications nobody asked for. Overdue things quietly come back as suggestions.
+2. **Suggest, never move.** The planner and the AI features propose; nothing changes until a person taps Add or Accept. Claude, acting through the connector at someone's request, is the one exception.
+3. **Load-aware.** Every suggestion respects how full a day already is, calendar included.
+4. **Shared household, private when wanted.** Everything is shared unless a group is marked private.
+5. **Self-host first.** One container, one SQLite file, config in environment variables. Nothing about one household's setup is hard-coded.
 
 ## Getting started
 
@@ -61,7 +71,7 @@ Change `server/db/schema.ts`, run `pnpm db:generate`, and commit the new migrati
 - TypeScript, strict. Node runs the server's `.ts` files directly, so only syntax that type stripping can erase is allowed: no enums, namespaces or parameter properties. Imports name their `.ts` files.
 - Match the code around you: its naming, its comment density, its idioms. Comments say why, not what.
 - Dates on the server use `Temporal`. A person's day turns over at their cutoff hour (4am by default) in their time zone; use the helpers in `server/lib/dates.ts` rather than raw dates.
-- The app must stay smooth on a mid-range phone. The rules that keep it that way are under Performance in [SPEC.md](SPEC.md#settled): animate only `transform` and `opacity` for anything frequent, no view transitions between screens, and measure at 4x CPU slowdown in Chrome when you touch anything on a hot path.
+- The app must stay smooth on a mid-range phone. Animate only `transform` and `opacity` for anything frequent; growing a bar or sliding a sheet from JavaScript repaints every frame. No view transitions between screens. Reuse one `Intl.DateTimeFormat` per set of options rather than calling `toLocaleDateString`. The four tabs stay built in React `<Activity>` boundaries, so hidden tabs keep their elements in the page and tests look for visible ones. Measure at 4x CPU slowdown in Chrome when you touch anything on a hot path.
 - Every change in the app works offline or says it needs a connection. Changes go through the outbox (`web/src/lib/outbox.ts`), not straight to `fetch`.
 
 ## Words in the app
