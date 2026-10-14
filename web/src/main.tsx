@@ -17,9 +17,11 @@ import { Activity as Keep, memo, StrictMode, useEffect, useState, type Component
 import { createRoot } from 'react-dom/client';
 import { AddSheet } from './components/AddSheet.tsx';
 import { FloatingToolbar } from './components/FloatingToolbar.tsx';
+import { NavRail } from './components/NavRail.tsx';
 import { StatusPill } from './components/StatusPill.tsx';
 import { basePath } from './lib/api.ts';
 import { syncCalendarsWhileOpen } from './lib/calendar.ts';
+import { EXPANDED, InPane, isDetail, useMedia } from './lib/layout.ts';
 import { refreshViews } from './lib/mutations.ts';
 import { CACHE_MAX_AGE_MS, CACHE_VERSION, claimDevice, idbPersister, prefetchForOffline, shouldSave } from './lib/persist.ts';
 import { refreshPush } from './lib/push.ts';
@@ -104,10 +106,18 @@ function Root() {
   useSyncMemberTheme();
 
   const tab = shown in TABS ? shown : null;
+  // On a wide screen a task or list opens beside the page it came from, which stays as it was.
+  const wide = useMedia(EXPANDED);
+  const [lastTab, setLastTab] = useState('/');
+  useEffect(() => {
+    if (tab) setLastTab(tab);
+  }, [tab]);
+  const split = wide && isDetail(shown);
+  const listed = tab ?? (split ? lastTab : null);
   const [kept, setKept] = useState<ReadonlySet<string>>(() => new Set());
   useEffect(() => {
-    if (tab && !kept.has(tab)) setKept(new Set(kept).add(tab));
-  }, [tab, kept]);
+    if (listed && !kept.has(listed)) setKept(new Set(kept).add(listed));
+  }, [listed, kept]);
   // Once the first page is up. React builds hidden pages at low priority, between other work.
   useEffect(() => {
     if (!memberId) return;
@@ -143,31 +153,57 @@ function Root() {
   // The consent page stands alone, without the app's toolbar.
   if (pathname.startsWith('/connect/')) return <Outlet />;
 
+  // On a list (open on its own or beside a page), + adds to it.
+  const onList = pathname.startsWith('/list/');
+  const onAdd = () => (onList ? window.dispatchEvent(new Event(ADD_TO_LIST)) : setAdding(true));
+  const addLabel = onList ? 'Add to this list' : 'Add a task';
+
   return (
-    <div className="min-h-dvh">
-      <main className="mx-auto max-w-xl px-4 pt-6 pb-36" style={{ paddingTop: 'max(1.5rem, env(safe-area-inset-top))' }}>
-        {/* Each page rises in softly as it shows: a CSS animation, which stays smooth while the page
-            is built and plays again whenever a kept tab goes from hidden to shown. */}
-        {Object.entries(TABS).map(([path, Page]) =>
-          kept.has(path) || path === tab ? (
-            <Keep key={path} mode={path === tab ? 'visible' : 'hidden'}>
-              <div className="page-in">
-                <Page />
+    <div className="min-h-dvh" style={{ paddingLeft: 'var(--rail)' }}>
+      <NavRail current={listed} settings={pathname.startsWith('/settings')} onAdd={onAdd} label={addLabel} />
+      <div className={split ? 'flex items-start' : undefined}>
+        <main
+          className={
+            split
+              ? // Its own scroll, so picking one task after another doesn't move the list.
+                'sticky top-0 h-dvh w-[min(26rem,44%)] shrink-0 overflow-y-auto overscroll-contain px-4 pb-10 [scrollbar-width:thin]'
+              : 'mx-auto max-w-xl px-4 pb-36 medium:max-w-2xl medium:px-6 medium:pb-12'
+          }
+          style={{ paddingTop: 'max(1.5rem, env(safe-area-inset-top))' }}
+        >
+          {/* Each page rises in softly as it shows: a CSS animation, which stays smooth while the page
+              is built and plays again whenever a kept tab goes from hidden to shown. */}
+          {Object.entries(TABS).map(([path, Page]) =>
+            kept.has(path) || path === listed ? (
+              <Keep key={path} mode={path === listed ? 'visible' : 'hidden'}>
+                <div className="page-in">
+                  <Page />
+                </div>
+              </Keep>
+            ) : null,
+          )}
+          {!listed && (
+            <div key={shown} className="page-in">
+              <Outlet />
+            </div>
+          )}
+        </main>
+        {split && (
+          <section
+            aria-label="Open beside"
+            className="pane min-h-[calc(100dvh-1.5rem)] min-w-0 flex-1 rounded-[2rem]"
+            style={{ marginTop: 'max(0.75rem, env(safe-area-inset-top))', marginRight: 'max(0.75rem, env(safe-area-inset-right))' }}
+          >
+            <InPane.Provider value={true}>
+              <div key={shown} className="page-in mx-auto max-w-2xl px-6 pt-5 pb-12">
+                <Outlet />
               </div>
-            </Keep>
-          ) : null,
+            </InPane.Provider>
+          </section>
         )}
-        {!tab && (
-          <div key={shown} className="page-in">
-            <Outlet />
-          </div>
-        )}
-      </main>
+      </div>
       <StatusPill />
-      <FloatingToolbar
-        onAdd={() => (pathname.startsWith('/list/') ? window.dispatchEvent(new Event(ADD_TO_LIST)) : setAdding(true))}
-        label={pathname.startsWith('/list/') ? 'Add to this list' : 'Add a task'}
-      />
+      <FloatingToolbar onAdd={onAdd} label={addLabel} />
       <AddSheet open={adding} onClose={() => setAdding(false)} plannedByDefault={pathname === '/'} />
     </div>
   );

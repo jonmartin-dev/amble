@@ -32,7 +32,7 @@ Status: early but usable. The day list, backlog, task details, smart add, repeat
 - A household: hand tasks to each other with a note, or share them with anyone; admins add people before they've signed in
 - Sign in with Google, or any OpenID Connect provider, limited to an allowlist of emails
 - Works offline: the app and what you last loaded open without a connection, changes show at once and sync in order when you're back, and if someone changed the same thing in the meantime the later change wins
-- Installable app (PWA) designed in Material 3 Expressive, with its spring motion tokens
+- Installable app (PWA) designed in Material 3 Expressive, with its spring motion tokens. It fits the screen it's on: a floating toolbar on phones, a navigation rail on a foldable or small tablet, and on wider screens a task or list opens beside the page you picked it from
 - Material You theming: pick any color and Almanac generates the full Material 3 palette (2025 spec) in five styles and three contrast levels, light, dark or automatic. It's saved per person and follows you across devices.
 - A Claude connector (MCP) with its own OAuth sign-in: Claude can add, plan, complete and hand off tasks, keep shopping lists, check how full each day is, suggest what to do today, draft a week's plan, set reminders you ask for and look at photos on tasks
 

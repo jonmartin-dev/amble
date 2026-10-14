@@ -3,7 +3,6 @@ import { Link } from '@tanstack/react-router';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Add from '~icons/material-symbols/add-rounded';
-import ArrowBack from '~icons/material-symbols/arrow-back-rounded';
 import ArrowUp from '~icons/material-symbols/arrow-upward-rounded';
 import Close from '~icons/material-symbols/close-rounded';
 import Event from '~icons/material-symbols/event-outline-rounded';
@@ -20,7 +19,7 @@ import { GroupSheet } from '../components/GroupSheet.tsx';
 import { GroupIcon, tone } from '../components/icons.tsx';
 import { ItemSheet, ListMenu, SectionsSheet } from '../components/ListSheets.tsx';
 import { DaySheet } from '../components/MoveSheet.tsx';
-import { Checkbox, Chip, useBack } from '../components/ui.tsx';
+import { BackButton, Checkbox, Chip, useBack } from '../components/ui.tsx';
 import { ApiError, type ListItem } from '../lib/api.ts';
 import { dayLabel, todayIso } from '../lib/dates.ts';
 import { addListItem, checkListItem, editListItem, resetListItems } from '../lib/local.ts';
@@ -258,9 +257,7 @@ export function ListPage({ groupId }: { groupId: string }) {
   if (!data && error) {
     return (
       <>
-        <button type="button" onClick={goBack} aria-label="Back" className="-ml-2 grid size-12 shrink-0 place-items-center rounded-full hover:bg-surface-high">
-          <ArrowBack className="size-6" aria-hidden />
-        </button>
+        <BackButton onClick={goBack} />
         <p className="mt-10 text-center text-on-surface-variant">
           {error instanceof ApiError && error.status === 0 ? "You're offline, and this list hasn't been opened on this device yet." : "That list isn't here anymore."}
         </p>
@@ -277,9 +274,7 @@ export function ListPage({ groupId }: { groupId: string }) {
   return (
     <>
       <header className="flex items-center gap-2">
-        <button type="button" onClick={goBack} aria-label="Back" className="-ml-2 grid size-12 shrink-0 place-items-center rounded-full hover:bg-surface-high">
-          <ArrowBack className="size-6" aria-hidden />
-        </button>
+        <BackButton onClick={goBack} />
         {group && (
           <>
             <span className={`grid size-11 shrink-0 place-items-center rounded-[1.1rem] ${tone(group.color)}`}>

@@ -1,10 +1,12 @@
-import { Link, useRouter } from '@tanstack/react-router';
+import { Link, useRouter, useRouterState } from '@tanstack/react-router';
 import { AnimatePresence, motion, useDragControls, usePresence, type DragControls, type PanInfo } from 'motion/react';
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import ArrowBack from '~icons/material-symbols/arrow-back-rounded';
 import Check from '~icons/material-symbols/check-rounded';
 import ChevronRight from '~icons/material-symbols/chevron-right-rounded';
+import Close from '~icons/material-symbols/close-rounded';
 import type { DayLoad } from '../lib/api.ts';
+import { EXPANDED, isDetail, useInPane, useMedia } from '../lib/layout.ts';
 import { expressive } from '../lib/motion.ts';
 import { useBackToClose, useScrollLock, useVisualViewport } from '../lib/viewport.ts';
 
@@ -22,6 +24,34 @@ export function SubpageHeader({ title, back = '/settings', action }: { title: Re
       <h1 className="display flex-1 text-[1.75rem] font-medium">{title}</h1>
       {action}
     </header>
+  );
+}
+
+/**
+ * The back arrow at the top of a task or list. In the pane beside a page on a wide screen it's a
+ * close button instead, which shuts the pane the same way.
+ */
+export function BackButton({ onClick }: { onClick: () => void }) {
+  const inPane = useInPane();
+  const Glyph = inPane ? Close : ArrowBack;
+  return (
+    <button type="button" onClick={onClick} aria-label={inPane ? 'Close' : 'Back'} className="-ml-2 grid size-12 shrink-0 place-items-center rounded-full hover:bg-surface-high">
+      <Glyph className="size-6" aria-hidden />
+    </button>
+  );
+}
+
+/**
+ * A link to a list. On a wide screen, while something is already open beside the page, the list
+ * takes its place rather than adding a step for Back; whichever is open shows as picked.
+ */
+export function ListLink({ groupId, className, children }: { groupId: string; className: (open: boolean) => string; children: ReactNode }) {
+  const wide = useMedia(EXPANDED);
+  const where = useRouterState({ select: (s) => (s.location.pathname === `/list/${groupId}` ? 'this' : isDetail(s.location.pathname) ? 'other' : 'none') });
+  return (
+    <Link to="/list/$groupId" params={{ groupId }} replace={wide && where !== 'none'} aria-current={where === 'this' || undefined} className={className(where === 'this')}>
+      {children}
+    </Link>
   );
 }
 
@@ -183,6 +213,15 @@ export function Sheet({
   const view = useVisualViewport(open);
   useScrollLock(open);
   useBackToClose(open, onClose);
+  // On a wide screen, a task opened from the sheet shows beside the page the sheet is on, so the
+  // sheet gets out of its way. (On a phone the page, sheet and all, waits behind the task for Back.)
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const at = useRef(pathname);
+  useEffect(() => {
+    if (pathname === at.current) return;
+    at.current = pathname;
+    if (open && matchMedia(EXPANDED).matches) onClose();
+  }, [pathname, open, onClose]);
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
@@ -209,10 +248,10 @@ export function Sheet({
             exit={{ opacity: 0, pointerEvents: 'none' }}
             onClick={onClose}
           />
-          {/* Rides up with the keyboard. */}
+          {/* Rides up with the keyboard, centered on the page beside the rail. */}
           <div
             className="sheet-keyboard fixed inset-x-0 bottom-0 z-30 mx-auto max-w-xl"
-            style={view.keyboard ? { transform: `translateY(${-view.keyboard}px)` } : undefined}
+            style={{ left: 'var(--rail)', ...(view.keyboard && { transform: `translateY(${-view.keyboard}px)` }) }}
           >
             <SheetPanel
               label={label}

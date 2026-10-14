@@ -1,5 +1,27 @@
 @import 'tailwindcss';
 
+/*
+ * Material's window sizes (web/src/lib/layout.ts): `medium:` from 600dp, where the navigation rail
+ * takes over from the floating toolbar, and `expanded:` from 840dp, where a task or list opens
+ * beside its page.
+ */
+@theme {
+  --breakpoint-medium: 37.5rem;
+  --breakpoint-expanded: 52.5rem;
+}
+
+/* Room the floating toolbar takes at the bottom, and the rail at the left. */
+:root {
+  --toolbar: 4.75rem;
+  --rail: 0rem;
+}
+@media (width >= 37.5rem) {
+  :root {
+    --toolbar: 0rem;
+    --rail: calc(6rem + env(safe-area-inset-left));
+  }
+}
+
 /* Material 3 color roles generated from the Almanac green seed. */
 :root {
   color-scheme: light;
@@ -231,10 +253,28 @@ body {
 }
 
 /* The pill behind the current tab in the toolbar. */
-.toolbar-pill {
+/* The pane beside a page on a wide screen: a card a step up from the page, in either mode. */
+.pane {
+  background: var(--md-surface-lowest);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-mode='light']) .pane {
+    background: var(--md-surface-container);
+  }
+}
+:root[data-mode='dark'] .pane {
+  background: var(--md-surface-container);
+}
+
+.toolbar-pill,
+.rail-pill {
   transition:
     transform 350ms var(--spring-fast),
     opacity 150ms;
+}
+.rail-pill-off {
+  transform: scaleX(0.4);
+  opacity: 0;
 }
 /* Eight dots that spring out from the middle and fade: the moment of finishing something. */
 .burst-dot {
@@ -272,6 +312,7 @@ body {
   .press,
   .press-soft,
   .toolbar-pill,
+  .rail-pill,
   .check,
   .check-mark {
     transition: none;

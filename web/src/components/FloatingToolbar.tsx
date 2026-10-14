@@ -11,7 +11,8 @@ import ListFilled from '~icons/material-symbols/list-alt-rounded';
 import SunOutline from '~icons/material-symbols/wb-sunny-outline-rounded';
 import SunFilled from '~icons/material-symbols/wb-sunny-rounded';
 
-const items = [
+/** The app's four pages, in the toolbar on a phone and down the rail on a wider screen. */
+export const NAV_ITEMS = [
   { to: '/', label: 'Today', Icon: SunOutline, ActiveIcon: SunFilled },
   { to: '/backlog', label: 'Backlog', Icon: ListOutline, ActiveIcon: ListFilled },
   { to: '/calendar', label: 'Calendar', Icon: CalendarOutline, ActiveIcon: CalendarFilled },
@@ -24,14 +25,14 @@ const STEP = 52;
 export function FloatingToolbar({ onAdd, label }: { onAdd: () => void; label: string }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const isActive = (to: string) => (to === '/' ? pathname === '/' : pathname.startsWith(to));
-  const active = items.findIndex(({ to }) => isActive(to));
+  const active = NAV_ITEMS.findIndex(({ to }) => isActive(to));
   // On a page that isn't one of these, the pill fades where it last was.
   const last = useRef(0);
   if (active >= 0) last.current = active;
 
   return (
     <div
-      className="fixed inset-x-0 z-10 flex justify-center gap-3 px-4"
+      className="fixed inset-x-0 z-10 flex justify-center gap-3 px-4 medium:hidden"
       style={{ bottom: 'max(1.25rem, env(safe-area-inset-bottom))' }}
     >
       <nav aria-label="Main" className="relative flex items-center gap-1 rounded-full bg-surface-highest p-2 shadow-lg">
@@ -42,7 +43,7 @@ export function FloatingToolbar({ onAdd, label }: { onAdd: () => void; label: st
           className="toolbar-pill absolute top-2 left-2 size-12 rounded-full bg-primary-container"
           style={{ transform: `translateX(${last.current * STEP}px) scale(${active >= 0 ? 1 : 0.6})`, opacity: active >= 0 ? 1 : 0 }}
         />
-        {items.map(({ to, label, Icon, ActiveIcon }) => {
+        {NAV_ITEMS.map(({ to, label, Icon, ActiveIcon }) => {
           const active = isActive(to);
           const Glyph = active ? ActiveIcon : Icon;
           return (

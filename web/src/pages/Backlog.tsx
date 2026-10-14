@@ -1,4 +1,3 @@
-import { Link } from '@tanstack/react-router';
 import { AnimatePresence, motion } from 'motion/react';
 import { useState } from 'react';
 import Add from '~icons/material-symbols/add-rounded';
@@ -12,7 +11,7 @@ import { MoveSheet } from '../components/MoveSheet.tsx';
 import { GroupSheet } from '../components/GroupSheet.tsx';
 import { PageHeader } from '../components/PageHeader.tsx';
 import { TaskRow } from '../components/TaskRow.tsx';
-import { Chip, SectionTitle } from '../components/ui.tsx';
+import { Chip, ListLink, SectionTitle } from '../components/ui.tsx';
 import type { Group, Task } from '../lib/api.ts';
 import { todayIso } from '../lib/dates.ts';
 import { expressive } from '../lib/motion.ts';
@@ -128,10 +127,11 @@ export function Backlog() {
           <ul className="flex flex-col gap-2">
             {lists.map((g) => (
               <li key={g.id}>
-                <Link
-                  to="/list/$groupId"
-                  params={{ groupId: g.id }}
-                  className="flex items-center gap-4 rounded-3xl bg-surface-low p-3 pr-4 transition-colors hover:bg-surface-container"
+                <ListLink
+                  groupId={g.id}
+                  className={(open) =>
+                    `flex items-center gap-4 rounded-3xl p-3 pr-4 transition-colors ${open ? 'bg-secondary-container' : 'bg-surface-low hover:bg-surface-container'}`
+                  }
                 >
                   <span className={`grid size-12 place-items-center rounded-2xl ${tone(g.color)}`}>
                     <GroupIcon name={g.icon} className="size-6" />
@@ -143,7 +143,7 @@ export function Backlog() {
                     </span>
                   </span>
                   <ChevronRight className="size-6 text-on-surface-variant" aria-hidden />
-                </Link>
+                </ListLink>
               </li>
             ))}
           </ul>

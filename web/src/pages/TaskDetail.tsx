@@ -1,7 +1,6 @@
 import { useNavigate, useRouter } from '@tanstack/react-router';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useState, type ReactNode } from 'react';
-import ArrowBack from '~icons/material-symbols/arrow-back-rounded';
 import Close from '~icons/material-symbols/close-rounded';
 import Delete from '~icons/material-symbols/delete-outline-rounded';
 import Event from '~icons/material-symbols/event-outline-rounded';
@@ -24,7 +23,7 @@ import { RepeatSheet } from '../components/RepeatSheet.tsx';
 import { TaskFiles } from '../components/TaskFiles.tsx';
 import { TripCard } from '../components/TripList.tsx';
 import { describeRepeat, repeatOn } from '../../../shared/repeat.ts';
-import { Checkbox, Chip, minutesLabel, SectionTitle } from '../components/ui.tsx';
+import { BackButton, Checkbox, Chip, minutesLabel, SectionTitle } from '../components/ui.tsx';
 import type { Task, TimeOfDay } from '../lib/api.ts';
 import { dayLabel, firstName, todayIso } from '../lib/dates.ts';
 import { expressive } from '../lib/motion.ts';
@@ -84,9 +83,7 @@ function Detail({ task }: { task: Task }) {
   return (
     <>
       <header className="mb-4 flex items-center justify-between">
-        <button type="button" onClick={back} aria-label="Back" className="-ml-2 grid size-12 place-items-center rounded-full hover:bg-surface-high">
-          <ArrowBack className="size-6" aria-hidden />
-        </button>
+        <BackButton onClick={back} />
         <button
           type="button"
           onClick={() => {

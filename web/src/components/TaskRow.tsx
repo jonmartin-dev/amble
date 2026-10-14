@@ -1,4 +1,4 @@
-import { useNavigate } from '@tanstack/react-router';
+import { useNavigate, useRouter, useRouterState } from '@tanstack/react-router';
 import { useRef, useState } from 'react';
 import AttachFile from '~icons/material-symbols/attach-file-rounded';
 import Check from '~icons/material-symbols/check-rounded';
@@ -13,6 +13,7 @@ import RepeatIcon from '~icons/material-symbols/repeat-rounded';
 import Sun from '~icons/material-symbols/wb-sunny-outline-rounded';
 import type { Task } from '../lib/api.ts';
 import { dayLabel, daysFrom, firstName, reminderLabel } from '../lib/dates.ts';
+import { swapsDetail } from '../lib/layout.ts';
 import { useTaskActions } from '../lib/mutations.ts';
 import { TripBadge } from './TripList.tsx';
 import { Checkbox } from './ui.tsx';
@@ -41,7 +42,10 @@ interface Props {
 /** One task. Swipe right to complete, swipe left or long-press to move it, tap for details. */
 export function TaskRow({ task, today, meId, onMove, showDay = false, showGroup = true, showTime = true, surface = 'bg-surface-low' }: Props) {
   const navigate = useNavigate();
+  const router = useRouter();
   const actions = useTaskActions();
+  // Open beside the list on a wide screen, where the row stays in view.
+  const open = useRouterState({ select: (s) => s.location.pathname === `/task/${task.id}` });
   // A tap shows right away; once the server's copy of the task changes (done, or undone), it wins.
   const [tapped, setTapped] = useState<{ done: boolean; version: string } | null>(null);
   const checked = tapped && tapped.version === task.updatedAt ? tapped.done : task.status === 'done';
@@ -171,10 +175,11 @@ export function TaskRow({ task, today, meId, onMove, showDay = false, showGroup 
         onPointerCancel={onPointerEnd}
         onClick={() => {
           if (press.current.handled) return;
-          void navigate({ to: '/task/$taskId', params: { taskId: task.id } });
+          void navigate({ to: '/task/$taskId', params: { taskId: task.id }, replace: swapsDetail(router.state.location.pathname) });
         }}
         onContextMenu={(e) => e.preventDefault()}
-        className={`relative flex cursor-pointer touch-pan-y items-start gap-3 px-4 py-3.5 select-none ${surface}`}
+        aria-current={open || undefined}
+        className={`relative flex cursor-pointer touch-pan-y items-start gap-3 px-4 py-3.5 select-none ${open ? 'bg-secondary-container' : surface}`}
       >
         <div className="pt-0.5">
           <Checkbox checked={checked} onChange={toggle} label={checked ? `Mark ${task.title} not done` : `Complete ${task.title}`} />

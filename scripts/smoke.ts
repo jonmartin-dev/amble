@@ -425,6 +425,29 @@ await check('the calendars page explains itself and offers to connect', async (p
   else await until(p, "Calendar sync isn't set up on this server");
 });
 
+await check('on a tablet a task opens beside the backlog, the next takes its place, and Back closes it', async (p) => {
+  await p.setViewportSize({ width: 1280, height: 800 });
+  try {
+    await p.goto(`${base}/backlog`);
+    await p.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Calendar' }).waitFor();
+    const rows = p.getByRole('main').getByRole('checkbox', { name: /^Complete / });
+    await rows.first().waitFor();
+    const titles = await rows.evaluateAll((els) => els.slice(0, 2).map((el) => el.getAttribute('aria-label')!.replace(/^Complete /, '')));
+    for (const title of titles) {
+      await p.getByRole('main').getByText(title, { exact: true }).first().click();
+      await p.waitForFunction((t) => document.querySelector<HTMLTextAreaElement>('[aria-label="Open beside"] textarea[aria-label="Title"]')?.value === t, title, {
+        timeout: 5000,
+      });
+    }
+    await p.getByRole('heading', { name: 'Backlog' }).waitFor();
+    await p.goBack();
+    await p.getByRole('region', { name: 'Open beside' }).waitFor({ state: 'detached', timeout: 5000 });
+    if (!p.url().endsWith('/backlog')) throw new Error(`Back went to ${p.url()}`);
+  } finally {
+    await p.setViewportSize({ width: 390, height: 844 });
+  }
+});
+
 await browser.close();
 if (errors.length) {
   console.error(`\n${errors.length} console errors:\n${errors.join('\n')}`);

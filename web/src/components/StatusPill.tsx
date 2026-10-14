@@ -96,7 +96,7 @@ export function StatusPill() {
     <div
       aria-live="polite"
       className="pointer-events-none fixed inset-x-0 z-10 flex justify-center px-4"
-      style={{ bottom: 'calc(max(1.25rem, env(safe-area-inset-bottom)) + 4.75rem)' }}
+      style={{ bottom: 'calc(max(1.25rem, env(safe-area-inset-bottom)) + var(--toolbar))', paddingLeft: 'calc(var(--rail) + 1rem)' }}
     >
       <AnimatePresence mode="popLayout">
         {status && (
