@@ -1,0 +1,558 @@
+<title>Almanac Concepts</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,wght@6..144,400..700&family=Hanken+Grotesk:wght@400..700&family=Literata:opsz,wght@7..72,400..700&family=IBM+Plex+Mono:wght@400;500&family=Urbanist:wght@400..800&family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Figtree:wght@400..700&display=swap">
+<style>
+/* Layout: a quiet gallery page. Each concept is a header plus a horizontal rail of four phone screens. */
+:root {
+  --bg: #f3f5f3;
+  --fg: #1a1d1b;
+  --muted: #5b625d;
+  --line: #d9ded9;
+  --chip: #e6ebe7;
+  --accent: #2e6a57;
+  --bezel: #1d211f;
+  --font-page: 'Hanken Grotesk', system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111412; --fg: #e6eae7; --muted: #9aa29c; --line: #2a302c; --chip: #1f2521; --accent: #9ad3bc; --bezel: #000000;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111412; --fg: #e6eae7; --muted: #9aa29c; --line: #2a302c; --chip: #1f2521; --accent: #9ad3bc; --bezel: #000000;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-page); font-size: 16px; line-height: 1.5; }
+.page { max-width: 1320px; margin: 0 auto; padding-inline: 20px; padding-block: 40px 64px; }
+
+.intro { display: grid; gap: 14px; max-width: 64ch; }
+.intro h1 { font-size: clamp(2rem, 5vw, 3rem); line-height: 1.05; margin: 0; letter-spacing: -0.02em; text-wrap: balance; }
+.intro p { margin: 0; color: var(--muted); font-size: 1.05rem; }
+
+.controls { display: flex; flex-wrap: wrap; gap: 10px 24px; align-items: center; margin-top: 24px; padding-block: 14px; border-block: 1px solid var(--line);
+  position: sticky; top: env(safe-area-inset-top, 0px); background: var(--bg); z-index: 5; }
+.jump { display: flex; flex-wrap: wrap; gap: 6px; }
+.jump a { color: var(--fg); text-decoration: none; background: var(--chip); padding: 6px 14px; border-radius: 999px; font-size: 0.9rem; font-weight: 500; }
+.jump a:hover, .jump a:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.seg { display: inline-flex; background: var(--chip); border-radius: 999px; padding: 3px; margin-left: auto; }
+.seg span { font-size: 0.85rem; color: var(--muted); padding: 6px 4px 6px 12px; }
+.seg button { font: inherit; font-size: 0.9rem; border: 0; background: transparent; color: var(--fg); padding: 6px 14px; border-radius: 999px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
+.seg button:focus-visible { outline: 2px solid var(--accent); }
+
+.concept { padding-top: 48px; scroll-margin-top: 80px; }
+.concept-head { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 8px 40px; align-items: start; }
+.concept-head .label { font-size: 0.8rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0 0 4px; }
+.concept-head h2 { margin: 0; font-size: 2rem; line-height: 1.1; letter-spacing: -0.01em; }
+.concept-head .pitch { margin: 8px 0 0; font-size: 1.05rem; max-width: 52ch; }
+.traits { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.traits li { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--line); color: var(--muted); }
+.traits b { color: var(--fg); font-weight: 600; }
+@media (max-width: 760px) { .concept-head { grid-template-columns: minmax(0, 1fr); } .seg { margin-left: 0; } }
+
+.rail { display: flex; gap: 22px; overflow-x: auto; padding-block: 24px 8px; scroll-snap-type: x mandatory; scrollbar-width: thin; }
+.shot { flex: none; scroll-snap-align: start; display: grid; gap: 10px; justify-items: center; }
+.shot figcaption { font-size: 0.9rem; color: var(--muted); }
+.phone { width: 300px; height: 640px; border-radius: 42px; padding: 9px; background: var(--bezel); }
+.screen { position: relative; height: 100%; border-radius: 34px; overflow: hidden; background: var(--s-bg); color: var(--s-fg); }
+.status { display: flex; justify-content: space-between; align-items: center; padding: 12px 22px 0; font-size: 12px; font-weight: 600; color: var(--s-fg); }
+.status i { display: inline-flex; gap: 4px; align-items: center; }
+.status i b { width: 14px; height: 9px; border-radius: 2px; background: currentColor; opacity: 0.85; }
+.status i u { width: 9px; height: 9px; border-radius: 50%; background: currentColor; opacity: 0.85; }
+.gesture { position: absolute; bottom: 8px; left: 50%; translate: -50% 0; width: 96px; height: 4px; border-radius: 4px; background: var(--s-fg); opacity: 0.35; }
+.body { padding: 14px 18px 0; }
+.closing { margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--muted); max-width: 64ch; }
+.closing strong { color: var(--fg); }
+svg { display: block; }
+
+/* ---------- Option A: Grove (Material 3 Expressive, faithful) ---------- */
+.c-grove { --s-bg: #f4fbf7; --s-fg: #171d1a; --g-surf: #ffffff; --g-low: #eef5f1; --g-high: #dde4e0; --g-var: #404944; --g-pri: #2e6a57; --g-onpri: #ffffff; --g-pc: #b6efd8; --g-onpc: #002117; --g-warm: #ffdcc1; --g-onwarm: #2f1500; --g-warm-strong: #8b4f1e; --g-heavy: #ffb68a;
+  --t-green: #cdeedd; --t-green-on: #0b3b2c; --t-orange: #ffdcc1; --t-orange-on: #5a2f05; --t-blue: #d6e3ff; --t-blue-on: #0f3b78; --t-violet: #e8ddff; --t-violet-on: #2f1a6b; --t-lime: #dcefb8; --t-lime-on: #1c3300; }
+[data-phones="dark"] .c-grove { --s-bg: #0f1512; --s-fg: #dee4e0; --g-surf: #1b211e; --g-low: #171d1a; --g-high: #303633; --g-var: #bfc9c3; --g-pri: #9ad3bc; --g-onpri: #003829; --g-pc: #0f5140; --g-onpc: #b6efd8; --g-warm: #6c3a0a; --g-onwarm: #ffdcc1; --g-warm-strong: #ffb68a; --g-heavy: #9a4f1c;
+  --t-green: #1d4b3c; --t-green-on: #bdebd6; --t-orange: #6c3a0a; --t-orange-on: #ffdcc1; --t-blue: #21416f; --t-blue-on: #d6e3ff; --t-violet: #43337a; --t-violet-on: #e8ddff; --t-lime: #33480f; --t-lime-on: #d0e8a4; }
+.c-grove .screen { font-family: 'Google Sans Flex', 'Roboto', system-ui, sans-serif; }
+.g-eyebrow { font-size: 12px; color: var(--g-var); margin: 4px 0 0; }
+.g-h1 { font-size: 30px; line-height: 1.08; font-weight: 500; margin: 2px 0 14px; letter-spacing: -0.01em; }
+.g-load { background: var(--g-pc); color: var(--g-onpc); border-radius: 26px; padding: 14px 16px; }
+.g-load .row { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; }
+.g-load .row b { font-size: 22px; font-weight: 500; }
+.g-meter { height: 10px; border-radius: 99px; background: color-mix(in srgb, var(--g-surf) 60%, transparent); margin: 8px 0 6px; overflow: hidden; }
+.g-meter span { display: block; height: 100%; border-radius: 99px; background: var(--g-pri); }
+.g-small { font-size: 11px; }
+.g-label { font-size: 12px; font-weight: 600; color: var(--g-pri); margin: 14px 4px 6px; }
+.g-card { background: var(--g-surf); border-radius: 18px; padding: 10px 12px; display: flex; gap: 10px; align-items: center; margin-bottom: 6px; }
+.g-card .t { font-size: 13px; line-height: 1.25; }
+.g-card .m { font-size: 11px; color: var(--g-var); }
+.g-grow { flex: 1; min-width: 0; }
+.g-chip { font-size: 11px; padding: 4px 11px; border-radius: 99px; background: var(--g-pri); color: var(--g-onpri); white-space: nowrap; }
+.g-chip.quiet { background: var(--g-high); color: var(--s-fg); }
+.g-from { background: var(--g-warm); color: var(--g-onwarm); border-radius: 18px; padding: 10px 12px; font-size: 12px; margin-top: 8px; }
+.g-cta { position: absolute; left: 16px; right: 16px; bottom: 26px; background: var(--g-pri); color: var(--g-onpri); border-radius: 22px; text-align: center; padding: 14px; font-size: 14px; font-weight: 600; }
+.g-box { width: 18px; height: 18px; border-radius: 6px; border: 2px solid var(--g-pri); flex: none; display: grid; place-items: center; }
+.g-box.done { background: var(--g-pri); }
+.g-box.done::after { content: ''; width: 8px; height: 4px; border: 2px solid var(--g-onpri); border-top: 0; border-right: 0; rotate: -45deg; translate: 0 -1px; }
+.g-av { width: 22px; height: 22px; border-radius: 50%; font-size: 11px; font-weight: 600; display: grid; place-items: center; flex: none; }
+.g-av.J { background: var(--t-green); color: var(--t-green-on); }
+.g-av.A { background: var(--t-blue); color: var(--t-blue-on); }
+.g-filters { display: flex; gap: 6px; margin: 4px 0 2px; }
+.g-filters span { font-size: 11px; padding: 5px 12px; border-radius: 99px; background: var(--g-high); }
+.g-filters span.on { background: var(--g-pc); color: var(--g-onpc); font-weight: 600; }
+.g-grouphead { display: flex; align-items: center; gap: 8px; margin: 12px 4px 6px; font-size: 12px; font-weight: 600; }
+.g-dot { width: 10px; height: 10px; border-radius: 4px; }
+.g-toolbar { position: absolute; left: 50%; translate: -50% 0; bottom: 22px; display: flex; gap: 8px; align-items: center; }
+.g-pill { display: flex; gap: 2px; background: var(--g-high); border-radius: 99px; padding: 5px; }
+.g-pill span { width: 38px; height: 38px; border-radius: 99px; display: grid; place-items: center; color: var(--g-var); }
+.g-pill span.on { background: var(--g-pc); color: var(--g-onpc); }
+.g-fab { width: 50px; height: 50px; border-radius: 17px; background: var(--g-pri); color: var(--g-onpri); display: grid; place-items: center; }
+.g-week { display: flex; align-items: flex-end; gap: 6px; height: 150px; padding: 0 2px; }
+.g-week div { flex: 1; display: grid; gap: 4px; justify-items: center; align-content: end; height: 100%; }
+.g-week i { width: 100%; border-radius: 12px; display: block; }
+.g-week small { font-size: 11px; color: var(--g-var); }
+.g-week .gap i { outline: 3px solid var(--g-pri); outline-offset: 2px; }
+.g-week .gap small { color: var(--g-pri); font-weight: 700; }
+.g-gap { background: var(--g-warm); color: var(--g-onwarm); border-radius: 24px; padding: 14px 16px; margin-top: 18px; }
+.g-gap .k { font-size: 11px; }
+.g-gap .h { font-size: 15px; font-weight: 600; margin: 2px 0 4px; }
+.g-gap .row { display: flex; gap: 6px; margin-top: 10px; }
+.g-gap .g-chip { background: var(--g-warm-strong); color: var(--g-warm); }
+.g-gap .g-chip.quiet { background: var(--g-surf); color: var(--s-fg); }
+.g-search { background: var(--g-surf); border-radius: 99px; padding: 9px 14px; font-size: 12px; color: var(--g-var); display: flex; gap: 8px; align-items: center; }
+.g-auto { font-size: 11px; background: var(--g-pc); color: var(--g-onpc); border-radius: 12px; padding: 7px 10px; margin-top: 6px; }
+.g-sect { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; color: var(--g-var); margin: 10px 4px 4px; text-transform: uppercase; }
+.g-li { display: flex; gap: 10px; align-items: center; padding: 7px 4px; font-size: 13px; border-bottom: 1px solid var(--g-low); }
+.g-li em { font-style: normal; font-size: 11px; color: var(--g-var); margin-left: auto; }
+.g-li.done { color: var(--g-var); text-decoration: line-through; }
+.g-listhead { display: flex; align-items: center; gap: 10px; margin: 2px 0 12px; }
+.g-badge { width: 44px; height: 44px; border-radius: 15px; display: grid; place-items: center; background: var(--t-lime); color: var(--t-lime-on); }
+
+/* ---------- Option B: Field Notes (almanac print) ---------- */
+.c-notes { --s-bg: #eef0ea; --s-fg: #1c2a4a; --n-ink2: #4b5674; --n-rule: #c7ccbf; --n-gold: #c98a12; --n-gold-soft: #f1ddaa; --n-gold-on: #3d2a00; }
+[data-phones="dark"] .c-notes { --s-bg: #141821; --s-fg: #e8e6dc; --n-ink2: #a9aebb; --n-rule: #303645; --n-gold: #e9b04a; --n-gold-soft: #3a2f17; --n-gold-on: #f6dfaa; }
+.c-notes .screen { font-family: 'Literata', Georgia, serif; }
+.n-mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; }
+.n-mast { border-top: 3px double var(--s-fg); border-bottom: 1px solid var(--s-fg); padding: 6px 0; display: flex; justify-content: space-between; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; margin-top: 4px; }
+.n-h1 { font-size: 34px; line-height: 1.02; font-weight: 600; margin: 14px 0 4px; letter-spacing: -0.015em; }
+.n-h1 em { font-style: italic; font-weight: 400; color: var(--n-gold); }
+.n-dek { font-size: 13px; color: var(--n-ink2); margin: 0; }
+.n-sun { display: flex; gap: 14px; font-size: 10.5px; color: var(--n-ink2); margin: 10px 0 0; padding-bottom: 10px; border-bottom: 1px solid var(--n-rule); }
+.n-sec { font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; margin: 14px 0 4px; display: flex; justify-content: space-between; color: var(--n-ink2); }
+.n-row { display: flex; gap: 10px; align-items: baseline; padding: 8px 0; border-bottom: 1px solid var(--n-rule); font-size: 13.5px; }
+.n-row .n-mono { font-size: 10.5px; color: var(--n-ink2); margin-left: auto; white-space: nowrap; }
+.n-row .why { display: block; font-size: 11.5px; font-style: italic; color: var(--n-ink2); margin-top: 1px; }
+.n-box { width: 13px; height: 13px; border: 1.5px solid var(--s-fg); flex: none; translate: 0 2px; position: relative; }
+.n-box.done::after { content: ''; position: absolute; inset: -3px 1px 2px 3px; border: 2px solid var(--n-gold); border-top: 0; border-left: 0; rotate: 40deg; }
+.n-row.done span.t { text-decoration: line-through; text-decoration-color: var(--n-gold); color: var(--n-ink2); }
+.n-add { font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; border: 1px solid var(--s-fg); padding: 2px 7px; white-space: nowrap; }
+.n-note { margin-top: 12px; background: var(--n-gold-soft); color: var(--n-gold-on); padding: 10px 12px; font-size: 12.5px; }
+.n-note b { font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 500; display: block; margin-bottom: 2px; }
+.n-tabs { position: absolute; left: 0; right: 0; bottom: 22px; display: flex; justify-content: space-around; border-top: 1px solid var(--s-fg); margin: 0 18px; padding-top: 10px; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--n-ink2); }
+.n-tabs .on { color: var(--s-fg); font-weight: 700; text-decoration: underline; text-decoration-color: var(--n-gold); text-decoration-thickness: 2px; text-underline-offset: 5px; }
+.n-forecast { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 6px; }
+.n-forecast td { padding: 8px 0; border-bottom: 1px solid var(--n-rule); vertical-align: middle; }
+.n-forecast td:first-child { width: 42px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
+.n-forecast td.w { font-style: italic; width: 70px; }
+.n-forecast td.ev { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--n-ink2); text-align: right; width: 44px; }
+.n-forecast tr.gap td { background: var(--n-gold-soft); color: var(--n-gold-on); }
+.n-forecast tr.gap td:first-child { padding-left: 4px; }
+.n-hatch { height: 10px; border: 1px solid var(--s-fg); background: repeating-linear-gradient(135deg, var(--s-fg) 0 1.5px, transparent 1.5px var(--h, 6px)); }
+.n-qty { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--n-ink2); width: 36px; flex: none; }
+
+/* ---------- Option C: Tide (dark-first, load as water) ---------- */
+.c-tide { --s-bg: #e6f2f1; --s-fg: #0d2a33; --t-surf: #ffffff; --t-muted: #4f6b72; --t-water: #2a9d92; --t-water2: #9fdcd4; --t-deep: #0f5c63; --t-sand: #b8742c; --t-sandsoft: #f4e3cc; --t-line: #cfe3e1; }
+[data-phones="dark"] .c-tide { --s-bg: #0b1820; --s-fg: #e2eef0; --t-surf: #12262f; --t-muted: #8fa8ae; --t-water: #3cb4a8; --t-water2: #1e5e63; --t-deep: #a8ece3; --t-sand: #e8c9a0; --t-sandsoft: #3a2e20; --t-line: #1d3640; }
+.c-tide .screen { font-family: 'Urbanist', system-ui, sans-serif; }
+.t-hello { font-size: 13px; color: var(--t-muted); margin: 6px 0 0; }
+.t-h1 { font-size: 28px; font-weight: 700; line-height: 1.1; margin: 2px 0 14px; letter-spacing: -0.01em; }
+.t-tank { position: relative; height: 170px; border-radius: 30px; background: var(--t-surf); overflow: hidden; }
+.t-tank svg { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; }
+.t-tank .num { position: absolute; left: 18px; top: 14px; }
+.t-tank .num b { font-size: 46px; font-weight: 800; line-height: 1; letter-spacing: -0.03em; }
+.t-tank .num span { display: block; font-size: 12px; color: var(--t-muted); margin-top: 2px; }
+.t-tank .cap { position: absolute; left: 18px; right: 18px; bottom: 12px; font-size: 11.5px; color: #ffffff; font-weight: 600; }
+.t-sec { font-size: 12px; font-weight: 700; color: var(--t-muted); margin: 16px 2px 8px; display: flex; justify-content: space-between; }
+.t-card { background: var(--t-surf); border-radius: 20px; padding: 11px 13px; display: flex; gap: 10px; align-items: center; margin-bottom: 7px; }
+.t-card .t { font-size: 13.5px; font-weight: 600; line-height: 1.2; }
+.t-card .m { font-size: 11px; color: var(--t-muted); }
+.t-drop { width: 30px; height: 30px; border-radius: 50% 50% 50% 8px; rotate: -45deg; background: var(--t-water2); display: grid; place-items: center; flex: none; }
+.t-drop i { rotate: 45deg; font-style: normal; font-size: 10px; font-weight: 800; color: var(--t-deep); }
+.t-plus { font-size: 11px; font-weight: 700; color: var(--t-water); border: 1.5px solid var(--t-water); border-radius: 99px; padding: 3px 10px; white-space: nowrap; }
+.t-nav { position: absolute; left: 14px; right: 14px; bottom: 20px; height: 58px; border-radius: 22px; background: var(--t-surf); display: flex; justify-content: space-around; align-items: center; font-size: 10.5px; font-weight: 600; color: var(--t-muted); }
+.t-nav span { display: grid; justify-items: center; gap: 4px; }
+.t-nav span::before { content: ''; width: 18px; height: 18px; border-radius: 6px; border: 2px solid currentColor; }
+.t-nav span.on { color: var(--t-water); }
+.t-nav span.on::before { background: var(--t-water); border-color: var(--t-water); box-shadow: 0 0 0 5px color-mix(in srgb, var(--t-water) 22%, transparent); }
+.t-ring { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--t-water); flex: none; display: grid; place-items: center; }
+.t-ring.done { background: var(--t-water); }
+.t-ring.done::after { content: ''; width: 9px; height: 5px; border: 2px solid var(--s-bg); border-top: 0; border-right: 0; rotate: -45deg; translate: 0 -1px; }
+.t-who { font-size: 10px; font-weight: 800; color: var(--t-deep); background: var(--t-water2); border-radius: 8px; padding: 2px 6px; }
+.t-week { display: flex; gap: 7px; height: 190px; }
+.t-col { flex: 1; display: grid; grid-template-rows: 1fr auto; gap: 6px; }
+.t-glass { position: relative; border-radius: 16px; background: var(--t-surf); overflow: hidden; }
+.t-glass svg { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; }
+.t-col small { font-size: 11px; text-align: center; color: var(--t-muted); font-weight: 600; }
+.t-col.gap .t-glass { outline: 2px dashed var(--t-sand); outline-offset: 2px; }
+.t-col.gap small { color: var(--t-sand); }
+.t-gap { margin-top: 16px; border-radius: 24px; padding: 14px 16px; background: var(--t-sandsoft); }
+.t-gap .k { font-size: 11px; font-weight: 700; color: var(--t-sand); }
+.t-gap .h { font-size: 16px; font-weight: 700; margin: 3px 0 4px; }
+.t-gap p { font-size: 12px; margin: 0; color: var(--t-muted); }
+.t-btns { display: flex; gap: 6px; margin-top: 10px; }
+.t-btns span { font-size: 12px; font-weight: 700; border-radius: 99px; padding: 6px 13px; background: var(--t-sand); color: var(--s-bg); }
+.t-btns span + span { background: transparent; color: var(--s-fg); border: 1.5px solid var(--t-line); }
+.t-input { background: var(--t-surf); border-radius: 18px; padding: 11px 14px; font-size: 13px; color: var(--t-muted); }
+.t-sugg { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.t-sugg span { font-size: 11px; font-weight: 600; background: var(--t-water2); color: var(--t-deep); border-radius: 99px; padding: 5px 10px; }
+.t-item { display: flex; align-items: center; gap: 10px; font-size: 13.5px; padding: 8px 2px; border-bottom: 1px solid var(--t-line); }
+.t-item em { font-style: normal; font-size: 11px; color: var(--t-muted); margin-left: auto; }
+.t-item.done { color: var(--t-muted); text-decoration: line-through; }
+.t-aisle { font-size: 11px; font-weight: 800; color: var(--t-water); margin: 12px 2px 2px; }
+
+/* ---------- Option D: Blocks (bold, playful expressive) ---------- */
+.c-blocks { --s-bg: #ffffff; --s-fg: #121212; --b-muted: #5f5f5f; --b-card: #f1f1ef; --b-home: #1f7a55; --b-home-on: #ffffff; --b-errands: #ff8a3d; --b-errands-on: #2a1200; --b-calls: #3f63f5; --b-calls-on: #ffffff; --b-projects: #9b5cf6; --b-projects-on: #ffffff; --b-groc: #c6e94b; --b-groc-on: #1e2a00; --b-hot: #ff5c8a; }
+[data-phones="dark"] .c-blocks { --s-bg: #0f0f0f; --s-fg: #f4f4f4; --b-muted: #a3a3a3; --b-card: #1d1d1d; --b-home: #3fae80; --b-home-on: #00170c; --b-calls: #7f97ff; --b-calls-on: #04103c; --b-projects: #b98cff; --b-projects-on: #1c0742; }
+.c-blocks .screen { font-family: 'Figtree', system-ui, sans-serif; }
+.b-disp { font-family: 'Bricolage Grotesque', 'Figtree', sans-serif; }
+.b-day { font-size: 52px; font-weight: 800; line-height: 0.9; letter-spacing: -0.04em; margin: 8px 0 2px; }
+.b-sub { font-size: 13px; color: var(--b-muted); margin: 0 0 12px; }
+.b-hero { display: flex; gap: 12px; align-items: center; }
+.b-sunny { position: relative; width: 112px; height: 112px; flex: none; }
+.b-sunny svg { position: absolute; inset: 0; }
+.b-sunny div { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; color: var(--b-groc-on); }
+.b-sunny b { font-size: 34px; font-weight: 800; line-height: 1; letter-spacing: -0.03em; }
+.b-sunny span { font-size: 10px; font-weight: 700; }
+.b-stats { display: grid; gap: 6px; flex: 1; }
+.b-stat { background: var(--b-card); border-radius: 16px; padding: 8px 12px; }
+.b-stat b { font-size: 18px; font-weight: 800; }
+.b-stat span { display: block; font-size: 10.5px; color: var(--b-muted); }
+.b-sec { font-size: 13px; font-weight: 800; margin: 16px 0 8px; }
+.b-blk { border-radius: 22px; padding: 12px 14px; margin-bottom: 7px; display: flex; gap: 10px; align-items: center; }
+.b-blk .t { font-size: 14px; font-weight: 700; line-height: 1.2; }
+.b-blk .m { font-size: 11px; opacity: 0.8; }
+.b-go { font-size: 11px; font-weight: 800; border-radius: 99px; padding: 5px 11px; background: rgba(255,255,255,0.85); color: #121212; white-space: nowrap; }
+.b-check { width: 22px; height: 22px; border-radius: 8px; border: 2.5px solid currentColor; flex: none; }
+.b-check.done { background: currentColor; }
+.b-nav { position: absolute; left: 16px; right: 16px; bottom: 20px; display: flex; gap: 6px; }
+.b-nav span { flex: 1; height: 48px; border-radius: 16px; background: var(--b-card); display: grid; place-items: center; font-size: 11px; font-weight: 800; color: var(--b-muted); }
+.b-nav span.on { flex: 1.6; background: var(--s-fg); color: var(--s-bg); }
+.b-tag { font-size: 10px; font-weight: 800; border-radius: 99px; padding: 2px 8px; background: rgba(255,255,255,0.8); color: #121212; }
+.b-bars { display: flex; gap: 6px; align-items: flex-end; height: 168px; }
+.b-bars div { flex: 1; display: grid; gap: 5px; align-content: end; height: 100%; justify-items: center; }
+.b-bars i { width: 100%; border-radius: 14px 14px 8px 8px; display: block; position: relative; }
+.b-bars i.gap { background: var(--b-groc); }
+.b-bars i.gap::after { content: 'gap'; position: absolute; top: -20px; left: 50%; translate: -50% 0; font-size: 10px; font-weight: 800; font-style: normal; color: var(--s-fg); }
+.b-bars small { font-size: 11px; font-weight: 800; }
+.b-gap { margin-top: 16px; border-radius: 26px; padding: 16px; background: var(--b-groc); color: var(--b-groc-on); }
+.b-gap .h { font-size: 20px; font-weight: 800; line-height: 1.1; letter-spacing: -0.02em; }
+.b-gap p { margin: 6px 0 10px; font-size: 12px; }
+.b-gap .b-go { background: var(--b-groc-on); color: var(--b-groc); }
+.b-list { border-radius: 26px; background: var(--b-groc); color: var(--b-groc-on); padding: 14px 16px; }
+.b-list .h { font-size: 26px; font-weight: 800; letter-spacing: -0.03em; }
+.b-aisle { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0 2px; }
+.b-aisle span { font-size: 11px; font-weight: 700; background: var(--b-card); border-radius: 99px; padding: 5px 11px; }
+.b-aisle span.on { background: var(--s-fg); color: var(--s-bg); }
+.b-it { display: flex; gap: 10px; align-items: center; background: var(--b-card); border-radius: 16px; padding: 10px 12px; margin-top: 6px; font-size: 13.5px; font-weight: 600; }
+.b-it em { font-style: normal; margin-left: auto; font-size: 12px; font-weight: 800; }
+.b-it.done { opacity: 0.45; text-decoration: line-through; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .t-wave { animation: drift 6s ease-in-out infinite alternate; }
+  @keyframes drift { from { translate: -6% 0; } to { translate: 0 0; } }
+}
+</style>
+
+<main class="page" data-phones="light">
+  <header class="intro">
+    <h1>Four ways Almanac could look</h1>
+    <p>Each concept shows the same Tuesday: the morning briefing, your day list, the week's load with a gap suggestion, and a grocery list made from the Groceries template. Swipe each row sideways to see all four screens.</p>
+  </header>
+
+  <div class="controls">
+    <nav class="jump" aria-label="Concepts">
+      <a href="#grove">A · Grove</a>
+      <a href="#notes">B · Field Notes</a>
+      <a href="#tide">C · Tide</a>
+      <a href="#blocks">D · Blocks</a>
+    </nav>
+    <div class="seg" role="group" aria-label="Phone theme">
+      <span>Phones</span>
+      <button type="button" id="phones-light" aria-pressed="true">Light</button>
+      <button type="button" id="phones-dark" aria-pressed="false">Dark</button>
+    </div>
+  </div>
+
+  <section class="concept c-grove" id="grove">
+    <div class="concept-head">
+      <div>
+        <p class="label">Option A</p>
+        <h2>Grove</h2>
+        <p class="pitch">Material 3 Expressive played straight. It feels like a Pixel app from the first tap, and it's the easiest path to a native Android version later.</p>
+      </div>
+      <ul class="traits">
+        <li><b>Type</b><span>Google Sans Flex, the face Android itself uses</span></li>
+        <li><b>Color</b><span>Tonal greens with warm amber for busy days, generated the way Material You does it</span></li>
+        <li><b>Load</b><span>A filling meter and rounded bars, with amber where days run heavy</span></li>
+        <li><b>Feel</b><span>Floating pill toolbar, big rounded cards, springy motion</span></li>
+      </ul>
+    </div>
+    <div class="rail" data-concept="grove"></div>
+  </section>
+
+  <section class="concept c-notes" id="notes">
+    <div class="concept-head">
+      <div>
+        <p class="label">Option B</p>
+        <h2>Field Notes</h2>
+        <p class="pitch">Leans into the name. Each day reads like a page from an almanac: sunrise and sunset, a load forecast in weather words, and tasks set like ledger entries.</p>
+      </div>
+      <ul class="traits">
+        <li><b>Type</b><span>Literata serif for reading, IBM Plex Mono for times and estimates</span></li>
+        <li><b>Color</b><span>Ink blue on cool paper with a marigold highlight. Dark mode is a night edition.</span></li>
+        <li><b>Load</b><span>A forecast: Fair, Busy, Stormy, drawn as print hatching that gets denser</span></li>
+        <li><b>Feel</b><span>Calm and printed rather than app-like. The most distinctive, least Android-standard.</span></li>
+      </ul>
+    </div>
+    <div class="rail" data-concept="notes"></div>
+  </section>
+
+  <section class="concept c-tide" id="tide">
+    <div class="concept-head">
+      <div>
+        <p class="label">Option C</p>
+        <h2>Tide</h2>
+        <p class="pitch">Load as water. Each day is a glass that fills as plans and calendar events land, so you can see at a glance where there's room.</p>
+      </div>
+      <ul class="traits">
+        <li><b>Type</b><span>Urbanist, a soft geometric sans with heavy numerals</span></li>
+        <li><b>Color</b><span>Deep sea teal with a sand accent. Designed dark-first, so try the Dark toggle.</span></li>
+        <li><b>Load</b><span>Water level with a gently drifting wave, the most glanceable of the four</span></li>
+        <li><b>Feel</b><span>Soft and quiet, with one playful visual idea carrying the whole app</span></li>
+      </ul>
+    </div>
+    <div class="rail" data-concept="tide"></div>
+  </section>
+
+  <section class="concept c-blocks" id="blocks">
+    <div class="concept-head">
+      <div>
+        <p class="label">Option D</p>
+        <h2>Blocks</h2>
+        <p class="pitch">Expressive turned all the way up. Every group gets a loud color block, numbers are huge, and Material's playful shapes show up as badges.</p>
+      </div>
+      <ul class="traits">
+        <li><b>Type</b><span>Bricolage Grotesque for big numbers, Figtree for everything else</span></li>
+        <li><b>Color</b><span>Saturated group colors on plain white or true black</span></li>
+        <li><b>Load</b><span>A sunny-shaped badge with the day's total, and chunky bars with the gap day lit up</span></li>
+        <li><b>Feel</b><span>Energetic and fun. Fastest to scan, loudest of the four.</span></li>
+      </ul>
+    </div>
+    <div class="rail" data-concept="blocks"></div>
+  </section>
+
+  <p class="closing"><strong>How to pick:</strong> tell me a letter, or mix and match, for example Grove's layout with Field Notes' forecast words, or Tide's water bars inside Grove. Everything shown is sample data for a made-up Tuesday.</p>
+</main>
+
+<script>
+const D = {
+  sugg: [
+    { t: 'Fill out the insurance claim', why: 'Due Saturday. Friday and Saturday look heavy.', est: '45m' },
+    { t: 'Call the dentist', why: 'Was due Sunday', est: '10m' },
+    { t: 'Change the furnace filter', why: 'Every 3 months. Last done July 9.', est: '15m' },
+  ],
+  today: [
+    { g: 'Home', c: 'green', items: [ { t: 'Take out recycling', who: 'J', est: '5m', tod: 'Morning' }, { t: 'Run the dishwasher', who: 'J', est: '5m', done: true } ] },
+    { g: 'Errands', c: 'orange', items: [ { t: 'Pick up dry cleaning', who: 'J', est: '20m', from: 'From Alex' }, { t: 'Grocery run', who: 'A', est: '1h', meta: '12 items' } ] },
+    { g: 'Calls', c: 'blue', items: [ { t: 'Call the dentist', who: 'J', est: '10m' } ] },
+    { g: 'Projects', c: 'violet', items: [ { t: 'Set up Google sign-in', who: 'J', est: '30m', meta: '1 link' } ] },
+  ],
+  week: [
+    { d: 'Tue', p: 38, ev: 2, w: 'Fair' }, { d: 'Wed', p: 88, ev: 3, w: 'Stormy' }, { d: 'Thu', p: 28, ev: 0, w: 'Clear', gap: true },
+    { d: 'Fri', p: 76, ev: 2, w: 'Busy' }, { d: 'Sat', p: 94, ev: 3, w: 'Stormy' }, { d: 'Sun', p: 50, ev: 1, w: 'Fair' }, { d: 'Mon', p: 42, ev: 1, w: 'Fair' },
+  ],
+  groc: [
+    { s: 'Produce', items: [ ['Spinach', '1 bag'], ['Bananas', '6'], ['Avocados', '2'] ] },
+    { s: 'Dairy', items: [ ['Oat milk', '2'], ['Eggs', '12', true] ] },
+    { s: 'Meat', items: [ ['Chicken thighs', '2 lb'] ] },
+    { s: 'Pantry', items: [ ['Jasmine rice', ''], ['Coffee beans', '1 bag'] ] },
+  ],
+};
+
+const status = '<div class="status"><span>7:42</span><i><u></u><b></b></i></div>';
+const shell = (inner, extra = '') => `<div class="phone"><div class="screen">${status}<div class="body">${inner}</div>${extra}<div class="gesture"></div></div></div>`;
+const icon = (d) => `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const I = {
+  sun: icon('<circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4"/>'),
+  list: icon('<path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/>'),
+  cal: icon('<rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M8 3v4M16 3v4M3.5 10h17"/>'),
+  chart: icon('<path d="M6 20V11M12 20V5M18 20v-6"/>'),
+  plus: icon('<path d="M12 5v14M5 12h14"/>'),
+  search: icon('<circle cx="11" cy="11" r="6"/><path d="m20 20-4.2-4.2"/>'),
+  cart: icon('<path d="M3 4h2l2.4 11h10.2L20 8H6.2"/><circle cx="9" cy="19" r="1.4"/><circle cx="17" cy="19" r="1.4"/>'),
+};
+const wave = (fill, opacity = 1) => `<path class="t-wave" d="M-20 8 Q 0 0 20 8 T 60 8 T 100 8 T 140 8 V 200 H -20 Z" fill="${fill}" opacity="${opacity}"/>`;
+
+const R = {
+  grove() {
+    const brief = shell(`
+      <p class="g-eyebrow">Tuesday, October 13</p>
+      <h3 class="g-h1">Here's today, Jon</h3>
+      <div class="g-load"><div class="row"><span>Today's load</span><b>Light</b></div>
+        <div class="g-meter"><span style="width:38%"></span></div>
+        <div class="g-small">2 events · 4 tasks · about 2½ hours of room</div></div>
+      <div class="g-from"><b>From Alex:</b> Pick up dry cleaning. Ready after 2pm.</div>
+      <p class="g-label">Suggested for today</p>
+      ${D.sugg.map((s, i) => `<div class="g-card"><div class="g-grow"><div class="t">${s.t}</div><div class="m">${s.why} · ${s.est}</div></div><span class="g-chip${i === 2 ? ' quiet' : ''}">${i === 2 ? 'Later' : 'Add'}</span></div>`).join('')}
+    `, '<div class="g-cta">Start my day</div>');
+    const tones = { green: 'var(--t-green-on)', orange: 'var(--t-orange-on)', blue: 'var(--t-blue-on)', violet: 'var(--t-violet-on)' };
+    const bgs = { green: 'var(--t-green)', orange: 'var(--t-orange)', blue: 'var(--t-blue)', violet: 'var(--t-violet)' };
+    const today = shell(`
+      <h3 class="g-h1" style="margin-bottom:8px">Today</h3>
+      <div class="g-filters"><span class="on">Mine</span><span>Alex's</span><span>Both</span></div>
+      ${D.today.map((g) => `<div class="g-grouphead"><span class="g-dot" style="background:${bgs[g.c]};outline:2px solid ${tones[g.c]};outline-offset:-2px"></span>${g.g}</div>
+        ${g.items.map((it) => `<div class="g-card" ${it.done ? 'style="background:var(--g-low)"' : ''}><span class="g-box${it.done ? ' done' : ''}"></span><div class="g-grow"><div class="t" ${it.done ? 'style="text-decoration:line-through;color:var(--g-var)"' : ''}>${it.t}</div><div class="m">${[it.from, it.tod, it.meta, it.est].filter(Boolean).join(' · ')}</div></div><span class="g-av ${it.who}">${it.who}</span></div>`).join('')}`).join('')}
+    `, `<div class="g-toolbar"><div class="g-pill"><span class="on">${I.sun}</span><span>${I.list}</span><span>${I.cal}</span><span>${I.chart}</span></div><div class="g-fab">${I.plus}</div></div>`);
+    const color = (p) => (p > 85 ? 'var(--g-heavy)' : p > 65 ? 'var(--g-warm)' : 'var(--g-pc)');
+    const week = shell(`
+      <h3 class="g-h1" style="margin-bottom:4px">This week</h3>
+      <p class="g-eyebrow" style="margin:0 0 16px">Bar height is how full each day is</p>
+      <div class="g-week">${D.week.map((w, i) => `<div class="${w.gap ? 'gap' : ''}"><i style="height:${w.p}%;background:${i === 0 ? 'var(--g-pri)' : color(w.p)}"></i><small>${w.d}</small></div>`).join('')}</div>
+      <div class="g-gap"><div class="k">Gap found</div><div class="h">Do the insurance claim on Thursday</div><div class="g-small">It's due Saturday. Wednesday, Friday and Saturday are packed with 8 events between you.</div>
+        <div class="row"><span class="g-chip">Plan for Thursday</span><span class="g-chip quiet">Pick a day</span></div></div>
+    `);
+    const groc = shell(`
+      <div class="g-listhead"><span class="g-badge">${I.cart}</span><div><h3 class="g-h1" style="margin:0;font-size:24px">Groceries</h3><p class="g-eyebrow" style="margin:0">Aldi · 9 items · planned as one run</p></div></div>
+      <div class="g-search">${I.plus}<span>Add an item</span></div>
+      <div class="g-auto">Greek yogurt? You usually buy it every 2 weeks.</div>
+      ${D.groc.map((s) => `<div class="g-sect">${s.s}</div>${s.items.map(([n, q, done]) => `<div class="g-li${done ? ' done' : ''}"><span class="g-box${done ? ' done' : ''}"></span>${n}<em>${q}</em></div>`).join('')}`).join('')}
+    `);
+    return [[brief, "Here's today"], [today, 'Today'], [week, 'This week'], [groc, 'Groceries list']];
+  },
+
+  notes() {
+    const tabs = (on) => `<div class="n-tabs">${['Today', 'Backlog', 'Week', 'Lists'].map((t) => `<span class="${t === on ? 'on' : ''}">${t}</span>`).join('')}</div>`;
+    const brief = shell(`
+      <div class="n-mast n-mono"><span>The Almanac</span><span>Tue · Oct 13</span></div>
+      <h3 class="n-h1">Today's forecast: <em>fair</em></h3>
+      <p class="n-dek">Two events and four tasks, with room for about two and a half hours more.</p>
+      <div class="n-sun n-mono"><span>Sunrise 7:04</span><span>Sunset 6:16</span><span>Load 38%</span></div>
+      <div class="n-sec n-mono"><span>Suggested entries</span><span>est.</span></div>
+      ${D.sugg.map((s) => `<div class="n-row"><span class="n-box"></span><span><span class="t">${s.t}</span><span class="why">${s.why}</span></span><span class="n-mono">${s.est}</span></div>`).join('')}
+      <div class="n-note"><b>A note from Alex</b>Pick up the dry cleaning. Ready after 2pm.</div>
+    `, tabs('Today'));
+    const today = shell(`
+      <div class="n-mast n-mono"><span>Day book</span><span>Tue · Oct 13</span></div>
+      ${D.today.map((g) => `<div class="n-sec n-mono"><span>${g.g}</span><span>${g.items.length}</span></div>
+        ${g.items.map((it) => `<div class="n-row${it.done ? ' done' : ''}"><span class="n-box${it.done ? ' done' : ''}"></span><span><span class="t">${it.t}</span>${it.from || it.meta ? `<span class="why">${[it.from, it.meta].filter(Boolean).join(' · ')}</span>` : ''}</span><span class="n-mono">${it.who} · ${it.est}</span></div>`).join('')}`).join('')}
+    `, tabs('Today'));
+    const week = shell(`
+      <div class="n-mast n-mono"><span>Seven-day outlook</span><span>Oct 13–19</span></div>
+      <h3 class="n-h1" style="font-size:28px">Clearing <em>Thursday</em></h3>
+      <table class="n-forecast"><tbody>
+        ${D.week.map((w) => `<tr class="${w.gap ? 'gap' : ''}"><td>${w.d}</td><td class="w">${w.w}</td><td><div class="n-hatch" style="--h:${Math.max(2.4, 12 - w.p / 9).toFixed(1)}px;width:${w.p}%"></div></td><td class="ev">${w.ev} ev</td></tr>`).join('')}
+      </tbody></table>
+      <div class="n-note"><b>Planting advice</b>Do the insurance claim Thursday. It's due Saturday, and Wednesday, Friday and Saturday look stormy.</div>
+    `, tabs('Week'));
+    const groc = shell(`
+      <div class="n-mast n-mono"><span>Groceries · Aldi</span><span>9 items</span></div>
+      <div class="n-row" style="border-bottom:1px solid var(--s-fg)"><span class="n-box" style="border-style:dashed"></span><span style="color:var(--n-ink2);font-style:italic">Add an item…</span></div>
+      <div class="n-note" style="margin-top:8px"><b>Usually around now</b>Greek yogurt, about every two weeks</div>
+      ${D.groc.map((s) => `<div class="n-sec n-mono"><span>${s.s}</span></div>${s.items.map(([n, q, done]) => `<div class="n-row${done ? ' done' : ''}" style="padding:6px 0"><span class="n-box${done ? ' done' : ''}"></span><span class="n-qty">${q}</span><span class="t">${n}</span></div>`).join('')}`).join('')}
+    `, tabs('Lists'));
+    return [[brief, "Here's today"], [today, 'Today'], [week, 'This week'], [groc, 'Groceries list']];
+  },
+
+  tide() {
+    const nav = (on) => `<div class="t-nav">${['Today', 'Backlog', 'Week', 'Lists'].map((t) => `<span class="${t === on ? 'on' : ''}">${t}</span>`).join('')}</div>`;
+    const brief = shell(`
+      <p class="t-hello">Tuesday, October 13</p>
+      <h3 class="t-h1">Here's today, Jon</h3>
+      <div class="t-tank">
+        <svg viewBox="0 0 120 70" height="66" preserveAspectRatio="none" aria-hidden="true">${wave('var(--t-water2)')}${wave('var(--t-water)', 0.9).replace('M-20 8', 'M-20 14')}</svg>
+        <div class="num"><b>38%</b><span>full · light day</span></div>
+        <div class="cap">Room for about 2½ more hours</div>
+      </div>
+      <div class="t-sec"><span>Pull these in</span><span>est.</span></div>
+      ${D.sugg.slice(0, 2).map((s) => `<div class="t-card"><span class="t-drop"><i>${s.est}</i></span><div class="g-grow"><div class="t">${s.t}</div><div class="m">${s.why}</div></div><span class="t-plus">Add</span></div>`).join('')}
+      <div class="t-card" style="background:var(--t-sandsoft)"><div class="g-grow"><div class="t">From Alex</div><div class="m">Pick up dry cleaning, ready after 2pm</div></div></div>
+    `, nav('Today'));
+    const today = shell(`
+      <p class="t-hello">4 left · about 1h 45m</p>
+      <h3 class="t-h1">Today</h3>
+      ${D.today.map((g) => `<div class="t-sec" style="margin-top:10px"><span>${g.g}</span></div>
+        ${g.items.map((it) => `<div class="t-card" ${it.done ? 'style="opacity:.6"' : ''}><span class="t-ring${it.done ? ' done' : ''}"></span><div class="g-grow"><div class="t" ${it.done ? 'style="text-decoration:line-through"' : ''}>${it.t}</div><div class="m">${[it.from, it.meta, it.est].filter(Boolean).join(' · ')}</div></div><span class="t-who">${it.who}</span></div>`).join('')}`).join('')}
+    `, nav('Today'));
+    const week = shell(`
+      <p class="t-hello">Oct 13–19</p>
+      <h3 class="t-h1">This week</h3>
+      <div class="t-week">${D.week.map((w) => `<div class="t-col${w.gap ? ' gap' : ''}"><div class="t-glass"><svg viewBox="0 0 40 200" preserveAspectRatio="none" style="height:${w.p}%" aria-hidden="true"><path d="M-10 6 Q 0 0 10 6 T 30 6 T 50 6 V 220 H -10 Z" fill="${w.p > 80 ? 'var(--t-deep)' : 'var(--t-water)'}" opacity="${w.p > 80 ? 0.55 : 0.85}"/></svg></div><small>${w.d}</small></div>`).join('')}</div>
+      <div class="t-gap"><div class="k">Low tide Thursday</div><div class="h">Do the insurance claim then</div><p>It's due Saturday. Wednesday, Friday and Saturday are close to full.</p>
+        <div class="t-btns"><span>Plan for Thursday</span><span>Pick a day</span></div></div>
+    `, nav('Week'));
+    const groc = shell(`
+      <p class="t-hello">Aldi · 9 items · one run</p>
+      <h3 class="t-h1">Groceries</h3>
+      <div class="t-input">Add an item</div>
+      <div class="t-sugg"><span>+ Greek yogurt</span><span>+ Bread</span><span>+ Apples</span></div>
+      ${D.groc.map((s) => `<div class="t-aisle">${s.s}</div>${s.items.map(([n, q, done]) => `<div class="t-item${done ? ' done' : ''}"><span class="t-ring${done ? ' done' : ''}" style="width:20px;height:20px"></span>${n}<em>${q}</em></div>`).join('')}`).join('')}
+    `, nav('Lists'));
+    return [[brief, "Here's today"], [today, 'Today'], [week, 'This week'], [groc, 'Groceries list']];
+  },
+
+  blocks() {
+    const nav = (on) => `<div class="b-nav">${['Today', 'Backlog', 'Week', 'Lists'].map((t) => `<span class="${t === on ? 'on' : ''}">${t}</span>`).join('')}</div>`;
+    const pts = [];
+    for (let i = 0; i < 24; i++) {
+      const a = (i / 24) * Math.PI * 2;
+      const r = i % 2 ? 41 : 50;
+      pts.push(`${(56 + r * Math.cos(a)).toFixed(1)},${(56 + r * Math.sin(a)).toFixed(1)}`);
+    }
+    const sunny = `<svg viewBox="0 0 112 112" aria-hidden="true"><polygon points="${pts.join(' ')}" fill="var(--b-groc)" stroke="var(--b-groc)" stroke-width="10" stroke-linejoin="round"/></svg>`;
+    const col = { green: ['var(--b-home)', 'var(--b-home-on)'], orange: ['var(--b-errands)', 'var(--b-errands-on)'], blue: ['var(--b-calls)', 'var(--b-calls-on)'], violet: ['var(--b-projects)', 'var(--b-projects-on)'] };
+    const brief = shell(`
+      <h3 class="b-day b-disp">Tuesday</h3>
+      <p class="b-sub">Here's today, Jon. It's a light one.</p>
+      <div class="b-hero"><div class="b-sunny">${sunny}<div><b class="b-disp">38%</b><span>full</span></div></div>
+        <div class="b-stats"><div class="b-stat"><b class="b-disp">2</b><span>events on the calendar</span></div><div class="b-stat"><b class="b-disp">2½h</b><span>of room left</span></div></div></div>
+      <div class="b-sec">Grab one of these</div>
+      <div class="b-blk" style="background:var(--b-hot);color:#2b0010"><div class="g-grow"><div class="t">Insurance claim</div><div class="m">Due Sat · Fri and Sat are heavy · 45m</div></div><span class="b-go">Add</span></div>
+      <div class="b-blk" style="background:var(--b-calls);color:var(--b-calls-on)"><div class="g-grow"><div class="t">Call the dentist</div><div class="m">Was due Sunday · 10m</div></div><span class="b-go">Add</span></div>
+      <div class="b-blk" style="background:var(--b-errands);color:var(--b-errands-on)"><div class="g-grow"><div class="t">Dry cleaning <span class="b-tag">From Alex</span></div><div class="m">Ready after 2pm</div></div></div>
+    `, nav('Today'));
+    const today = shell(`
+      <h3 class="b-day b-disp" style="font-size:44px">Today</h3>
+      <p class="b-sub">5 tasks · 1 done</p>
+      ${D.today.flatMap((g) => g.items.map((it) => `<div class="b-blk" style="background:${col[g.c][0]};color:${col[g.c][1]};${it.done ? 'opacity:.45' : ''}"><span class="b-check${it.done ? ' done' : ''}"></span><div class="g-grow"><div class="t" ${it.done ? 'style="text-decoration:line-through"' : ''}>${it.t}</div><div class="m">${g.g} · ${[it.from, it.meta, it.est].filter(Boolean).join(' · ')}</div></div><span class="b-tag">${it.who}</span></div>`)).join('')}
+    `, nav('Today'));
+    const week = shell(`
+      <h3 class="b-day b-disp" style="font-size:44px">Week</h3>
+      <p class="b-sub" style="margin-bottom:28px">Oct 13–19 · tall means full</p>
+      <div class="b-bars">${D.week.map((w) => `<div><i class="${w.gap ? 'gap' : ''}" style="height:${w.p}%;${w.gap ? '' : `background:${w.p > 85 ? 'var(--b-hot)' : w.p > 65 ? 'var(--b-errands)' : 'var(--b-card)'}`}"></i><small>${w.d}</small></div>`).join('')}</div>
+      <div class="b-gap"><div class="h b-disp">Thursday's wide open. Do the insurance claim then.</div><p>It's due Saturday, and the days around it are packed.</p><span class="b-go">Plan for Thursday</span></div>
+    `, nav('Week'));
+    const groc = shell(`
+      <div class="b-list"><div class="h b-disp">Groceries</div><div style="font-size:12px;font-weight:600">Aldi · 9 items · one trip</div></div>
+      <div class="b-aisle">${['All', 'Produce', 'Dairy', 'Meat', 'Pantry'].map((a, i) => `<span class="${i === 0 ? 'on' : ''}">${a}</span>`).join('')}</div>
+      ${D.groc.flatMap((s) => s.items).slice(0, 7).map(([n, q, done]) => `<div class="b-it${done ? ' done' : ''}"><span class="b-check${done ? ' done' : ''}" style="width:18px;height:18px"></span>${n}<em>${q}</em></div>`).join('')}
+    `, nav('Lists'));
+    return [[brief, "Here's today"], [today, 'Today'], [week, 'This week'], [groc, 'Groceries list']];
+  },
+};
+
+for (const rail of document.querySelectorAll('.rail')) {
+  rail.innerHTML = R[rail.dataset.concept]().map(([html, cap]) => `<figure class="shot" style="margin:0">${html}<figcaption>${cap}</figcaption></figure>`).join('');
+}
+
+const main = document.querySelector('main');
+const setPhones = (mode) => {
+  main.dataset.phones = mode;
+  document.getElementById('phones-light').setAttribute('aria-pressed', String(mode === 'light'));
+  document.getElementById('phones-dark').setAttribute('aria-pressed', String(mode === 'dark'));
+  try { localStorage.setItem('almanac-concepts-phones', mode); } catch {}
+};
+document.getElementById('phones-light').addEventListener('click', () => setPhones('light'));
+document.getElementById('phones-dark').addEventListener('click', () => setPhones('dark'));
+try { const saved = localStorage.getItem('almanac-concepts-phones'); if (saved === 'dark' || saved === 'light') setPhones(saved); } catch {}
+</script>
