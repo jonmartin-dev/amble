@@ -2,9 +2,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 /** Reads NAME, or the contents of the file named by NAME_FILE (Docker secrets style). */
-function secret(name: string): string {
+function secret(name: string, { optional = false } = {}): string {
   const file = process.env[`${name}_FILE`];
-  if (file) return fs.readFileSync(file, 'utf8').trim();
+  if (file && !(optional && !fs.existsSync(file))) return fs.readFileSync(file, 'utf8').trim();
   return process.env[name] ?? '';
 }
 
@@ -13,6 +13,10 @@ function list(value: string | undefined): string[] {
     .split(',')
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
+}
+
+function aiEffort(value: string | undefined): 'low' | 'medium' | 'high' {
+  return value === 'low' || value === 'high' ? value : 'medium';
 }
 
 const production = process.env.NODE_ENV === 'production';
@@ -49,6 +53,13 @@ export const config = {
   // Hosts of the apps that may connect to the Claude connector: their client metadata URLs and
   // web redirect URIs must be on one of these. Loopback redirects (Claude Code) are always allowed.
   oauthClientHosts: list(process.env.ALMANAC_OAUTH_CLIENT_HOSTS ?? 'claude.ai,claude.com'),
+  // Smart add and the other Haiku features. Without a key they're off and quick add works as typed.
+  ai: {
+    apiKey: secret('ANTHROPIC_API_KEY', { optional: true }),
+    model: process.env.ALMANAC_AI_MODEL ?? 'claude-haiku-5-5',
+    effort: aiEffort(process.env.ALMANAC_AI_EFFORT),
+    monthlyCapUsd: Number(process.env.ALMANAC_AI_MONTHLY_CAP_USD ?? 10),
+  },
 };
 
 export type Config = typeof config;

@@ -33,6 +33,25 @@ export interface NewListItem {
   name: string;
   quantity?: string | null;
   note?: string | null;
+  section?: string | null;
+  url?: string | null;
+  price?: string | null;
+}
+
+function cleanUrl(url: string | null | undefined) {
+  if (url == null || !url.trim()) return null;
+  if (!URL.canParse(url.trim()) || !/^https?:$/.test(new URL(url.trim()).protocol)) throw new DomainError(`"${url}" isn't a web link.`);
+  return new URL(url.trim()).toString();
+}
+
+function itemDetails(item: Omit<NewListItem, 'name'>) {
+  return {
+    ...(item.quantity !== undefined && { quantity: item.quantity?.trim() || null }),
+    ...(item.note !== undefined && { note: item.note?.trim() || null }),
+    ...(item.section !== undefined && { section: item.section?.trim() || null }),
+    ...(item.url !== undefined && { url: cleanUrl(item.url) }),
+    ...(item.price !== undefined && { price: item.price?.trim() || null }),
+  };
 }
 
 export type AddOutcome = 'added' | 'already on the list' | 'back on the list';
@@ -53,10 +72,7 @@ export function addListItems(db: Db, actor: Actor, group: Group, items: NewListI
         .where(and(eq(listItems.groupId, group.id), sql`lower(${listItems.name}) = ${name.toLowerCase()}`))
         .orderBy(sql`${listItems.checkedAt} IS NOT NULL`, desc(listItems.createdAt))
         .get();
-      const details = {
-        ...(item.quantity !== undefined && { quantity: item.quantity?.trim() || null }),
-        ...(item.note !== undefined && { note: item.note?.trim() || null }),
-      };
+      const details = itemDetails(item);
       let row: ListItem;
       let outcome: AddOutcome;
       if (existing) {
@@ -121,4 +137,42 @@ export function checkListItems(db: Db, actor: Actor, group: Group, refs: string[
     });
   });
   return items.map((i) => i.name);
+}
+
+/** Everything ever on a list, most recent first, one row per name: for autocomplete when adding. */
+export function listHistory(db: Db, group: Group, limit = 300) {
+  return db
+    .select({ name: listItems.name, quantity: listItems.quantity, section: listItems.section, checkedAt: listItems.checkedAt })
+    .from(listItems)
+    .where(eq(listItems.groupId, group.id))
+    .orderBy(desc(sql`coalesce(${listItems.checkedAt}, ${listItems.createdAt})`))
+    .limit(limit)
+    .all()
+    .map(({ name, quantity, section, checkedAt }) => ({ name, quantity, section, onList: checkedAt == null }));
+}
+
+export function updateListItem(db: Db, actor: Actor, group: Group, ref: string, patch: Partial<NewListItem>) {
+  const [item] = resolveItems(db, group, [ref]);
+  const name = patch.name?.trim();
+  if (patch.name !== undefined && !name) throw new DomainError('List items need a name.');
+  const row = db
+    .update(listItems)
+    .set({ ...(name && { name }), ...itemDetails(patch) })
+    .where(eq(listItems.id, item!.id))
+    .returning()
+    .get();
+  logActivity(db, actor, 'list.item_updated', null, { groupId: group.id, list: group.name, item: row.name });
+  return row;
+}
+
+/** Puts everything back on a reusable list (packing for the next trip). */
+export function resetList(db: Db, actor: Actor, group: Group) {
+  const reset = db
+    .update(listItems)
+    .set({ checkedAt: null, checkedById: null })
+    .where(and(eq(listItems.groupId, group.id), isNotNull(listItems.checkedAt)))
+    .returning({ name: listItems.name })
+    .all();
+  if (reset.length) logActivity(db, actor, 'list.reset', null, { groupId: group.id, list: group.name, count: reset.length });
+  return reset.length;
 }

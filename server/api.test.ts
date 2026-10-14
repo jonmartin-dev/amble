@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { createAi } from './ai/client.ts';
 import { createApp } from './app.ts';
 import { createOidc } from './auth/oidc.ts';
 import { createSession } from './auth/sessions.ts';
@@ -19,6 +20,8 @@ const testConfig: Config = {
   allowedEmails: ['jon@example.com', 'alex@example.com'],
   devLogin: false,
   oidc: { ...config.oidc, clientId: '', clientSecret: '' },
+  // No key, so nothing here calls Haiku; smart add answers with a fallback.
+  ai: { ...config.ai, apiKey: '' },
 };
 
 let db: Db;
@@ -50,7 +53,7 @@ beforeEach(() => {
   seedStarterGroups(db);
   cookies.clear();
   jon = db.insert(members).values({ email: 'jon@example.com', name: 'Jon Martin', timezone: 'America/Chicago', role: 'admin' }).returning().get();
-  app = createApp({ db, config: testConfig, oidc: createOidc(testConfig) });
+  app = createApp({ db, config: testConfig, oidc: createOidc(testConfig), ai: createAi(testConfig) });
   today = planningDate(jon);
 });
 
@@ -189,5 +192,65 @@ describe('phase 4 API', () => {
     const stats = (await api.get('/stats?weeks=8&weekStart=7')).json;
     expect(stats).toMatchObject({ weekStart: 7, records: { totalDone: 1 } });
     expect(stats.weeks).toHaveLength(8);
+  });
+});
+
+describe('phase 5 API', () => {
+  it('repeats, skips and shows what capacity Almanac has learned', async () => {
+    const api = as(jon);
+    const { json } = await api.post('/tasks', { title: 'Bins out', repeat: { mode: 'schedule', every: 1, unit: 'day' } });
+    expect(json.task).toMatchObject({ plannedDate: today, repeat: { unit: 'day' } });
+    expect((await api.post(`/tasks/${json.task.id}/skip`)).json.task.plannedDate).toBe(addDays(today, 1));
+    expect((await api.post('/tasks', { title: 'x', repeat: { mode: 'schedule', every: 0, unit: 'day' } })).status).toBe(400);
+    const capacity = (await api.get('/capacity')).json.days;
+    expect(capacity).toHaveLength(7);
+    expect(capacity[0]).toMatchObject({ weekday: 1, default: 180, pinned: null, samples: 0 });
+  });
+
+  it('makes templated lists, edits items, keeps history and resets', async () => {
+    const api = as(jon);
+    const packing = (await api.post('/groups', { name: 'Beach trip', kind: 'list', template: 'packing' })).json.group;
+    expect(packing).toMatchObject({ template: 'packing', icon: 'luggage' });
+    const list = (await api.get(`/lists/${packing.id}`)).json;
+    expect(list.open.map((i: { name: string }) => i.name)).toContain('Toothbrush');
+    const brush = list.open.find((i: { name: string }) => i.name === 'Toothbrush');
+    expect((await api.patch(`/lists/${packing.id}/items/${brush.id}`, { section: 'Toiletries', quantity: '2' })).json.item).toMatchObject({ quantity: '2' });
+    await api.post(`/lists/${packing.id}/items/${brush.id}/check`, { checked: true });
+    expect((await api.get(`/lists/${packing.id}/history`)).json.items.find((i: { name: string }) => i.name === 'Toothbrush')).toMatchObject({ onList: false });
+    expect((await api.post(`/lists/${packing.id}/reset`)).json.reset).toBe(1);
+    expect((await api.post('/groups', { name: 'Odd', kind: 'list', template: 'nope' })).status).toBe(400);
+  });
+
+  it('falls back without an AI key, and applies accepted proposals', async () => {
+    const api = as(jon);
+    expect((await api.get('/ai')).json).toMatchObject({ available: false, smartAdd: false, monthSpendUsd: 0 });
+    expect((await api.post('/smart-add', { text: 'call mom' })).json.fallback).toMatch(/No Anthropic API key/);
+    const groceries = (await api.get('/groups')).json.groups.find((g: { kind: string }) => g.kind === 'list');
+    const applied = await api.post('/smart-add/apply', {
+      proposals: [
+        {
+          kind: 'task',
+          task: {
+            title: 'Call Mom',
+            notes: null,
+            groupId: null,
+            assigneeId: jon.id,
+            plannedDate: addDays(today, 1),
+            dueDate: null,
+            timeOfDay: 'evening',
+            mustDo: false,
+            estimateMinutes: 10,
+            estimateSource: 'ai',
+            subtasks: [],
+            links: [],
+            repeat: null,
+          },
+        },
+        { kind: 'list_item', listId: groceries.id, name: 'Eggs', quantity: null, section: 'Dairy & eggs', note: null },
+      ],
+    });
+    expect(applied.json).toMatchObject({ added: 1, listed: 1 });
+    expect((await api.post('/smart-add/apply', { proposals: [] })).status).toBe(400);
+    expect((await api.patch('/me', { smartAdd: false })).json.member.smartAdd).toBe(false);
   });
 });

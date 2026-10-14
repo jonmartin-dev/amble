@@ -1,9 +1,11 @@
-import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lt, lte, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lt, lte, ne, or, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/sqlite-core';
 import type { Db } from '../db/index.ts';
-import { groups, members, subtasks, taskLinks, tasks, type Member, type Task } from '../db/schema.ts';
-import { planningDate, planningDayStart } from '../lib/dates.ts';
+import { repeatOn } from '../../shared/repeat.ts';
+import { activity, groups, members, series, subtasks, taskLinks, tasks, type Member, type Task } from '../db/schema.ts';
+import { addDays, daysBetween, planningDate, planningDayStart } from '../lib/dates.ts';
 import { DomainError, logActivity, type Actor } from './household.ts';
+import { anchorRule, cleanRepeat, firstOccurrence, nextDate, type Repeat } from './repeat.ts';
 
 export type TimeOfDay = NonNullable<Task['timeOfDay']>;
 
@@ -13,6 +15,9 @@ export interface TaskDetail extends Task {
   createdByName: string | null;
   subtasks: { id: string; title: string; done: boolean }[];
   links: { id: string; url: string; title: string | null }[];
+  /** How it repeats, if it does. */
+  repeat: Repeat | null;
+  pausedUntil: string | null;
 }
 
 export interface TaskFilter {
@@ -34,8 +39,22 @@ export interface TaskFilter {
 }
 
 const creators = alias(members, 'creators');
-const columns = { task: tasks, groupName: groups.name, assigneeName: members.name, createdByName: creators.name };
-type Row = { task: Task; groupName: string | null; assigneeName: string | null; createdByName: string | null };
+const columns = {
+  task: tasks,
+  groupName: groups.name,
+  assigneeName: members.name,
+  createdByName: creators.name,
+  repeat: series.rule,
+  pausedUntil: series.pausedUntil,
+};
+type Row = {
+  task: Task;
+  groupName: string | null;
+  assigneeName: string | null;
+  createdByName: string | null;
+  repeat: Repeat | null;
+  pausedUntil: string | null;
+};
 
 function selectTasks(db: Db) {
   return db
@@ -43,7 +62,8 @@ function selectTasks(db: Db) {
     .from(tasks)
     .leftJoin(groups, eq(tasks.groupId, groups.id))
     .leftJoin(members, eq(tasks.assigneeId, members.id))
-    .leftJoin(creators, eq(tasks.createdById, creators.id));
+    .leftJoin(creators, eq(tasks.createdById, creators.id))
+    .leftJoin(series, eq(tasks.seriesId, series.id));
 }
 
 /** Tasks in another member's private group are invisible; everything else is shared. */
@@ -108,11 +128,13 @@ function withDetails(db: Db, rows: Row[]): TaskDetail[] {
   if (ids.length === 0) return [];
   const subs = db.select().from(subtasks).where(inArray(subtasks.taskId, ids)).orderBy(asc(subtasks.sortOrder)).all();
   const links = db.select().from(taskLinks).where(inArray(taskLinks.taskId, ids)).orderBy(asc(taskLinks.createdAt)).all();
-  return rows.map(({ task, groupName, assigneeName, createdByName }) => ({
+  return rows.map(({ task, groupName, assigneeName, createdByName, repeat, pausedUntil }) => ({
     ...task,
     groupName,
     assigneeName,
     createdByName,
+    repeat: task.seriesId ? repeat : null,
+    pausedUntil: task.seriesId ? pausedUntil : null,
     subtasks: subs.filter((s) => s.taskId === task.id).map(({ id, title, done }) => ({ id, title, done })),
     links: links.filter((l) => l.taskId === task.id).map(({ id, url, title }) => ({ id, url, title })),
   }));
@@ -163,8 +185,34 @@ export interface NewTask {
   timeOfDay?: TimeOfDay | null;
   mustDo?: boolean;
   estimateMinutes?: number | null;
+  /** Who sized it: the person (the default) or Haiku. */
+  estimateSource?: 'user' | 'ai';
   subtasks?: string[];
   links?: { url: string; title?: string | null }[];
+  repeat?: Repeat | null;
+}
+
+/** The date field a rule's tasks use, as a patch. */
+function onDate(rule: Repeat, date: string | null): Pick<Task, 'plannedDate'> | Pick<Task, 'dueDate'> {
+  return repeatOn(rule) === 'due' ? { dueDate: date } : { plannedDate: date };
+}
+
+function seriesDate(task: Pick<Task, 'plannedDate' | 'dueDate'>, rule: Repeat) {
+  return repeatOn(rule) === 'due' ? task.dueDate : task.plannedDate;
+}
+
+/**
+ * Starts a series for a task. A scheduled one with no date yet gets its first date from the rule;
+ * "every Sunday" added on a Wednesday lands on Sunday.
+ */
+function startSeries(db: Db, actor: Actor, input: Repeat, task: Pick<Task, 'plannedDate' | 'dueDate'>) {
+  const rule = cleanRepeat(input);
+  const today = planningDate(actor.member);
+  const given = seriesDate(task, rule);
+  const first = given ?? (rule.mode === 'schedule' ? firstOccurrence(rule, today, today) : null);
+  const anchor = first ?? today;
+  const row = db.insert(series).values({ rule: anchorRule(rule, anchor), anchor }).returning().get();
+  return { seriesId: row.id, dates: given || !first ? {} : onDate(rule, first) };
 }
 
 export function createTasks(db: Db, actor: Actor, inputs: NewTask[]): TaskDetail[] {
@@ -186,11 +234,15 @@ export function createTasks(db: Db, actor: Actor, inputs: NewTask[]): TaskDetail
           timeOfDay: input.timeOfDay ?? null,
           mustDo: input.mustDo ?? false,
           estimateMinutes: input.estimateMinutes ?? null,
-          estimateSource: input.estimateMinutes != null ? 'user' : null,
+          estimateSource: input.estimateMinutes != null ? (input.estimateSource ?? 'user') : null,
           updatedAt: now,
         })
         .returning()
         .get();
+      if (input.repeat) {
+        const { seriesId, dates } = startSeries(db, actor, input.repeat, task);
+        db.update(tasks).set({ seriesId, ...dates }).where(eq(tasks.id, task.id)).run();
+      }
       addSubtasks(db, task.id, input.subtasks ?? []);
       addLinks(db, task.id, input.links ?? []);
       logActivity(db, actor, 'task.created', task.id, { title });
@@ -244,6 +296,10 @@ export interface TaskPatch {
   removeSubtasks?: string[];
   addLinks?: { url: string; title?: string | null }[];
   removeLinks?: string[];
+  /** A new rule, or null to stop repeating. */
+  repeat?: Repeat | null;
+  /** Don't bring it back before this date; null ends a pause. */
+  pausedUntil?: string | null;
 }
 
 function subtaskIds(task: TaskDetail, refs: string[]) {
@@ -304,13 +360,146 @@ export function updateTask(db: Db, actor: Actor, ref: string, patch: TaskPatch):
       });
       db.delete(taskLinks).where(inArray(taskLinks.id, ids)).run();
     }
+    if (patch.repeat !== undefined) setRepeat(db, actor, task.id, patch.repeat);
+    if (patch.pausedUntil !== undefined) pauseSeries(db, task.id, patch.pausedUntil);
     const changed = Object.entries(patch).filter(([, v]) => v !== undefined).map(([k]) => k);
     logActivity(db, actor, 'task.updated', task.id, { fields: changed });
   });
   return getTask(db, actor.member, task.id);
 }
 
-/** Marks tasks done, or open again with `done: false`. */
+// ---- repeating ------------------------------------------------------------------------------
+
+function seriesOf(db: Db, task: Pick<Task, 'seriesId'>) {
+  return task.seriesId ? (db.select().from(series).where(eq(series.id, task.seriesId)).get() ?? null) : null;
+}
+
+/** Moves a task's date to `date`, shifting its other date (say a deadline) by the same amount. */
+function shiftDates(task: Pick<Task, 'plannedDate' | 'dueDate'>, rule: Repeat, date: string) {
+  const current = seriesDate(task, rule);
+  const other = repeatOn(rule) === 'due' ? task.plannedDate : task.dueDate;
+  const shifted = other && current ? addDays(other, daysBetween(current, date)) : null;
+  return repeatOn(rule) === 'due' ? { dueDate: date, plannedDate: shifted } : { plannedDate: date, dueDate: shifted };
+}
+
+function setRepeat(db: Db, actor: Actor, taskId: string, input: Repeat | null) {
+  const task = db.select().from(tasks).where(eq(tasks.id, taskId)).get()!;
+  if (input === null) {
+    // Earlier ones keep their series for history; this one just stops coming back.
+    db.update(tasks).set({ seriesId: null }).where(eq(tasks.id, taskId)).run();
+    return;
+  }
+  const existing = seriesOf(db, task);
+  if (!existing) {
+    const { seriesId, dates } = startSeries(db, actor, input, task);
+    db.update(tasks).set({ seriesId, ...dates }).where(eq(tasks.id, taskId)).run();
+    return;
+  }
+  const rule = cleanRepeat(input);
+  const current = seriesDate(task, rule);
+  const anchor = current ?? existing.anchor;
+  db.update(series).set({ rule: anchorRule(rule, anchor), anchor }).where(eq(series.id, existing.id)).run();
+  if (!current && rule.mode === 'schedule') {
+    const first = firstOccurrence(rule, anchor, planningDate(actor.member), existing.pausedUntil);
+    if (first) db.update(tasks).set(onDate(rule, first)).where(eq(tasks.id, taskId)).run();
+  }
+}
+
+function pauseSeries(db: Db, taskId: string, until: string | null) {
+  const task = db.select().from(tasks).where(eq(tasks.id, taskId)).get()!;
+  const s = seriesOf(db, task);
+  if (!s) throw new DomainError(`"${task.title}" doesn't repeat, so there's nothing to pause.`);
+  db.update(series).set({ pausedUntil: until }).where(eq(series.id, s.id)).run();
+  const current = seriesDate(task, s.rule);
+  if (until && (!current || current < until)) {
+    // The open one waits too: it moves to the first date on or after the pause ends.
+    const date = s.rule.mode === 'after' ? until : firstOccurrence(s.rule, s.anchor, until);
+    if (date) db.update(tasks).set(shiftDates(task, s.rule, date)).where(eq(tasks.id, taskId)).run();
+  }
+}
+
+/** After finishing a repeating task, makes the next one, unless the series already has one open. */
+function spawnNext(db: Db, actor: Actor, task: TaskDetail) {
+  const s = seriesOf(db, task);
+  if (!s) return null;
+  const open = db
+    .select({ id: tasks.id })
+    .from(tasks)
+    .where(and(eq(tasks.seriesId, s.id), eq(tasks.status, 'open'), ne(tasks.id, task.id)))
+    .get();
+  if (open) return null;
+  const date = nextDate(s.rule, s.anchor, seriesDate(task, s.rule), planningDate(actor.member), s.pausedUntil);
+  if (!date) return null;
+  const now = new Date();
+  const next = db
+    .insert(tasks)
+    .values({
+      title: task.title,
+      notes: task.notes,
+      groupId: task.groupId,
+      assigneeId: task.assigneeId,
+      createdById: task.createdById,
+      timeOfDay: task.timeOfDay,
+      mustDo: task.mustDo,
+      estimateMinutes: task.estimateMinutes,
+      estimateSource: task.estimateSource,
+      seriesId: s.id,
+      ...shiftDates(task, s.rule, date),
+      // Equal stamps mark it untouched, so undoing the completion can take it back.
+      createdAt: now,
+      updatedAt: now,
+    })
+    .returning()
+    .get();
+  addSubtasks(
+    db,
+    next.id,
+    task.subtasks.map((st) => st.title),
+  );
+  for (const link of task.links) db.insert(taskLinks).values({ taskId: next.id, url: link.url, title: link.title }).run();
+  return { id: next.id, date };
+}
+
+/** Undoing a completion takes back the next one it made, if nobody has changed it since. */
+function takeBackNext(db: Db, task: TaskDetail) {
+  const last = db
+    .select({ detail: activity.detail })
+    .from(activity)
+    .where(and(eq(activity.taskId, task.id), eq(activity.action, 'task.completed')))
+    .orderBy(desc(activity.createdAt), desc(sql`activity.rowid`))
+    .limit(1)
+    .get();
+  const nextId = (last?.detail as { next?: { id?: string } } | null)?.next?.id;
+  if (!nextId) return;
+  const next = db.select().from(tasks).where(eq(tasks.id, nextId)).get();
+  if (next && next.status === 'open' && next.createdAt.getTime() === next.updatedAt.getTime()) {
+    db.delete(tasks).where(eq(tasks.id, next.id)).run();
+  }
+}
+
+/** Skips the next time a repeating task comes up, moving it to the date after. */
+export function skipTask(db: Db, actor: Actor, ref: string): TaskDetail {
+  const task = getTask(db, actor.member, ref);
+  const s = seriesOf(db, task);
+  if (!s || task.status !== 'open') throw new DomainError(`"${task.title}" isn't an open repeating task, so there's nothing to skip.`);
+  const today = planningDate(actor.member);
+  const current = seriesDate(task, s.rule);
+  const date =
+    s.rule.mode === 'after'
+      ? nextDate(s.rule, s.anchor, null, current && current > today ? current : today, s.pausedUntil)
+      : nextDate(s.rule, s.anchor, current, today, s.pausedUntil);
+  if (!date) throw new DomainError(`"${task.title}" has no later date to skip to.`);
+  db.transaction(() => {
+    db.update(tasks)
+      .set({ ...shiftDates(task, s.rule, date), updatedAt: new Date() })
+      .where(eq(tasks.id, task.id))
+      .run();
+    logActivity(db, actor, 'task.skipped', task.id, { from: current, to: date });
+  });
+  return getTask(db, actor.member, task.id);
+}
+
+/** Marks tasks done, or open again with `done: false`. Finishing a repeating task makes the next one. */
 export function completeTasks(db: Db, actor: Actor, refs: string[], done = true): TaskDetail[] {
   const found = refs.map((ref) => getTask(db, actor.member, ref));
   db.transaction(() => {
@@ -326,7 +515,13 @@ export function completeTasks(db: Db, actor: Actor, refs: string[], done = true)
         )
         .where(eq(tasks.id, task.id))
         .run();
-      logActivity(db, actor, done ? 'task.completed' : 'task.reopened', task.id);
+      if (done) {
+        const next = spawnNext(db, actor, task);
+        logActivity(db, actor, 'task.completed', task.id, next ? { next } : undefined);
+      } else {
+        takeBackNext(db, task);
+        logActivity(db, actor, 'task.reopened', task.id);
+      }
     }
   });
   return found.map((t) => getTask(db, actor.member, t.id));

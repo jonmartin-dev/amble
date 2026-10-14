@@ -7,6 +7,7 @@ import { Hono, type Context } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { csrf } from 'hono/csrf';
 import { secureHeaders } from 'hono/secure-headers';
+import { createAi, type Ai } from './ai/client.ts';
 import { allowedEmails, isAllowed, upsertMember } from './auth/members.ts';
 import type { Oidc } from './auth/oidc.ts';
 import { createSession, deleteSession, resolveSession, SESSION_COOKIE, SESSION_TTL_MS } from './auth/sessions.ts';
@@ -33,10 +34,13 @@ export function createApp({
   config,
   oidc,
   fetchImpl,
+  ai = createAi(config),
 }: {
   db: Db;
   config: Config;
   oidc: Oidc;
+  /** Haiku for smart add; tests pass their own. */
+  ai?: Ai;
   /** For fetching client metadata documents; tests swap it out. */
   fetchImpl?: typeof fetch;
 }) {
@@ -166,17 +170,19 @@ export function createApp({
           .nullable()
           .optional(),
         showStreaks: z.boolean().optional(),
+        smartAdd: z.boolean().optional(),
       })
       .safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: 'Those settings look wrong. Try again.' }, 400);
     const me = c.get('member')!;
-    const { theme, capacity, showStreaks } = parsed.data;
+    const { theme, capacity, showStreaks, smartAdd } = parsed.data;
     const updated = db
       .update(members)
       .set({
         ...(theme !== undefined && { theme }),
         ...(capacity !== undefined && { capacity }),
         ...(showStreaks !== undefined && { showStreaks }),
+        ...(smartAdd !== undefined && { smartAdd }),
       })
       .where(eq(members.id, me.id))
       .returning()
@@ -184,7 +190,7 @@ export function createApp({
     return c.json({ member: updated });
   });
 
-  registerApi(app, { db, config });
+  registerApi(app, { db, config, ai });
   registerConnectorApi(app);
 
   app.all('/api/*', (c) => c.json({ error: 'Not found.' }, 404));

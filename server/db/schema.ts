@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { index, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import type { Repeat } from '../../shared/repeat.ts';
 
 const id = () =>
   text('id')
@@ -24,6 +25,8 @@ export const members = sqliteTable('members', {
   // Minutes of task time per ISO weekday ("1" is Monday); missing days use the default.
   capacity: text('capacity', { mode: 'json' }).$type<Partial<Record<string, number>>>(),
   showStreaks: integer('show_streaks', { mode: 'boolean' }).notNull().default(true),
+  // Quick add sends what's typed to Haiku for review, when the server has an Anthropic key.
+  smartAdd: integer('smart_add', { mode: 'boolean' }).notNull().default(true),
   createdAt: createdAt(),
   lastLoginAt: integer('last_login_at', { mode: 'timestamp_ms' }),
 });
@@ -57,6 +60,16 @@ export const groups = sqliteTable('groups', {
   createdAt: createdAt(),
 });
 
+// A repeating task's rule. Only one open task per series exists at a time; finishing it makes the next.
+export const series = sqliteTable('series', {
+  id: id(),
+  rule: text('rule', { mode: 'json' }).$type<Repeat>().notNull(),
+  // The first date, which intervals ("every 2 weeks") count from.
+  anchor: text('anchor').notNull(),
+  pausedUntil: text('paused_until'),
+  createdAt: createdAt(),
+});
+
 export const tasks = sqliteTable(
   'tasks',
   {
@@ -77,6 +90,7 @@ export const tasks = sqliteTable(
     completedAt: integer('completed_at', { mode: 'timestamp_ms' }),
     completedById: text('completed_by_id').references(() => members.id, { onDelete: 'set null' }),
     handedBackNote: text('handed_back_note'),
+    seriesId: text('series_id').references(() => series.id, { onDelete: 'set null' }),
     sortOrder: integer('sort_order').notNull().default(0),
     createdAt: createdAt(),
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
@@ -85,6 +99,7 @@ export const tasks = sqliteTable(
     index('tasks_status_planned_idx').on(t.status, t.plannedDate),
     index('tasks_group_idx').on(t.groupId),
     index('tasks_assignee_idx').on(t.assigneeId),
+    index('tasks_series_idx').on(t.seriesId),
   ],
 );
 
@@ -133,6 +148,10 @@ export const listItems = sqliteTable(
     name: text('name').notNull(),
     quantity: text('quantity'),
     note: text('note'),
+    // Where it goes on lists with sections: an aisle for groceries, a category for packing.
+    section: text('section'),
+    url: text('url'),
+    price: text('price'),
     addedById: text('added_by_id').references(() => members.id, { onDelete: 'set null' }),
     checkedAt: integer('checked_at', { mode: 'timestamp_ms' }),
     checkedById: text('checked_by_id').references(() => members.id, { onDelete: 'set null' }),
@@ -140,6 +159,26 @@ export const listItems = sqliteTable(
     createdAt: createdAt(),
   },
   (t) => [index('list_items_group_idx').on(t.groupId, t.checkedAt)],
+);
+
+// Every Haiku call, for the monthly cap and the usage readout in Settings.
+export const aiUsage = sqliteTable(
+  'ai_usage',
+  {
+    id: id(),
+    memberId: text('member_id').references(() => members.id, { onDelete: 'set null' }),
+    feature: text('feature').notNull(),
+    model: text('model').notNull(),
+    effort: text('effort'),
+    inputTokens: integer('input_tokens').notNull().default(0),
+    outputTokens: integer('output_tokens').notNull().default(0),
+    // Millionths of a dollar.
+    costMicros: integer('cost_micros').notNull().default(0),
+    durationMs: integer('duration_ms'),
+    ok: integer('ok', { mode: 'boolean' }).notNull().default(true),
+    createdAt: createdAt(),
+  },
+  (t) => [index('ai_usage_created_idx').on(t.createdAt)],
 );
 
 // Apps allowed to act for a member through the remote Claude connector (OAuth 2.1).
@@ -195,5 +234,6 @@ export type Member = typeof members.$inferSelect;
 export type Group = typeof groups.$inferSelect;
 export type Task = typeof tasks.$inferSelect;
 export type ListItem = typeof listItems.$inferSelect;
+export type Series = typeof series.$inferSelect;
 
 export type OAuthClient = typeof oauthClients.$inferSelect;

@@ -1,14 +1,19 @@
+import { and, eq, gte, lt } from 'drizzle-orm';
 import type { Db } from '../db/index.ts';
-import type { Member } from '../db/schema.ts';
-import { addDays, dateRange, daysBetween, isWeekend, planningDate, weekday } from '../lib/dates.ts';
+import { activity, tasks, type Member } from '../db/schema.ts';
+import { addDays, dateOf, dateRange, daysBetween, isWeekend, planningDate, planningDayStart, weekday } from '../lib/dates.ts';
 import { DomainError } from './household.ts';
 import { listTasks } from './tasks.ts';
 
-// Until Almanac learns real capacity and estimates (phase 7), these stand in. Each member can set
-// their own capacity per weekday in Settings.
+// Capacity starts at these defaults and is learned from what each member finishes. Anyone can pin
+// their own number per weekday in Settings, which wins over what was learned.
 export const DEFAULT_ESTIMATE_MINUTES = 30;
 export const DEFAULT_CAPACITY = { weekday: 180, weekend: 240 };
 export const MAX_CAPACITY_MINUTES = 720;
+const LEARN_WEEKS = 12;
+// This many same-weekday samples (about six weeks of use) and the default no longer counts.
+const FULL_WEIGHT_SAMPLES = 6;
+const MIN_LEARNED_MINUTES = 60;
 const MAX_RANGE_DAYS = 62;
 
 export type LoadLevel = 'light' | 'moderate' | 'full' | 'over';
@@ -25,11 +30,76 @@ export interface DayLoad {
   level: LoadLevel;
 }
 
-/** Task minutes that fit on a date for this member: their own setting for that weekday, or the default. */
-export function capacityFor(date: string, member?: Pick<Member, 'capacity'>) {
-  const set = member?.capacity?.[String(Temporal.PlainDate.from(date).dayOfWeek)];
-  if (set != null) return set;
-  return isWeekend(date) ? DEFAULT_CAPACITY.weekend : DEFAULT_CAPACITY.weekday;
+export function defaultCapacity(isoWeekday: number) {
+  return isoWeekday >= 6 ? DEFAULT_CAPACITY.weekend : DEFAULT_CAPACITY.weekday;
+}
+
+export interface LearnedDay {
+  /** ISO weekday, 1 is Monday. */
+  weekday: number;
+  minutes: number;
+  /** Days of this weekday the member used Almanac in the window. */
+  samples: number;
+  /** How much of `minutes` comes from history rather than the default, 0 to 1. */
+  confidence: number;
+}
+
+function percentile(values: number[], p: number) {
+  const sorted = [...values].sort((a, b) => a - b);
+  const i = (sorted.length - 1) * p;
+  const lo = Math.floor(i);
+  return sorted[lo]! + (sorted[Math.ceil(i)]! - sorted[lo]!) * (i - lo);
+}
+
+/**
+ * Capacity per weekday learned from what this member actually finished over recent weeks. A
+ * day counts once they used Almanac at all; its sample is the minutes they finished (estimates,
+ * or 30 for unestimated tasks). A good day's worth, the 75th percentile, is the target, blended
+ * with the default until there are enough samples to trust it.
+ */
+export function learnedCapacity(db: Db, member: Member, today = planningDate(member)): LearnedDay[] {
+  const start = addDays(today, -LEARN_WEEKS * 7);
+  const from = planningDayStart(member, start);
+  const until = planningDayStart(member, today);
+  const active = new Set(
+    db
+      .select({ at: activity.createdAt })
+      .from(activity)
+      .where(and(eq(activity.memberId, member.id), gte(activity.createdAt, from), lt(activity.createdAt, until)))
+      .all()
+      .map((a) => dateOf(member, a.at)),
+  );
+  const finished = new Map<string, number>();
+  for (const t of db
+    .select({ at: tasks.completedAt, minutes: tasks.estimateMinutes })
+    .from(tasks)
+    .where(and(eq(tasks.completedById, member.id), gte(tasks.completedAt, from), lt(tasks.completedAt, until)))
+    .all()) {
+    const day = dateOf(member, t.at!);
+    active.add(day);
+    finished.set(day, (finished.get(day) ?? 0) + (t.minutes ?? DEFAULT_ESTIMATE_MINUTES));
+  }
+  return [1, 2, 3, 4, 5, 6, 7].map((dow) => {
+    const samples = [...active].filter((d) => Temporal.PlainDate.from(d).dayOfWeek === dow).map((d) => finished.get(d) ?? 0);
+    const base = defaultCapacity(dow);
+    if (samples.length === 0) return { weekday: dow, minutes: base, samples: 0, confidence: 0 };
+    const confidence = Math.min(samples.length / FULL_WEIGHT_SAMPLES, 1);
+    const observed = Math.max(percentile(samples, 0.75), MIN_LEARNED_MINUTES);
+    const blended = (1 - confidence) * base + confidence * observed;
+    const minutes = Math.min(Math.round(blended / 15) * 15, MAX_CAPACITY_MINUTES);
+    return { weekday: dow, minutes, samples: samples.length, confidence: Math.round(confidence * 100) / 100 };
+  });
+}
+
+/**
+ * Task minutes that fit on a date for this member: the number they pinned for that weekday, else
+ * what Almanac learned, else the default.
+ */
+export function capacityFor(date: string, member?: Pick<Member, 'capacity'>, learned?: LearnedDay[]) {
+  const dow = Temporal.PlainDate.from(date).dayOfWeek;
+  const pinned = member?.capacity?.[String(dow)];
+  if (pinned != null) return pinned;
+  return learned?.find((d) => d.weekday === dow)?.minutes ?? (isWeekend(date) ? DEFAULT_CAPACITY.weekend : DEFAULT_CAPACITY.weekday);
 }
 
 function level(minutes: number, capacity: number): LoadLevel {
@@ -51,10 +121,11 @@ export function getLoad(db: Db, me: Member, forMember: Member, start: string, en
     plannedTo: end,
     assignee: { memberId: forMember.id, includeShared: true },
   });
+  const learned = learnedCapacity(db, forMember);
   return dateRange(start, end).map((date) => {
     const day = planned.filter((t) => t.plannedDate === date);
     const minutes = day.reduce((sum, t) => sum + (t.estimateMinutes ?? DEFAULT_ESTIMATE_MINUTES), 0);
-    const capacity = capacityFor(date, forMember);
+    const capacity = capacityFor(date, forMember, learned);
     return {
       date,
       weekday: weekday(date),

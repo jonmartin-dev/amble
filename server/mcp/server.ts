@@ -1,6 +1,8 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { count, eq, isNull } from 'drizzle-orm';
 import { z } from 'zod';
+import { describeRepeat, repeatOn } from '../../shared/repeat.ts';
+import { listTemplate, LIST_TEMPLATES } from '../../shared/templates.ts';
 import type { Db } from '../db/index.ts';
 import { listItems, tasks, type Group, type ListItem, type Member } from '../db/schema.ts';
 import {
@@ -17,6 +19,7 @@ import {
 } from '../domain/household.ts';
 import { addListItems, checkListItems, getListItems } from '../domain/lists.ts';
 import { findGap, getLoad } from '../domain/load.ts';
+import { repeatSchema } from '../domain/repeat.ts';
 import {
   archiveTasks,
   assignTask,
@@ -26,6 +29,7 @@ import {
   getToday,
   listTasks,
   moveTasks,
+  skipTask,
   updateTask,
   type TaskDetail,
 } from '../domain/tasks.ts';
@@ -88,10 +92,23 @@ export function createMcpServer({ db, member }: { db: Db; member: Member }) {
       notes: full || !t.notes || t.notes.length <= NOTES_PREVIEW ? t.notes : `${t.notes.slice(0, NOTES_PREVIEW)}…`,
       subtasks: t.subtasks.length ? t.subtasks.map((s) => `${s.done ? '[x]' : '[ ]'} ${s.title}`) : undefined,
       links: t.links.length ? t.links.map((l) => (l.title ? `${l.title} <${l.url}>` : l.url)) : undefined,
+      repeats: t.repeat
+        ? describeRepeat(t.repeat, repeatOn(t.repeat) === 'due' ? t.dueDate : t.plannedDate, 'en-US') +
+          (t.pausedUntil && t.pausedUntil > today() ? ` (paused until ${t.pausedUntil})` : '')
+        : undefined,
       handedBackNote: t.handedBackNote,
     });
   const presentItem = (i: ListItem) =>
-    compact({ id: i.id.slice(0, 8), name: i.name, quantity: i.quantity, note: i.note, checked: i.checkedAt ? true : undefined });
+    compact({
+      id: i.id.slice(0, 8),
+      name: i.name,
+      quantity: i.quantity,
+      section: i.section,
+      note: i.note,
+      link: i.url,
+      price: i.price,
+      checked: i.checkedAt ? true : undefined,
+    });
 
   type Result = { content: { type: 'text'; text: string }[]; isError?: boolean };
   const run =
@@ -245,6 +262,11 @@ export function createMcpServer({ db, member }: { db: Db; member: Member }) {
     estimate_minutes: z.number().int().min(1).max(24 * 60).optional(),
     subtasks: z.array(z.string()).optional(),
     links: z.array(z.string()).optional().describe('URLs'),
+    repeat: repeatSchema
+      .optional()
+      .describe(
+        'Makes it repeat. Finishing one makes the next. "Every Sunday": {mode:"schedule",every:1,unit:"week",weekdays:[7]}. "1st of the month": {mode:"schedule",every:1,unit:"month",day:1}. "Furnace filter every 3 months": {mode:"after",every:3,unit:"month"}. Add months:[4,...,10] for seasonal ones.',
+      ),
   });
 
   server.registerTool(
@@ -272,6 +294,7 @@ export function createMcpServer({ db, member }: { db: Db; member: Member }) {
           estimateMinutes: t.estimate_minutes,
           subtasks: t.subtasks,
           links: t.links?.map((url) => ({ url })),
+          repeat: t.repeat,
         })),
       ).map((t) => present(t)),
     ),
@@ -292,19 +315,22 @@ export function createMcpServer({ db, member }: { db: Db; member: Member }) {
     uncheck_subtasks: z.array(z.string()).optional(),
     add_links: z.array(z.string()).optional().describe('URLs'),
     remove_links: z.array(z.string()).optional().describe('URLs to remove'),
+    repeat: repeatSchema.nullable().optional().describe('A new repeat rule (same shape as in add_tasks), or null to stop repeating'),
+    paused_until: dateArg.nullable().optional().describe("A repeating task won't come back before this date; null ends the pause"),
+    skip_next: z.boolean().optional().describe('Skip the next time this repeating task comes up, moving it to the date after'),
   });
 
   server.registerTool(
     'update_task',
     {
       title: 'Update a task',
-      description: 'Change any field of a task, tick subtasks, or add and remove links. Only the fields you pass change.',
+      description:
+        'Change any field of a task, tick subtasks, add and remove links, or change how it repeats. Only the fields you pass change.',
       inputSchema: patch,
       annotations: write,
     },
-    run((a: z.output<typeof patch>) =>
-      present(
-        updateTask(db, actor, a.id, {
+    run((a: z.output<typeof patch>) => {
+      const updated = updateTask(db, actor, a.id, {
           title: a.title,
           notes: a.notes,
           groupId: groupId(a.group),
@@ -318,17 +344,18 @@ export function createMcpServer({ db, member }: { db: Db; member: Member }) {
           uncheckSubtasks: a.uncheck_subtasks,
           addLinks: a.add_links?.map((url) => ({ url })),
           removeLinks: a.remove_links,
-        }),
-        true,
-      ),
-    ),
+          repeat: a.repeat,
+          pausedUntil: a.paused_until,
+        });
+      return present(a.skip_next ? skipTask(db, actor, updated.id) : updated, true);
+    }),
   );
 
   server.registerTool(
     'complete_tasks',
     {
       title: 'Complete tasks',
-      description: 'Mark tasks done. With undo, mark them open again.',
+      description: 'Mark tasks done. With undo, mark them open again. Finishing a repeating task makes its next one.',
       inputSchema: z.object({ ids, undo: z.boolean().optional() }),
       annotations: { ...write, idempotentHint: true },
     },
@@ -397,7 +424,12 @@ export function createMcpServer({ db, member }: { db: Db; member: Member }) {
     run((a: { list?: string; include_checked?: boolean }) => {
       const group = list(a.list);
       const { open, checked } = getListItems(db, group, a.include_checked);
-      return compact({ list: group.name, items: open.map(presentItem), recentlyChecked: a.include_checked ? checked.map(presentItem) : undefined });
+      return compact({
+        list: group.name,
+        sections: listTemplate(group.template).sections?.join(', '),
+        items: open.map(presentItem),
+        recentlyChecked: a.include_checked ? checked.map(presentItem) : undefined,
+      });
     }),
   );
 
@@ -405,6 +437,7 @@ export function createMcpServer({ db, member }: { db: Db; member: Member }) {
     name: z.string().min(1),
     quantity: z.string().optional().describe('e.g. "2", "1 lb"'),
     note: z.string().optional(),
+    section: z.string().optional().describe('For lists with sections (get_list shows them), e.g. an aisle: "Produce", "Dairy & eggs"'),
   });
 
   server.registerTool(
@@ -443,7 +476,7 @@ export function createMcpServer({ db, member }: { db: Db; member: Member }) {
     {
       title: 'Day load',
       description:
-        'How full each day is: planned task minutes against that day\'s capacity, which each person sets per weekday in Settings (about 3 hours on weekdays and 4 on weekends until they do). Tasks without an estimate count as 30 minutes. Calendar events are not counted yet.',
+        'How full each day is: planned task minutes against that day\'s capacity, which Almanac learns per person and weekday from what they actually finish (starting from about 3 hours on weekdays and 4 on weekends; anyone can pin their own in Settings). Tasks without an estimate count as 30 minutes. Calendar events are not counted yet.',
       inputSchema: z.object({
         start: dateArg.optional().describe('Default today'),
         end: dateArg.optional().describe('Default 6 days after start'),
@@ -490,10 +523,14 @@ export function createMcpServer({ db, member }: { db: Db; member: Member }) {
         icon: z.enum(GROUP_ICONS).optional(),
         color: z.enum(GROUP_COLORS).optional(),
         private: z.boolean().optional().describe('Only you can see it and its tasks'),
+        template: z
+          .enum(LIST_TEMPLATES.map((t) => t.id) as [string, ...string[]])
+          .optional()
+          .describe(`Lists only: ${LIST_TEMPLATES.map((t) => `"${t.id}" (${t.description})`).join('; ')}`),
       }),
       annotations: write,
     },
-    run((a: { name: string; kind?: 'tasks' | 'list'; icon?: (typeof GROUP_ICONS)[number]; color?: (typeof GROUP_COLORS)[number]; private?: boolean }) => {
+    run((a: { name: string; kind?: 'tasks' | 'list'; icon?: (typeof GROUP_ICONS)[number]; color?: (typeof GROUP_COLORS)[number]; private?: boolean; template?: string }) => {
       const g = createGroup(db, actor, a);
       return compact({ name: g.name, kind: g.kind, icon: g.icon, color: g.color, private: g.privateTo ? true : undefined });
     }),

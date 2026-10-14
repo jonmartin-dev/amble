@@ -36,6 +36,13 @@
       "when": 1791943575762,
       "tag": "0004_member_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1791949300979,
+      "tag": "0005_phase5",
+      "breakpoints": true
     }
   ]
 }

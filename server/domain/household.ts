@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import type { Db } from '../db/index.ts';
-import { activity, groups, members, tasks, type Group, type Member } from '../db/schema.ts';
+import { listTemplate, LIST_TEMPLATES } from '../../shared/templates.ts';
+import { activity, groups, listItems, members, tasks, type Group, type Member } from '../db/schema.ts';
 
 /** A mistake in what was asked for, worded so the person (or Claude) can fix it and retry. */
 export class DomainError extends Error {}
@@ -71,7 +72,18 @@ export function resolveMember(db: Db, me: Member, ref: string): Member | null {
 }
 
 // Kept in step with GroupIcon and tones in web/src/components/icons.tsx.
-export const GROUP_ICONS = ['home', 'directions-car', 'shopping-cart', 'call', 'rocket-launch', 'palette', 'folder'] as const;
+export const GROUP_ICONS = [
+  'home',
+  'directions-car',
+  'shopping-cart',
+  'call',
+  'rocket-launch',
+  'palette',
+  'folder',
+  'checklist',
+  'shopping-bag',
+  'luggage',
+] as const;
 export const GROUP_COLORS = ['green', 'teal', 'lime', 'blue', 'violet', 'orange', 'rose'] as const;
 
 export interface NewGroup {
@@ -81,6 +93,8 @@ export interface NewGroup {
   color?: (typeof GROUP_COLORS)[number];
   /** Only this member sees a private group and its tasks. */
   private?: boolean;
+  /** Lists only: which kind of list, from shared/templates.ts. */
+  template?: string;
 }
 
 export function createGroup(db: Db, actor: Actor, input: NewGroup): Group {
@@ -88,21 +102,32 @@ export function createGroup(db: Db, actor: Actor, input: NewGroup): Group {
   if (!name) throw new DomainError('A group needs a name.');
   const clash = visibleGroups(db, actor.member.id).find((g) => norm(g.name) === norm(name));
   if (clash) throw new DomainError(`There's already a ${clash.kind === 'list' ? 'list' : 'group'} called ${clash.name}.`);
+  if (input.template && !LIST_TEMPLATES.some((t) => t.id === input.template)) throw new DomainError(`There's no "${input.template}" list template.`);
+  const template = input.kind === 'list' ? listTemplate(input.template) : null;
   const all = db.select({ sortOrder: groups.sortOrder }).from(groups).all();
-  const group = db
-    .insert(groups)
-    .values({
-      name,
-      kind: input.kind ?? 'tasks',
-      icon: input.icon ?? (input.kind === 'list' ? 'shopping-cart' : 'folder'),
-      color: input.color ?? GROUP_COLORS[all.length % GROUP_COLORS.length]!,
-      privateTo: input.private ? actor.member.id : null,
-      sortOrder: Math.max(-1, ...all.map((g) => g.sortOrder)) + 1,
-    })
-    .returning()
-    .get();
-  logActivity(db, actor, 'group.created', null, { groupId: group.id, name, kind: group.kind });
-  return group;
+  return db.transaction(() => {
+    const group = db
+      .insert(groups)
+      .values({
+        name,
+        kind: input.kind ?? 'tasks',
+        template: template?.id ?? null,
+        icon: input.icon ?? (template ? (template.icon as (typeof GROUP_ICONS)[number]) : 'folder'),
+        // A plain checklist takes the next color in turn; the other templates have their own.
+        color: input.color ?? (template && template.id !== 'default' ? template.color : GROUP_COLORS[all.length % GROUP_COLORS.length]!),
+        privateTo: input.private ? actor.member.id : null,
+        sortOrder: Math.max(-1, ...all.map((g) => g.sortOrder)) + 1,
+      })
+      .returning()
+      .get();
+    if (template?.starter?.length) {
+      db.insert(listItems)
+        .values(template.starter.map((it, i) => ({ groupId: group.id, name: it.name, section: it.section ?? null, quantity: it.quantity ?? null, addedById: actor.member.id, sortOrder: i })))
+        .run();
+    }
+    logActivity(db, actor, 'group.created', null, { groupId: group.id, name, kind: group.kind });
+    return group;
+  });
 }
 
 export interface GroupPatch {

@@ -1,10 +1,13 @@
 import type { ComponentType, SVGProps } from 'react';
 import Call from '~icons/material-symbols/call-outline-rounded';
+import Checklist from '~icons/material-symbols/checklist-rounded';
 import Car from '~icons/material-symbols/directions-car-outline-rounded';
 import Folder from '~icons/material-symbols/folder-outline-rounded';
 import Home from '~icons/material-symbols/home-outline-rounded';
+import Luggage from '~icons/material-symbols/luggage-outline-rounded';
 import Palette from '~icons/material-symbols/palette-outline-rounded';
 import Rocket from '~icons/material-symbols/rocket-launch-outline-rounded';
+import Bag from '~icons/material-symbols/shopping-bag-outline-rounded';
 import Cart from '~icons/material-symbols/shopping-cart-outline-rounded';
 
 type Icon = ComponentType<SVGProps<SVGSVGElement>>;
@@ -17,6 +20,9 @@ const groupIcons: Record<string, Icon> = {
   'rocket-launch': Rocket,
   palette: Palette,
   folder: Folder,
+  checklist: Checklist,
+  'shopping-bag': Bag,
+  luggage: Luggage,
 };
 
 export function GroupIcon({ name, className }: { name: string; className?: string }) {

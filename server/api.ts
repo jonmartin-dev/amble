@@ -3,6 +3,10 @@
 import { count, eq, isNull } from 'drizzle-orm';
 import type { Context, Hono } from 'hono';
 import { z } from 'zod';
+import type { AddHints, Proposal } from '../shared/proposals.ts';
+import { applyProposals } from './ai/apply.ts';
+import { AiUnavailable, monthSpendUsd, type Ai } from './ai/client.ts';
+import { smartAdd } from './ai/smartAdd.ts';
 import { inviteMember } from './auth/members.ts';
 import type { Config } from './config.ts';
 import type { Db } from './db/index.ts';
@@ -24,8 +28,9 @@ import {
   visibleGroups,
   type Actor,
 } from './domain/household.ts';
-import { addListItems, checkListItems, getListItems } from './domain/lists.ts';
-import { getLoad } from './domain/load.ts';
+import { addListItems, checkListItems, getListItems, listHistory, resetList, updateListItem } from './domain/lists.ts';
+import { defaultCapacity, getLoad, learnedCapacity } from './domain/load.ts';
+import { repeatSchema } from './domain/repeat.ts';
 import { getStats } from './domain/stats.ts';
 import {
   archiveTasks,
@@ -36,6 +41,7 @@ import {
   getToday,
   listTasks,
   moveTasks,
+  skipTask,
   updateTask,
 } from './domain/tasks.ts';
 import { addDays, planningDate } from './lib/dates.ts';
@@ -56,6 +62,7 @@ const newTask = z.object({
   estimateMinutes: z.number().int().min(1).max(1440).nullable().optional(),
   subtasks: z.array(z.string().max(300)).max(50).optional(),
   links: z.array(link).max(20).optional(),
+  repeat: repeatSchema.nullable().optional(),
 });
 
 const taskPatch = z.object({
@@ -73,6 +80,8 @@ const taskPatch = z.object({
   removeSubtasks: z.array(z.string()).optional(),
   addLinks: z.array(link).max(20).optional(),
   removeLinks: z.array(z.string()).optional(),
+  repeat: repeatSchema.nullable().optional(),
+  pausedUntil: date.nullable().optional(),
 });
 
 /** Parses a JSON body, answering 400 with a readable message when it doesn't fit. */
@@ -82,7 +91,73 @@ async function body<T extends z.ZodType>(c: Context<Env>, schema: T): Promise<z.
   return parsed.data;
 }
 
-export function registerApi(app: Hono<Env>, { db, config }: { db: Db; config: Config }) {
+const proposedTask = z.object({
+  title: z.string().trim().min(1).max(500),
+  notes: z.string().max(20_000).nullable(),
+  groupId: z.string().nullable(),
+  assigneeId: z.string().nullable(),
+  plannedDate: date.nullable(),
+  dueDate: date.nullable(),
+  timeOfDay: timeOfDay.nullable(),
+  mustDo: z.boolean(),
+  estimateMinutes: z.number().int().min(1).max(1440).nullable(),
+  estimateSource: z.enum(['ai', 'user']),
+  subtasks: z.array(z.string().max(300)).max(50),
+  links: z.array(z.string().max(2000)).max(20),
+  repeat: repeatSchema.nullable(),
+});
+
+const proposal = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('task'), task: proposedTask }),
+  z.object({
+    kind: z.literal('list_item'),
+    listId: z.string(),
+    name: z.string().trim().min(1).max(200),
+    quantity: z.string().max(40).nullable(),
+    section: z.string().max(60).nullable(),
+    note: z.string().max(300).nullable(),
+  }),
+  z.object({
+    kind: z.literal('update'),
+    taskId: z.string(),
+    title: z.string(),
+    changes: z.object({
+      title: z.string().trim().min(1).max(500).optional(),
+      notes: z.string().max(20_000).nullable().optional(),
+      groupId: z.string().nullable().optional(),
+      assigneeId: z.string().nullable().optional(),
+      plannedDate: date.nullable().optional(),
+      dueDate: date.nullable().optional(),
+      timeOfDay: timeOfDay.nullable().optional(),
+      mustDo: z.boolean().optional(),
+      estimateMinutes: z.number().int().min(1).max(1440).nullable().optional(),
+      addSubtasks: z.array(z.string().max(300)).max(50).optional(),
+      repeat: repeatSchema.nullable().optional(),
+    }),
+  }),
+  z.object({ kind: z.literal('complete'), taskId: z.string(), title: z.string() }),
+  z.object({ kind: z.literal('check'), listId: z.string(), itemId: z.string(), name: z.string() }),
+]);
+
+const addHints = z.object({
+  plannedDate: date.nullable().optional(),
+  dueDate: date.nullable().optional(),
+  groupId: z.string().nullable().optional(),
+  assigneeId: z.string().nullable().optional(),
+  timeOfDay: timeOfDay.nullable().optional(),
+  mustDo: z.boolean().optional(),
+  explicit: z.array(z.enum(['plannedDate', 'dueDate', 'groupId', 'assigneeId', 'timeOfDay', 'mustDo'])).optional(),
+});
+
+const listItemFields = {
+  quantity: z.string().max(40).nullable().optional(),
+  note: z.string().max(300).nullable().optional(),
+  section: z.string().max(60).nullable().optional(),
+  url: z.string().max(2000).nullable().optional(),
+  price: z.string().max(40).nullable().optional(),
+};
+
+export function registerApi(app: Hono<Env>, { db, config, ai }: { db: Db; config: Config; ai: Ai }) {
   const me = (c: Context<Env>) => c.get('member')!;
   const actor = (c: Context<Env>): Actor => ({ member: me(c), via: 'app' });
   // Group and member ids come from the app, but still have to be ones this member can use.
@@ -177,6 +252,7 @@ export function registerApi(app: Hono<Env>, { db, config }: { db: Db; config: Co
         icon: z.enum(GROUP_ICONS).optional(),
         color: z.enum(GROUP_COLORS).optional(),
         private: z.boolean().optional(),
+        template: z.string().max(40).optional(),
       }),
     );
     return c.json({ group: createGroup(db, actor(c), input) }, 201);
@@ -222,6 +298,13 @@ export function registerApi(app: Hono<Env>, { db, config }: { db: Db; config: Co
     // Everyone's calendar shows the viewer's own load, like Today does.
     const person = whose(viewer, c.req.query('who'));
     return c.json({ days: getLoad(db, viewer, person === 'everyone' ? viewer : person, start, end) });
+  });
+
+  // What Almanac has learned about the viewer's capacity, next to the defaults and their pins.
+  app.get('/api/capacity', (c) => {
+    const m = me(c);
+    const days = learnedCapacity(db, m).map((d) => ({ ...d, default: defaultCapacity(d.weekday), pinned: m.capacity?.[String(d.weekday)] ?? null }));
+    return c.json({ days });
   });
 
   app.get('/api/tasks', (c) => {
@@ -292,6 +375,8 @@ export function registerApi(app: Hono<Env>, { db, config }: { db: Db; config: Co
     return c.json({ task });
   });
 
+  app.post('/api/tasks/:id/skip', (c) => c.json({ task: skipTask(db, actor(c), c.req.param('id')) }));
+
   app.post('/api/tasks/:id/move', async (c) => {
     const { plannedDate, timeOfDay: time } = await body(c, z.object({ plannedDate: date.nullable(), timeOfDay: timeOfDay.nullable().optional() }));
     let [task] = moveTasks(db, actor(c), [c.req.param('id')], plannedDate);
@@ -320,12 +405,56 @@ export function registerApi(app: Hono<Env>, { db, config }: { db: Db; config: Co
 
   app.post('/api/lists/:groupId/items', async (c) => {
     const group = resolveGroup(db, me(c), c.req.param('groupId'), 'list');
-    const input = await body(
-      c,
-      z.object({ name: z.string().trim().min(1).max(200), quantity: z.string().max(40).nullable().optional(), note: z.string().max(300).nullable().optional() }),
-    );
+    const input = await body(c, z.object({ name: z.string().trim().min(1).max(200), ...listItemFields }));
     const [added] = addListItems(db, actor(c), group, [input]);
     return c.json(added, 201);
+  });
+
+  app.patch('/api/lists/:groupId/items/:itemId', async (c) => {
+    const group = resolveGroup(db, me(c), c.req.param('groupId'), 'list');
+    const input = await body(c, z.object({ name: z.string().trim().min(1).max(200).optional(), ...listItemFields }));
+    return c.json({ item: updateListItem(db, actor(c), group, c.req.param('itemId'), input) });
+  });
+
+  app.get('/api/lists/:groupId/history', (c) => {
+    const group = resolveGroup(db, me(c), c.req.param('groupId'), 'list');
+    return c.json({ items: listHistory(db, group) });
+  });
+
+  app.post('/api/lists/:groupId/reset', (c) => {
+    const group = resolveGroup(db, me(c), c.req.param('groupId'), 'list');
+    return c.json({ reset: resetList(db, actor(c), group) });
+  });
+
+  // ---- smart add ----------------------------------------------------------------------------
+
+  app.get('/api/ai', (c) =>
+    c.json({
+      available: ai.available,
+      smartAdd: ai.available && me(c).smartAdd,
+      model: ai.model,
+      effort: ai.effort,
+      monthSpendUsd: Math.round(monthSpendUsd(db, config.timezone) * 100) / 100,
+      monthlyCapUsd: ai.monthlyCapUsd,
+    }),
+  );
+
+  // Proposals to review, or { fallback } when Haiku can't help and the app should add it as typed.
+  app.post('/api/smart-add', async (c) => {
+    const input = await body(c, z.object({ text: z.string().trim().min(1).max(4000), hints: addHints.optional() }));
+    if (!me(c).smartAdd) return c.json({ fallback: 'Smart add is off in your settings.' });
+    try {
+      return c.json(await smartAdd(db, ai, me(c), { text: input.text, hints: input.hints as AddHints, timezone: config.timezone }));
+    } catch (err) {
+      if (!(err instanceof AiUnavailable)) throw err;
+      console.warn('Smart add fell back:', err.message);
+      return c.json({ fallback: err.message });
+    }
+  });
+
+  app.post('/api/smart-add/apply', async (c) => {
+    const { proposals } = await body(c, z.object({ proposals: z.array(proposal).min(1).max(100) }));
+    return c.json(applyProposals(db, actor(c), proposals as Proposal[]));
   });
 
   app.post('/api/lists/:groupId/items/:itemId/check', async (c) => {
