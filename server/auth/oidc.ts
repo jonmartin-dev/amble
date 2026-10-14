@@ -40,6 +40,18 @@ export class SignInError extends Error {
   }
 }
 
+/**
+ * HTTP Basic with the client ID and secret form-encoded the way browsers do, which leaves - . _ *
+ * as they are. openid-client's own escapes those too, and Google doesn't decode them: its client
+ * IDs are full of - and ., and it answers "The OAuth client was not found."
+ */
+export function clientSecretBasic(clientSecret: string): client.ClientAuth {
+  const encode = (value: string) => new URLSearchParams({ v: value }).toString().slice(2);
+  return (_server, metadata, _body, headers) => {
+    headers.set('authorization', `Basic ${btoa(`${encode(metadata.client_id)}:${encode(clientSecret)}`)}`);
+  };
+}
+
 /** One line for the log: openid-client's message plus what the provider or the network said. */
 export function describeError(err: unknown): string {
   if (!(err instanceof Error)) return String(err);
@@ -60,7 +72,7 @@ export function createOidc(config: Config) {
     // for it. Post only for a provider that says it can't do Basic.
     const methods = server.token_endpoint_auth_methods_supported;
     const post = methods && !methods.includes('client_secret_basic') && methods.includes('client_secret_post');
-    const auth = post ? client.ClientSecretPost(clientSecret) : client.ClientSecretBasic(clientSecret);
+    const auth = post ? client.ClientSecretPost(clientSecret) : clientSecretBasic(clientSecret);
     return new client.Configuration(server, clientId, clientSecret, auth);
   }
 
