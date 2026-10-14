@@ -129,13 +129,17 @@ if (partner && asPartner) {
 
 const groceries = resolveGroup(db, me, 'Groceries', 'list');
 addListItems(db, asMe, groceries, [
-  { name: 'Oat milk', quantity: '2' },
-  { name: 'Eggs', quantity: '12' },
-  { name: 'Spinach' },
-  { name: 'Coffee beans' },
-  { name: 'Lemons', quantity: '3' },
-  { name: 'Bread' },
-  { name: 'Butter' },
+  { name: 'Oat milk', quantity: '2', section: 'Dairy & eggs' },
+  { name: 'Eggs', quantity: '12', section: 'Dairy & eggs' },
+  { name: 'Spinach', section: 'Produce' },
+  { name: 'Lemons', quantity: '3', section: 'Produce' },
+  { name: 'Avocados', quantity: '2', section: 'Produce' },
+  { name: 'Sourdough', section: 'Bakery' },
+  { name: 'Coffee beans', section: 'Pantry' },
+  { name: 'Chicken thighs', quantity: '2 lbs', section: 'Meat & seafood' },
+  { name: 'Dish soap', section: 'Household' },
+  { name: 'Bread', section: 'Bakery' },
+  { name: 'Butter', section: 'Dairy & eggs' },
 ]);
 checkListItems(db, asMe, groceries, ['Bread', 'Butter']);
 

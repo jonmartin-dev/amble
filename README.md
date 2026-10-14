@@ -2,7 +2,16 @@
 
 A calm, shared, self-hosted planner for a household. It knows how full each day already is, from your tasks and your Google Calendar, and suggests what to do today and which day has room for something due later. It never nags.
 
-Status: early but usable. The day list, backlog, task details, smart add, repeating tasks, list templates, handing tasks to each other, the calendar, stats, the activity feed, settings and the Claude connector work, offline too. Capacity is learned from what gets done, Google Calendar shapes how full each day is, and the planner suggests what to do today and where things fit. Reminders and files on tasks work too. Open-source prep and an Android app are next (see [SPEC.md](SPEC.md) for the plan and build order).
+Status: early but usable. The day list, backlog, task details, smart add, repeating tasks, list templates, handing tasks to each other, the calendar, stats, the activity feed, settings and the Claude connector work, offline too. Capacity is learned from what gets done, Google Calendar shapes how full each day is, and the planner suggests what to do today and where things fit. Reminders and files on tasks work too. An Android app is next (see [SPEC.md](SPEC.md) for the plan and build order).
+
+<p>
+  <img src="docs/screenshots/briefing.png" width="160" alt="Here's today: the day's load, calendar events, a task handed over and a suggestion">
+  <img src="docs/screenshots/today.png" width="160" alt="Today: the day's tasks by morning, afternoon, evening and anytime">
+  <img src="docs/screenshots/calendar.png" width="160" alt="Calendar: a week of load bars, with tasks due soon and the day that has room for each">
+  <img src="docs/screenshots/task.png" width="160" alt="A task's page: day, time of day, deadline, reminder, repeat, group and person">
+  <img src="docs/screenshots/groceries.png" width="160" alt="Groceries in dark mode, sorted by aisle with quantities">
+  <img src="docs/screenshots/appearance.png" width="160" alt="Appearance: Material You colors and styles, light, dark or automatic">
+</p>
 
 ## Features so far
 
@@ -27,7 +36,7 @@ Status: early but usable. The day list, backlog, task details, smart add, repeat
 
 ## Run it locally
 
-Needs Node 24+ and pnpm.
+Needs Node 26+ (for its built-in `Temporal`) and pnpm.
 
 ```sh
 pnpm install
@@ -35,7 +44,7 @@ cp .env.example .env    # dev sign-in is on by default, so no OIDC setup is need
 pnpm dev                # http://localhost:5173
 ```
 
-`pnpm test` runs the tests, including contrast checks for every theme. `node --env-file=.env scripts/eval-smart-add.ts` scores smart add against real household phrasing at each effort level (it calls Haiku, a fraction of a cent per case). For a realistic household to look at, `node scripts/demo.ts <empty-folder> <your-email>` writes a demo database; run the app on it with `ALMANAC_DATA_DIR=<that-folder> pnpm dev`. With that running (and Chrome installed), `node scripts/screens.ts <email>` captures every screen at phone size in several themes, and `node scripts/smoke.ts <email>` clicks through the core loop and fails on any broken step or console error. The demo includes a sample calendar, so the briefing and planner have events to work around. Offline needs the service worker, which only a production build has: run `pnpm build`, start `node --env-file=.env server/index.ts` on the demo database, and `ALMANAC_URL=http://localhost:8787 node scripts/offline.ts <email>` goes offline, makes changes, comes back and checks they synced.
+[CONTRIBUTING.md](CONTRIBUTING.md) covers the layout, the checks to run and how the code is written. `pnpm test` runs the tests, including contrast checks for every theme. `node --env-file=.env scripts/eval-smart-add.ts` scores smart add against real household phrasing at each effort level (it calls Haiku, a fraction of a cent per case). For a realistic household to look at, `node scripts/demo.ts <empty-folder> <your-email>` writes a demo database; run the app on it with `ALMANAC_DATA_DIR=<that-folder> pnpm dev`. With that running (and Chrome installed), `node scripts/screens.ts <email>` captures every screen at phone size in several themes, and `node scripts/smoke.ts <email>` clicks through the core loop and fails on any broken step or console error. The demo includes a sample calendar, so the briefing and planner have events to work around. Offline needs the service worker, which only a production build has: run `pnpm build`, start `node --env-file=.env server/index.ts` on the demo database, and `ALMANAC_URL=http://localhost:8787 node scripts/offline.ts <email>` goes offline, makes changes, comes back and checks they synced.
 
 ## Use it from Claude
 
@@ -65,11 +74,15 @@ docker compose up -d --build
 
 The app listens on `127.0.0.1:18085` (change with `ALMANAC_PORT`); put your reverse proxy in front of it. It can run under a path prefix: set `ALMANAC_PUBLIC_URL` to the full URL, for example `https://example.com/almanac`, and the proxy may pass the prefix through or strip it.
 
-For Google sign-in, create an OAuth client of type "Web application" with the redirect URI `<ALMANAC_PUBLIC_URL>/auth/callback`, and set the consent screen's publishing status to "In production" so sessions with Calendar access don't expire after 7 days.
+For Google sign-in, create an OAuth client of type "Web application" with the redirect URI `<ALMANAC_PUBLIC_URL>/auth/callback`, and set the consent screen's publishing status to "In production" so sessions with Calendar access don't expire after 7 days. Any other OpenID Connect provider works too; [docs/sign-in.md](docs/sign-in.md) has the steps for Authelia, Authentik and Keycloak, and what to check when sign-in fails. Set `ALMANAC_PRIVACY_CONTACT` to put a contact on the public `/privacy` page, which Google's consent screen links to.
 
 Back up `data/`: it holds the database and `files/`, the files people add to tasks. `node server/backup.ts` inside the container writes a consistent copy of the database to `data/snapshots/almanac-latest.db` for file-level backups.
 
 Reminders reach phones through web push. Almanac makes its push keys on first start and keeps them in the database, so there's nothing to configure; people turn notifications on per device in Settings, Notifications. On iPhone and iPad that works once Almanac is added to the home screen.
+
+## Contributing
+
+Bug reports and pull requests are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
