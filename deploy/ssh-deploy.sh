@@ -8,6 +8,6 @@ dir=${2:-/opt/almanac}
 cd "$(dirname "$0")/.."
 
 git ls-files --cached --others --exclude-standard -z \
-  | grep -zv '^design/' \
+  | grep -zv -e '^design/' -e '^\.claude/' \
   | tar --null -T - -czf - \
   | ssh -o ConnectTimeout=10 "$host" "mkdir -p '$dir' && tar -xzf - -C '$dir' && bash '$dir/deploy/server-up.sh'"
