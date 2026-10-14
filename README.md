@@ -2,7 +2,7 @@
 
 A calm, shared, self-hosted planner for a household. It knows how full each day already is, from your tasks and your Google Calendar, and suggests what to do today and which day has room for something due later. It never nags.
 
-Status: early but usable. The day list, backlog, task details, shopping lists, handing tasks to each other, the calendar, stats, the activity feed, settings and the Claude connector work. Offline use is next, then recurring tasks, list templates and the AI planner (see [SPEC.md](SPEC.md) for the plan and build order).
+Status: early but usable. The day list, backlog, task details, shopping lists, handing tasks to each other, the calendar, stats, the activity feed, settings and the Claude connector work. Next is smart add (type anything and Haiku turns it into tasks and list items for you to approve), capacity learned from what you finish, repeating tasks and list templates, then offline use and the calendar-aware planner (see [SPEC.md](SPEC.md) for the plan and build order).
 
 ## Features so far
 
