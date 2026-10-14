@@ -2,10 +2,15 @@
 
 A calm, shared, self-hosted planner for a household. It knows how full each day already is, from your tasks and your Google Calendar, and suggests what to do today and which day has room for something due later. It never nags.
 
-Status: early. Sign-in, the app shell, theming and the Claude connector work. The task screens, lists and the planner are next (see [SPEC.md](SPEC.md) for the plan and build order).
+Status: early but usable. The day list, backlog, task details, shopping lists, handing tasks to each other and the Claude connector work. Recurring tasks, list templates, the calendar and the AI planner are next (see [SPEC.md](SPEC.md) for the plan and build order).
 
 ## Features so far
 
+- Today: your day list by time of day, a load meter, what carried over and what's due. Swipe right to finish a task, swipe left or long-press to move it, with Undo for both
+- Backlog in collapsible groups with search, a quick-add sheet, and a task page for notes, steps, links, deadlines, time of day, must-do and estimates
+- Moving a task shows the next two weeks with how full each day already is
+- Shopping-style lists (groceries) where bought items stay as history for re-adding
+- A household: hand tasks to each other with a note, or share them with anyone; admins add people before they've signed in
 - Sign in with Google, or any OpenID Connect provider, limited to an allowlist of emails
 - Installable app (PWA) designed in Material 3 Expressive, with its spring motion tokens
 - Material You theming: pick any color and Almanac generates the full Material 3 palette (2025 spec) in five styles and three contrast levels, light, dark or automatic. It's saved per person and follows you across devices.
@@ -21,7 +26,7 @@ cp .env.example .env    # dev sign-in is on by default, so no OIDC setup is need
 pnpm dev                # http://localhost:5173
 ```
 
-`pnpm test` runs the tests, including contrast checks for every theme. `node scripts/screens.ts <email>` captures every screen at phone size in several themes (needs `pnpm dev` running and Chrome installed).
+`pnpm test` runs the tests, including contrast checks for every theme. For a realistic household to look at, `node scripts/demo.ts <empty-folder> <your-email>` writes a demo database; run the app on it with `ALMANAC_DATA_DIR=<that-folder> pnpm dev`. With that running (and Chrome installed), `node scripts/screens.ts <email>` captures every screen at phone size in several themes, and `node scripts/smoke.ts <email>` clicks through the core loop and fails on any broken step or console error.
 
 ## Use it from Claude
 

@@ -54,6 +54,72 @@ export interface Group {
   kind: 'tasks' | 'list';
   template: string | null;
   privateTo: string | null;
+  /** Open tasks, or unchecked items for a list. */
+  open: number;
+}
+
+export type TimeOfDay = 'morning' | 'afternoon' | 'evening';
+
+export interface Task {
+  id: string;
+  title: string;
+  notes: string | null;
+  groupId: string | null;
+  groupName: string | null;
+  assigneeId: string | null;
+  assigneeName: string | null;
+  createdById: string | null;
+  createdByName: string | null;
+  dueDate: string | null;
+  plannedDate: string | null;
+  timeOfDay: TimeOfDay | null;
+  mustDo: boolean;
+  estimateMinutes: number | null;
+  status: 'open' | 'done' | 'archived';
+  completedAt: string | null;
+  handedBackNote: string | null;
+  createdAt: string;
+  subtasks: { id: string; title: string; done: boolean }[];
+  links: { id: string; url: string; title: string | null }[];
+}
+
+export interface DayLoad {
+  date: string;
+  weekday: string;
+  tasks: number;
+  mustDo: number;
+  plannedMinutes: number;
+  guessed: number;
+  capacityMinutes: number;
+  level: 'light' | 'moderate' | 'full' | 'over';
+}
+
+export interface Today {
+  today: string;
+  planned: Task[];
+  carriedOver: Task[];
+  due: Task[];
+  done: Task[];
+  load: DayLoad;
+}
+
+export interface HouseholdMember {
+  id: string;
+  name: string;
+  email: string;
+  color: string;
+  avatarUrl: string | null;
+  role: 'admin' | 'member';
+  signedIn: boolean;
+}
+
+export interface ListItem {
+  id: string;
+  groupId: string;
+  name: string;
+  quantity: string | null;
+  note: string | null;
+  checkedAt: string | null;
 }
 
 export async function signOut() {

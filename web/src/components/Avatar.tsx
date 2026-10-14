@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { Member } from '../lib/api.ts';
 import { tone } from './icons.tsx';
 
-export function Avatar({ member, size = 36 }: { member: Member; size?: number }) {
+export function Avatar({ member, size = 36 }: { member: Pick<Member, 'name' | 'color' | 'avatarUrl'>; size?: number }) {
   const [broken, setBroken] = useState(false);
   const style = { width: size, height: size, fontSize: size * 0.42 };
   if (member.avatarUrl && !broken) {

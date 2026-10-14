@@ -17,11 +17,15 @@ import { AddSheet } from './components/AddSheet.tsx';
 import { FloatingToolbar } from './components/FloatingToolbar.tsx';
 import { appUrl, basePath } from './lib/api.ts';
 import { useSession } from './lib/queries.ts';
+import { SnackbarProvider } from './lib/snackbar.tsx';
 import { applyTheme, loadLocalTheme } from './lib/theme.ts';
 import { useSyncMemberTheme } from './lib/useTheme.ts';
 import { Appearance } from './pages/Appearance.tsx';
 import { Backlog } from './pages/Backlog.tsx';
+import { Household } from './pages/Household.tsx';
+import { ListPage } from './pages/ListPage.tsx';
 import { Privacy } from './pages/Privacy.tsx';
+import { TaskDetail } from './pages/TaskDetail.tsx';
 import { Calendar } from './pages/Calendar.tsx';
 import { Connect } from './pages/Connect.tsx';
 import { ConnectionsPage } from './pages/Connections.tsx';
@@ -47,7 +51,7 @@ function Root() {
         <Outlet />
       </main>
       <FloatingToolbar onAdd={() => setAdding(true)} />
-      <AddSheet open={adding} onClose={() => setAdding(false)} />
+      <AddSheet open={adding} onClose={() => setAdding(false)} plannedByDefault={pathname === '/'} />
     </div>
   );
 }
@@ -60,6 +64,23 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/stats', component: Stats }),
   createRoute({ getParentRoute: () => rootRoute, path: '/appearance', component: Appearance }),
   createRoute({ getParentRoute: () => rootRoute, path: '/connections', component: ConnectionsPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/household', component: Household }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/task/$taskId',
+    component: function TaskRoute() {
+      const { taskId } = useParams({ strict: false });
+      return <TaskDetail key={taskId} taskId={taskId ?? ''} />;
+    },
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/list/$groupId',
+    component: function ListRoute() {
+      const { groupId } = useParams({ strict: false });
+      return <ListPage key={groupId} groupId={groupId ?? ''} />;
+    },
+  }),
   createRoute({
     getParentRoute: () => rootRoute,
     path: '/connect/$requestId',
@@ -92,7 +113,9 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <MotionConfig reducedMotion="user">
-        <RouterProvider router={router} />
+        <SnackbarProvider>
+          <RouterProvider router={router} />
+        </SnackbarProvider>
       </MotionConfig>
     </QueryClientProvider>
   </StrictMode>,

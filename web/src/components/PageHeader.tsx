@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import Logout from '~icons/material-symbols/logout-rounded';
 import Palette from '~icons/material-symbols/palette-outline-rounded';
 import Sparkle from '~icons/material-symbols/auto-awesome-outline-rounded';
+import Group from '~icons/material-symbols/group-outline-rounded';
 import { signOut } from '../lib/api.ts';
 import { expressive } from '../lib/motion.ts';
 import { useMe } from '../lib/queries.ts';
@@ -69,6 +70,14 @@ export function PageHeader({ eyebrow, title }: { eyebrow?: ReactNode; title: Rea
                 >
                   <Sparkle className="size-5" aria-hidden />
                   Connect Claude
+                </Link>
+                <Link
+                  to="/household"
+                  onClick={() => setOpen(false)}
+                  className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left hover:bg-surface-highest"
+                >
+                  <Group className="size-5" aria-hidden />
+                  Household
                 </Link>
                 <button
                   type="button"

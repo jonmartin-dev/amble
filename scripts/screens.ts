@@ -7,7 +7,7 @@ import { chromium } from 'playwright-core';
 const base = process.env.ALMANAC_URL ?? 'http://localhost:5173';
 const email = process.argv[2] ?? 'dev@almanac.local';
 const out = 'design/screens';
-const routes = ['/', '/backlog', '/calendar', '/stats', '/appearance', '/connections'];
+const routes = ['/', '/backlog', '/calendar', '/stats', '/appearance', '/connections', '/household'];
 const variants = [
   { name: 'light', mode: 'light', seed: '#2e6a57', style: 'tonal' },
   { name: 'dark', mode: 'dark', seed: '#2e6a57', style: 'tonal' },
@@ -42,13 +42,40 @@ for (const v of variants) {
   if (!res.ok()) throw new Error(`Saving theme failed: ${res.status()}`);
   await page.evaluate((t) => localStorage.setItem('almanac-theme', JSON.stringify(t)), theme);
 
-  for (const route of routes) {
+  // A task with the most detail and the first list, when the data has them.
+  const { tasks } = (await (await page.request.get(`${base}/api/tasks`)).json()) as { tasks: { id: string; subtasks: unknown[]; links: unknown[] }[] };
+  const { groups } = (await (await page.request.get(`${base}/api/groups`)).json()) as { groups: { id: string; kind: string }[] };
+  const rich = [...tasks].sort((a, b) => b.subtasks.length + b.links.length - (a.subtasks.length + a.links.length))[0];
+  const list = groups.find((g) => g.kind === 'list');
+  const named: [string, string][] = routes.map((r) => [r === '/' ? 'today' : r.slice(1), r]);
+  if (rich) named.push(['task', `/task/${rich.id}`]);
+  if (list) named.push(['list', `/list/${list.id}`]);
+
+  const shoot = async (name: string) => {
+    const file = `${out}/${v.name}-${name}.png`;
+    await page.screenshot({ path: file, fullPage: true });
+    console.log(file);
+  };
+  for (const [name, route] of named) {
     await page.goto(`${base}${route}`);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(600);
-    const file = `${out}/${v.name}${route === '/' ? '-today' : route.replaceAll('/', '-')}.png`;
-    await page.screenshot({ path: file, fullPage: true });
-    console.log(file);
+    await shoot(name);
+  }
+
+  // The sheets: quick add from Today, and moving a task from its detail page.
+  await page.goto(`${base}/`);
+  await page.waitForLoadState('networkidle');
+  await page.getByRole('button', { name: 'Add a task' }).click();
+  await page.waitForTimeout(800);
+  await shoot('add');
+  if (rich) {
+    await page.goto(`${base}/task/${rich.id}`);
+    await page.waitForLoadState('networkidle');
+    await page.getByText(/Someday|Today|Tomorrow|day$/).first().click();
+    await page.waitForTimeout(900);
+    await page.screenshot({ path: `${out}/${v.name}-move.png` });
+    console.log(`${out}/${v.name}-move.png`);
   }
   // The connector consent page, as Claude's sign-in would open it (never approved here).
   const consent = new URLSearchParams({
