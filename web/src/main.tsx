@@ -13,7 +13,7 @@ import {
   useRouterState,
 } from '@tanstack/react-router';
 import { MotionConfig } from 'motion/react';
-import { StrictMode, useEffect, useState } from 'react';
+import { Activity as Keep, memo, StrictMode, useEffect, useState, type ComponentType } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AddSheet } from './components/AddSheet.tsx';
 import { FloatingToolbar } from './components/FloatingToolbar.tsx';
@@ -85,6 +85,12 @@ function Offline() {
   );
 }
 
+// The four tabs stay built once they've been opened, and are built ahead in the background soon
+// after the app starts, so switching tabs only shows a page instead of building it. A hidden page
+// keeps its state (a search, the week being looked at) while its effects stop. Memoized, so the
+// shell re-rendering on each navigation doesn't render every kept page again.
+const TABS: Record<string, ComponentType> = { '/': memo(Today), '/backlog': memo(Backlog), '/calendar': memo(Calendar), '/stats': memo(Stats) };
+
 function Root() {
   const qc = useQueryClient();
   const session = useSession();
@@ -96,6 +102,18 @@ function Root() {
   const [adding, setAdding] = useState(false);
   const memberId = session.data?.member?.id;
   useSyncMemberTheme();
+
+  const tab = shown in TABS ? shown : null;
+  const [kept, setKept] = useState<ReadonlySet<string>>(() => new Set());
+  useEffect(() => {
+    if (tab && !kept.has(tab)) setKept(new Set(kept).add(tab));
+  }, [tab, kept]);
+  // Once the first page is up. React builds hidden pages at low priority, between other work.
+  useEffect(() => {
+    if (!memberId) return;
+    const t = setTimeout(() => setKept(new Set(Object.keys(TABS))), 1500);
+    return () => clearTimeout(t);
+  }, [memberId]);
 
   // Notifications follow whoever is signed in here, so tell the server about this device again.
   useEffect(() => {
@@ -128,10 +146,22 @@ function Root() {
   return (
     <div className="min-h-dvh">
       <main className="mx-auto max-w-xl px-4 pt-6 pb-36" style={{ paddingTop: 'max(1.5rem, env(safe-area-inset-top))' }}>
-        {/* Each page rises in softly, as a CSS animation so it stays smooth while the page is built. */}
-        <div key={shown} className="page-in">
-          <Outlet />
-        </div>
+        {/* Each page rises in softly as it shows: a CSS animation, which stays smooth while the page
+            is built and plays again whenever a kept tab goes from hidden to shown. */}
+        {Object.entries(TABS).map(([path, Page]) =>
+          kept.has(path) || path === tab ? (
+            <Keep key={path} mode={path === tab ? 'visible' : 'hidden'}>
+              <div className="page-in">
+                <Page />
+              </div>
+            </Keep>
+          ) : null,
+        )}
+        {!tab && (
+          <div key={shown} className="page-in">
+            <Outlet />
+          </div>
+        )}
       </main>
       <StatusPill />
       <FloatingToolbar onAdd={() => setAdding(true)} />

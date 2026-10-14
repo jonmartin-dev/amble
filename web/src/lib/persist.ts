@@ -32,15 +32,24 @@ export function shouldSave(query: Query) {
   return query.state.status === 'success' && !LIVE_ONLY.has(kind) && !search;
 }
 
+/** What a saved copy holds, in brief: which views, and when each last changed. */
+function contents(client: PersistedClient) {
+  const { queries, mutations } = client.clientState;
+  return `${queries.map((q) => `${q.queryHash}@${q.state.dataUpdatedAt}`).join('|')}#${mutations.length}`;
+}
+
 /**
  * Saves the query cache to IndexedDB: a change after a quiet spell right away, a run of changes at
  * most once a second, and anything pending when the app is hidden. Saving the first change at once
- * matters because a save started as the page unloads doesn't always finish.
+ * matters because a save started as the page unloads doesn't always finish. The cache also reports
+ * things that change nothing kept (a fetch starting, a page that's built ahead asking for a view
+ * it doesn't have yet); those don't count as a change, so they can't hold a real one back.
  */
 export function idbPersister(): Persister {
   let latest: PersistedClient | null = null;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let lastWrite = 0;
+  let saved = '';
   const write = () => {
     clearTimeout(timer);
     timer = undefined;
@@ -54,11 +63,19 @@ export function idbPersister(): Persister {
   window.addEventListener('pagehide', write);
   return {
     persistClient(client) {
+      const now = contents(client);
+      // Nothing kept changed and no save is waiting. With one waiting, the newest copy always
+      // goes in: two changes in the same millisecond look alike here.
+      if (now === saved && !latest) return;
+      saved = now;
       latest = client;
       timer ??= setTimeout(write, Math.max(SETTLE_MS, lastWrite + WRITE_EVERY_MS - Date.now()));
     },
     restoreClient: () => kvGet<PersistedClient>(CACHE_KEY).catch(() => undefined),
-    removeClient: () => kvDel(CACHE_KEY).catch(() => {}),
+    removeClient: () => {
+      saved = '';
+      return kvDel(CACHE_KEY).catch(() => {});
+    },
   };
 }
 

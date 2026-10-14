@@ -86,11 +86,11 @@ await check('adding a task offline puts it on today', async (p) => {
   await p.getByRole('button', { name: 'Add', exact: true }).click();
   await p.getByText(`Added "${NEW_TASK}"`).waitFor({ timeout: 5000 });
   await p.keyboard.press('Escape');
-  await p.getByRole('main').getByText(NEW_TASK).waitFor({ timeout: 5000 });
+  await p.getByRole('main').getByText(NEW_TASK).filter({ visible: true }).waitFor({ timeout: 5000 });
 });
 
 await check('a task made offline opens and takes a new step', async (p) => {
-  await p.getByRole('main').getByText(NEW_TASK).click();
+  await p.getByRole('main').getByText(NEW_TASK).filter({ visible: true }).click();
   await p.getByLabel('Add a step').fill(NEW_STEP);
   await p.keyboard.press('Enter');
   await p.getByText(NEW_STEP).waitFor({ timeout: 5000 });
@@ -109,7 +109,8 @@ await check('a list works offline: check one off, add one', async (p) => {
 await check('offline changes survive a reload with no connection', async (p) => {
   await p.waitForTimeout(1200);
   await p.goto(`${base}/`);
-  await p.getByRole('main').getByText(NEW_TASK).waitFor({ timeout: 8000 });
+  // Visible: the tabs kept in the background have their own (hidden) copy.
+  await p.getByRole('main').getByText(NEW_TASK).filter({ visible: true }).waitFor({ timeout: 8000 });
   await p.getByText(/Offline · 5 changes to sync/).waitFor({ timeout: 5000 });
 });
 
