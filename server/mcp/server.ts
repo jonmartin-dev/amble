@@ -18,7 +18,9 @@ import {
   type Actor,
 } from '../domain/household.ts';
 import { addListItems, checkListItems, getListItems } from '../domain/lists.ts';
+import { listEvents, type EventView } from '../domain/events.ts';
 import { findGap, getLoad } from '../domain/load.ts';
+import { daySuggestions, planWeek } from '../domain/planner.ts';
 import { repeatSchema } from '../domain/repeat.ts';
 import {
   archiveTasks,
@@ -171,7 +173,7 @@ export function createMcpServer({ db, member }: { db: Db; member: Member }) {
     {
       title: 'Today',
       description:
-        "Today's day list: tasks planned for today, ones carried over from earlier days that weren't done, anything due by today that isn't planned, and what's already done today.",
+        "Today's day list: tasks planned for today, ones carried over from earlier days that weren't done, anything due by today that isn't planned, and what's already done today, plus how full the day is and what's on your calendar.",
       inputSchema: z.object({
         scope: z.enum(['mine', 'everyone']).optional().describe('"mine" (default) includes shared tasks; "everyone" adds other members\' tasks'),
       }),
@@ -179,9 +181,12 @@ export function createMcpServer({ db, member }: { db: Db; member: Member }) {
     },
     run(({ scope }: { scope?: 'mine' | 'everyone' }) => {
       const t = getToday(db, member, scope === 'everyone' ? 'everyone' : member);
+      const [load] = getLoad(db, member, member, t.today, t.today);
       return {
         today: t.today,
         weekday: weekday(t.today),
+        load: compact({ level: load!.level, plannedMinutes: load!.plannedMinutes, roomMinutes: load!.capacityMinutes, calendarMinutes: load!.eventMinutes || undefined }),
+        calendar: listEvents(db, member, t.today, t.today).map((e) => presentEvent(e, member.timezone)),
         planned: t.planned.map((x) => present(x)),
         carriedOver: t.carriedOver.map((x) => present(x)),
         dueNotPlanned: t.due.map((x) => present(x)),
@@ -476,18 +481,23 @@ export function createMcpServer({ db, member }: { db: Db; member: Member }) {
     {
       title: 'Day load',
       description:
-        'How full each day is: planned task minutes against that day\'s capacity, which Almanac learns per person and weekday from what they actually finish (starting from about 3 hours on weekdays and 4 on weekends; anyone can pin their own in Settings). Tasks without an estimate count as 30 minutes. Calendar events are not counted yet.',
+        "How full each day is: planned task minutes against the room that day has for tasks (capacityMinutes). Room is learned per person and weekday from what they actually finish (about 3 hours on weekdays and 4 on weekends to start; anyone can pin their own in Settings), then their Google Calendar adjusts it: busy time beyond a usual day for that weekday (usualEventMinutes) takes half its length off, and a lighter calendar gives some back. Tasks without an estimate count as 30 minutes. With include_events, your own events are listed per day (other people's calendars count but stay private).",
       inputSchema: z.object({
         start: dateArg.optional().describe('Default today'),
         end: dateArg.optional().describe('Default 6 days after start'),
         for: who.optional().describe('Whose days: "me" (the default) or a member\'s name'),
+        include_events: z.boolean().optional().describe('List your own calendar events on each day'),
       }),
       annotations: read,
     },
-    run((a: { start?: string; end?: string; for?: string }) => {
+    run((a: { start?: string; end?: string; for?: string; include_events?: boolean }) => {
       const person = (a.for && resolveMember(db, member, a.for)) || member;
       const start = a.start ?? today();
-      return getLoad(db, member, person, start, a.end ?? addDays(start, 6));
+      const end = a.end ?? addDays(start, 6);
+      const days = getLoad(db, member, person, start, end);
+      if (!a.include_events || person.id !== member.id) return days;
+      const events = listEvents(db, member, start, end);
+      return days.map((d) => ({ ...d, calendar: events.filter((e) => onDate(e, d.date, member.timezone)).map((e) => presentEvent(e, member.timezone)) }));
     }),
   );
 
@@ -507,6 +517,44 @@ export function createMcpServer({ db, member }: { db: Db; member: Member }) {
     run((a: { due: string; estimate_minutes?: number; for?: string }) => {
       const person = (a.for && resolveMember(db, member, a.for)) || member;
       return findGap(db, member, person, a.due, a.estimate_minutes);
+    }),
+  );
+
+  server.registerTool(
+    'suggest_day',
+    {
+      title: 'Suggest what to do today',
+      description:
+        "A few backlog tasks worth pulling into today, best first, each with the planner's reason: deadlines first, then must-do, then what's waited longest, and only what fits in the room today has left (overdue and due-today ones always). The same suggestions the app's morning briefing shows. It only suggests; use move_tasks to plan one for today.",
+      inputSchema: z.object({}),
+      annotations: read,
+    },
+    run(() => {
+      const t = today();
+      const [load] = getLoad(db, member, member, t, t);
+      return {
+        today: t,
+        roomLeftMinutes: Math.max(load!.capacityMinutes - load!.plannedMinutes, 0),
+        suggestions: daySuggestions(db, member).map((x) => ({ ...present(x.task), reason: x.reason, fits: x.fits })),
+      };
+    }),
+  );
+
+  server.registerTool(
+    'plan_week',
+    {
+      title: 'Plan the week',
+      description:
+        "A draft plan for the next seven days: anything left over from earlier days and the most pressing backlog tasks, each on the day with the most room, filling days to about 85% and never past a deadline. Tasks that don't fit stay in the backlog. It only suggests: show the plan, adjust it with the person, then use move_tasks for what they agree to.",
+      inputSchema: z.object({}),
+      annotations: read,
+    },
+    run(() => {
+      const plan = planWeek(db, member);
+      return {
+        days: plan.days.map((d) => ({ date: d.date, weekday: d.weekday, plannedMinutes: d.plannedMinutes, roomMinutes: d.capacityMinutes, level: d.level })),
+        plan: plan.picks.map((p) => ({ ...present(p.task), day: p.date, weekday: p.weekday, reason: p.reason, fits: p.fits })),
+      };
     }),
   );
 
@@ -555,8 +603,27 @@ How it fits together:
 - Tasks live in groups (${names('tasks')}). Lists (${names('list')}) hold shopping-style items: use add_to_list for those, not add_tasks.
 - "planned" is the day someone means to do a task, which puts it on that day's list. "due" is a real deadline. A task with no planned date sits in the backlog.
 - New tasks are for ${me} unless you say otherwise; "anyone" makes a task shared. Assigning to someone else puts it on their backlog quietly. Almanac sends no notifications.
-- Almanac is deliberately calm. Don't schedule everything: keep each day light, check get_load before adding to a day, and use find_gap for things due later.
+- Almanac is deliberately calm. Don't schedule everything: keep each day light, check get_load before adding to a day, and use find_gap for things due later. suggest_day and plan_week give the planner's own picks with reasons.
+- Day load counts each person's Google Calendar once they've connected it in Settings: a day with more on the calendar than usual has less room for tasks.
 - Ids in results are short prefixes. Pass them back exactly as given.`;
+}
+
+const localDate = (iso: string, timeZone: string) => Temporal.Instant.from(iso).toZonedDateTimeISO(timeZone).toPlainDate().toString();
+const localTime = (iso: string, timeZone: string) => Temporal.Instant.from(iso).toZonedDateTimeISO(timeZone).toPlainTime().toString({ smallestUnit: 'minute' });
+
+function onDate(e: EventView, date: string, timeZone: string) {
+  if (e.allDay) return e.startDate! <= date && date < e.endDate!;
+  return localDate(e.start, timeZone) <= date && date <= localDate(e.end, timeZone);
+}
+
+/** An event in local time, short: "09:00-10:00 Dentist", or all day. */
+function presentEvent(e: EventView, timeZone: string) {
+  return compact({
+    title: e.title ?? 'Busy',
+    when: e.allDay ? 'all day' : `${localTime(e.start, timeZone)}-${localTime(e.end, timeZone)}`,
+    free: e.busy ? undefined : true,
+    calendar: e.calendar,
+  });
 }
 
 /** Drops null, undefined and empty values so results stay short. */

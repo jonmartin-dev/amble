@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 import type { Repeat } from '../../shared/repeat.ts';
 
 const id = () =>
@@ -86,6 +86,8 @@ export const tasks = sqliteTable(
     mustDo: integer('must_do', { mode: 'boolean' }).notNull().default(false),
     estimateMinutes: integer('estimate_minutes'),
     estimateSource: text('estimate_source', { enum: ['ai', 'user', 'learned'] }),
+    // Haiku's guess, kept after someone changes the estimate, so Stats can say how good the guesses are.
+    aiEstimateMinutes: integer('ai_estimate_minutes'),
     status: text('status', { enum: ['open', 'done', 'archived'] }).notNull().default('open'),
     completedAt: integer('completed_at', { mode: 'timestamp_ms' }),
     completedById: text('completed_by_id').references(() => members.id, { onDelete: 'set null' }),
@@ -198,6 +200,106 @@ export const appliedRequests = sqliteTable(
   (t) => [primaryKey({ columns: [t.memberId, t.key] }), index('applied_requests_created_idx').on(t.createdAt)],
 );
 
+// A Google account someone connected so Almanac can read their calendars. The refresh token is
+// encrypted with a key derived from the OAuth client secret (server/calendar/google.ts).
+export const calendarAccounts = sqliteTable(
+  'calendar_accounts',
+  {
+    id: id(),
+    memberId: text('member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade' }),
+    // Google's stable id for the account, and its address to show.
+    subject: text('subject').notNull(),
+    email: text('email').notNull(),
+    refreshToken: text('refresh_token').notNull(),
+    scope: text('scope').notNull(),
+    // "reconnect" once Google turns the token down (access removed, password changed).
+    status: text('status', { enum: ['ok', 'reconnect'] }).notNull().default('ok'),
+    error: text('error'),
+    syncedAt: integer('synced_at', { mode: 'timestamp_ms' }),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('calendar_accounts_member_subject_idx').on(t.memberId, t.subject)],
+);
+
+// One calendar in a connected account. Only the ones that count are synced; their events show in
+// Almanac and take up room in the day.
+export const calendarSources = sqliteTable(
+  'calendar_sources',
+  {
+    id: id(),
+    accountId: text('account_id')
+      .notNull()
+      .references(() => calendarAccounts.id, { onDelete: 'cascade' }),
+    memberId: text('member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade' }),
+    calendarId: text('calendar_id').notNull(),
+    name: text('name').notNull(),
+    color: text('color'),
+    primary: integer('primary', { mode: 'boolean' }).notNull().default(false),
+    counts: integer('counts', { mode: 'boolean' }).notNull().default(false),
+    syncToken: text('sync_token'),
+    // The last full read of the window; a daily one moves the window along.
+    fullSyncAt: integer('full_sync_at', { mode: 'timestamp_ms' }),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('calendar_sources_account_calendar_idx').on(t.accountId, t.calendarId)],
+);
+
+// Events copied from the calendars that count. Timed events keep their exact times; all-day ones
+// keep their dates too (the end date is the day after, as Google gives it).
+export const calendarEvents = sqliteTable(
+  'calendar_events',
+  {
+    id: id(),
+    sourceId: text('source_id')
+      .notNull()
+      .references(() => calendarSources.id, { onDelete: 'cascade' }),
+    memberId: text('member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade' }),
+    eventId: text('event_id').notNull(),
+    // The same meeting on two calendars shares this, so it shows and counts once.
+    uid: text('uid'),
+    title: text('title'),
+    allDay: integer('all_day', { mode: 'boolean' }).notNull().default(false),
+    startAt: integer('start_at', { mode: 'timestamp_ms' }).notNull(),
+    endAt: integer('end_at', { mode: 'timestamp_ms' }).notNull(),
+    startDate: text('start_date'),
+    endDate: text('end_date'),
+    // Shown as busy, and not declined.
+    busy: integer('busy', { mode: 'boolean' }).notNull().default(true),
+    url: text('url'),
+  },
+  (t) => [uniqueIndex('calendar_events_source_event_idx').on(t.sourceId, t.eventId), index('calendar_events_member_start_idx').on(t.memberId, t.startAt)],
+);
+
+export interface StoredSuggestion {
+  taskId: string;
+  reason: string;
+}
+
+// One per person per planning day: the morning briefing, its suggestions and which were put off.
+export const dayRecords = sqliteTable(
+  'day_records',
+  {
+    memberId: text('member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade' }),
+    date: text('date').notNull(),
+    briefingSeenAt: integer('briefing_seen_at', { mode: 'timestamp_ms' }),
+    suggestions: text('suggestions', { mode: 'json' }).$type<StoredSuggestion[]>(),
+    // Who wrote the reasons: the built-in wording, or Haiku.
+    reasonsBy: text('reasons_by', { enum: ['template', 'ai'] }),
+    // Tasks they said "Later" to today.
+    dismissed: text('dismissed', { mode: 'json' }).$type<string[]>().notNull().default(sql`'[]'`),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.memberId, t.date] })],
+);
+
 // Apps allowed to act for a member through the remote Claude connector (OAuth 2.1).
 // `metadata` clients are identified by a Client ID Metadata Document URL, which is how Claude
 // connects; `registered` ones came through dynamic client registration.
@@ -254,3 +356,7 @@ export type ListItem = typeof listItems.$inferSelect;
 export type Series = typeof series.$inferSelect;
 
 export type OAuthClient = typeof oauthClients.$inferSelect;
+export type CalendarAccount = typeof calendarAccounts.$inferSelect;
+export type CalendarSource = typeof calendarSources.$inferSelect;
+export type CalendarEvent = typeof calendarEvents.$inferSelect;
+export type DayRecord = typeof dayRecords.$inferSelect;

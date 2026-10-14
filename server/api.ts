@@ -4,15 +4,18 @@ import { count, eq, isNull } from 'drizzle-orm';
 import type { Context, Hono } from 'hono';
 import { z } from 'zod';
 import type { AddHints, Proposal } from '../shared/proposals.ts';
-import { applyProposals } from './ai/apply.ts';
+import { applyOrganize, applyProposals } from './ai/apply.ts';
+import { organizeBacklog, planMyWeek, type OrganizeSuggestion } from './ai/plan.ts';
 import { AiUnavailable, monthSpendUsd, type Ai } from './ai/client.ts';
 import { smartAdd } from './ai/smartAdd.ts';
+import type { CalendarSync } from './calendar/sync.ts';
 import { inviteMember } from './auth/members.ts';
 import type { Config } from './config.ts';
 import type { Db } from './db/index.ts';
 import { listItems, members, tasks, type Member } from './db/schema.ts';
 import type { Env } from './env.ts';
 import { listActivity } from './domain/activity.ts';
+import { listEvents } from './domain/events.ts';
 import {
   archiveGroup,
   archivedGroups,
@@ -29,7 +32,8 @@ import {
   type Actor,
 } from './domain/household.ts';
 import { addListItems, checkListItems, getListItems, listHistory, resetList, updateListItem } from './domain/lists.ts';
-import { defaultCapacity, getLoad, learnedCapacity } from './domain/load.ts';
+import { defaultCapacity, findGap, getLoad, learnedCapacity } from './domain/load.ts';
+import { dismissSuggestion, findGaps, getBriefing, markBriefingSeen } from './domain/planner.ts';
 import { repeatSchema } from './domain/repeat.ts';
 import { getStats } from './domain/stats.ts';
 import {
@@ -161,7 +165,20 @@ const listItemFields = {
   price: z.string().max(40).nullable().optional(),
 };
 
-export function registerApi(app: Hono<Env>, { db, config, ai }: { db: Db; config: Config; ai: Ai }) {
+// Opening the app syncs calendars that haven't been for this long, waiting at most a few seconds.
+const SYNC_ON_OPEN_MS = 2 * 60 * 1000;
+const SYNC_WAIT_MS = 6000;
+
+/** Waits for some work, but at most `ms`; the work carries on either way. */
+function within<T>(ms: number, work: Promise<T>, fallback: T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<T>((resolve) => {
+    timer = setTimeout(() => resolve(fallback), ms);
+  });
+  return Promise.race([work, late]).finally(() => clearTimeout(timer));
+}
+
+export function registerApi(app: Hono<Env>, { db, config, ai, calendar }: { db: Db; config: Config; ai: Ai; calendar: CalendarSync }) {
   const me = (c: Context<Env>) => c.get('member')!;
   // A change the app queued offline says how long ago it was made.
   const actor = (c: Context<Env>): Actor => {
@@ -432,6 +449,91 @@ export function registerApi(app: Hono<Env>, { db, config, ai }: { db: Db; config
   app.post('/api/lists/:groupId/reset', (c) => {
     const group = resolveGroup(db, me(c), c.req.param('groupId'), 'list');
     return c.json({ reset: resetList(db, actor(c), group) });
+  });
+
+  // ---- calendars ----------------------------------------------------------------------------
+
+  app.get('/api/calendars', (c) => c.json({ enabled: calendar.enabled, accounts: calendar.accounts(me(c)) }));
+
+  app.patch('/api/calendars/:id', async (c) => {
+    const { counts } = await body(c, z.object({ counts: z.boolean() }));
+    await within(SYNC_WAIT_MS, calendar.setCounts(me(c), c.req.param('id'), counts), undefined);
+    return c.json({ accounts: calendar.accounts(me(c)) });
+  });
+
+  app.delete('/api/calendars/accounts/:id', async (c) => {
+    await calendar.disconnect(me(c), c.req.param('id'));
+    return c.body(null, 204);
+  });
+
+  // The app calls this when it opens or comes back to the front; it answers once calendars are
+  // fresh, or after a few seconds with the sync still going.
+  app.post('/api/calendars/sync', async (c) => {
+    const synced = await within(SYNC_WAIT_MS, calendar.syncMember(me(c), SYNC_ON_OPEN_MS), 0);
+    return c.json({ synced });
+  });
+
+  app.get('/api/events', (c) => {
+    const viewer = me(c);
+    const start = date.safeParse(c.req.query('start')).data ?? planningDate(viewer);
+    const end = date.safeParse(c.req.query('end')).data ?? start;
+    if (end < start || addDays(start, 62) < end) throw new DomainError('Ask for 62 days or fewer at a time.');
+    return c.json({ events: listEvents(db, viewer, start, end) });
+  });
+
+  // ---- planning -----------------------------------------------------------------------------
+
+  app.get('/api/briefing', (c) => c.json(getBriefing(db, me(c))));
+
+  app.post('/api/briefing/seen', (c) => {
+    markBriefingSeen(db, me(c));
+    return c.body(null, 204);
+  });
+
+  app.post('/api/briefing/later', async (c) => {
+    const { taskId } = await body(c, z.object({ taskId: z.string() }));
+    dismissSuggestion(db, me(c), taskId);
+    return c.body(null, 204);
+  });
+
+  // A day for each unplanned task with a deadline coming up.
+  app.get('/api/gaps', (c) => c.json({ gaps: findGaps(db, me(c)) }));
+
+  // The day with the most room for one task before it's due.
+  app.get('/api/tasks/:id/gap', (c) => {
+    const viewer = me(c);
+    const task = getTask(db, viewer, c.req.param('id'));
+    if (task.status !== 'open' || !task.dueDate || task.dueDate < planningDate(viewer)) return c.json({ gap: null });
+    const person = task.assigneeId ? (resolveMember(db, viewer, task.assigneeId) ?? viewer) : viewer;
+    return c.json({ gap: findGap(db, viewer, person, task.dueDate, task.estimateMinutes) });
+  });
+
+  app.post('/api/plan-week', async (c) => {
+    const { note } = await body(c, z.object({ note: z.string().max(1000).optional() }));
+    return c.json(await planMyWeek(db, ai, me(c), { note, timezone: config.timezone }));
+  });
+
+  // Tidy-up suggestions for the backlog, or { unavailable } when Haiku can't help right now.
+  app.post('/api/organize', async (c) => {
+    try {
+      return c.json({ suggestions: await organizeBacklog(db, ai, me(c), config.timezone) });
+    } catch (err) {
+      if (!(err instanceof AiUnavailable)) throw err;
+      console.warn('Organize backlog unavailable:', err.message);
+      return c.json({ unavailable: ai.available ? "Haiku couldn't look at the backlog just now. Try again in a bit." : 'Organizing the backlog needs an Anthropic API key on the server.' });
+    }
+  });
+
+  app.post('/api/organize/apply', async (c) => {
+    const input = await body(
+      c,
+      z.discriminatedUnion('kind', [
+        z.object({ kind: z.literal('regroup'), taskId: z.string(), title: z.string(), groupId: z.string(), groupName: z.string(), reason: z.string() }),
+        z.object({ kind: z.literal('merge'), taskIds: z.array(z.string()).min(2).max(10), titles: z.array(z.string()), title: z.string().trim().min(1).max(500), reason: z.string() }),
+        z.object({ kind: z.literal('split'), taskId: z.string(), title: z.string(), into: z.array(z.string().trim().min(1).max(500)).min(2).max(6), reason: z.string() }),
+      ]),
+    );
+    return c.json(applyOrganize(db, actor(c), input as OrganizeSuggestion));
   });
 
   // ---- smart add ----------------------------------------------------------------------------

@@ -18,6 +18,17 @@ export interface Stats {
   timesOfDay: { key: TimeOfDayBucket; count: number }[];
   /** Groups with open tasks, most first. Added and done cover the last four weeks. */
   pilingUp: { groupId: string | null; name: string; icon: string; color: string; open: number; oldestDays: number; added: number; done: number }[];
+  /** How Almanac's size guesses held up: which ones people left alone, and how far they moved the rest. */
+  estimates: {
+    made: number;
+    kept: number;
+    raised: number;
+    lowered: number;
+    /** Across changed guesses, the person's number over Almanac's, middle value. Null with none changed. */
+    typicalRatio: number | null;
+    /** The last six months, oldest first, so the trend shows. */
+    months: { month: string; made: number; kept: number }[];
+  };
   /** The viewer's own records, or null when they've turned them off. */
   records: {
     streak: { current: number; best: number };
@@ -91,7 +102,38 @@ export function getStats(db: Db, me: Member, opts: { weeks?: number; weekStart?:
     }),
     timesOfDay: (['morning', 'afternoon', 'evening', 'night'] as const).map((key) => ({ key, count: byTime.get(key) ?? 0 })),
     pilingUp: pilingUp(db, me, today),
+    estimates: estimates(db, me, today),
     records: me.showStreaks ? records(db, me, today, weekStart, done) : null,
+  };
+}
+
+function estimates(db: Db, me: Member, today: string): Stats['estimates'] {
+  const rows = db
+    .select({ ai: tasks.aiEstimateMinutes, minutes: tasks.estimateMinutes, source: tasks.estimateSource, createdAt: tasks.createdAt })
+    .from(tasks)
+    .leftJoin(groups, eq(tasks.groupId, groups.id))
+    .where(and(isNotNull(tasks.aiEstimateMinutes), ne(tasks.status, 'archived'), visibleTo(me.id)))
+    .all();
+  // A guess someone cleared without giving their own says nothing about its size.
+  const judged = rows.filter((r) => r.minutes != null);
+  const changed = judged.filter((r) => r.minutes !== r.ai);
+  const ratios = changed.map((r) => r.minutes! / r.ai!).sort((a, b) => a - b);
+  const mid = ratios.length ? (ratios.length % 2 ? ratios[(ratios.length - 1) / 2]! : (ratios[ratios.length / 2 - 1]! + ratios[ratios.length / 2]!) / 2) : null;
+  const thisMonth = Temporal.PlainDate.from(today).toPlainYearMonth();
+  const months = Array.from({ length: 6 }, (_, i) => ({ month: thisMonth.subtract({ months: 5 - i }).toString(), made: 0, kept: 0 }));
+  for (const r of judged) {
+    const m = months.find((x) => x.month === dateOf(me, r.createdAt).slice(0, 7));
+    if (!m) continue;
+    m.made++;
+    if (r.minutes === r.ai) m.kept++;
+  }
+  return {
+    made: judged.length,
+    kept: judged.length - changed.length,
+    raised: changed.filter((r) => r.minutes! > r.ai!).length,
+    lowered: changed.filter((r) => r.minutes! < r.ai!).length,
+    typicalRatio: mid == null ? null : Math.round(mid * 100) / 100,
+    months,
   };
 }
 

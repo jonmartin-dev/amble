@@ -2,6 +2,7 @@ import { and, eq, gte, lt } from 'drizzle-orm';
 import type { Db } from '../db/index.ts';
 import { activity, tasks, type Member } from '../db/schema.ts';
 import { addDays, dateOf, dateRange, daysBetween, isWeekend, planningDate, planningDayStart, weekday } from '../lib/dates.ts';
+import { busyByDay, usualBusy, WAKING_MINUTES } from './events.ts';
 import { DomainError } from './household.ts';
 import { listTasks } from './tasks.ts';
 
@@ -17,6 +18,20 @@ const FULL_WEIGHT_SAMPLES = 6;
 // ordinary plan into "Too much". Pinning a number (0 for a day off) is how to go lower.
 const MIN_LEARNED_SHARE = 0.5;
 const MAX_RANGE_DAYS = 62;
+// A day's room for tasks shrinks and grows with its free waking time, compared with a usual day
+// for that weekday: a standing work schedule changes nothing, a dentist visit and a dinner take
+// about a fifth off, and a calendar busy all day leaves none. A lighter day than usual gives some
+// back, up to half again the day's room.
+const MAX_ROOM_SHARE = 1.5;
+// Below this much free time a day's share of room stops growing, so a near-full usual day can't
+// turn a quiet one into a huge number.
+const MIN_FREE_MINUTES = 60;
+
+/** How a day's free waking time compares with a usual one: 1 is usual, 0.5 is half as much. */
+function freeShare(busyMinutes: number, usualMinutes: number) {
+  const free = Math.max(WAKING_MINUTES - busyMinutes, 0);
+  return free / Math.max(WAKING_MINUTES - usualMinutes, MIN_FREE_MINUTES);
+}
 
 export type LoadLevel = 'light' | 'moderate' | 'full' | 'over';
 
@@ -28,7 +43,15 @@ export interface DayLoad {
   plannedMinutes: number;
   /** Tasks with no estimate, counted at the default. */
   guessed: number;
+  /** Room for tasks, after the calendar. */
   capacityMinutes: number;
+  /** Room for tasks on an ordinary day like this one: pinned, learned or the default. */
+  baseCapacityMinutes: number;
+  /** Busy calendar time (7am to 10pm, overlaps counted once) and how many busy events. */
+  eventMinutes: number;
+  events: number;
+  /** Busy calendar time on a usual day like this weekday. */
+  usualEventMinutes: number;
   level: LoadLevel;
 }
 
@@ -61,6 +84,14 @@ function percentile(values: number[], p: number) {
  */
 export function learnedCapacity(db: Db, member: Member, today = planningDate(member)): LearnedDay[] {
   const start = addDays(today, -LEARN_WEEKS * 7);
+  // A day with more on the calendar than usual left less room for tasks, so what got done counts
+  // as if it had been an ordinary day (scaled up, at most double); a lighter one, the other way.
+  const busy = busyByDay(db, member, start, addDays(today, -1));
+  const usual = usualBusy(db, member, today);
+  const scale = (day: string) => {
+    const share = freeShare(busy.get(day)?.minutes ?? 0, usual.get(Temporal.PlainDate.from(day).dayOfWeek) ?? 0);
+    return Math.min(Math.max(share > 0 ? 1 / share : 2, 0.5), 2);
+  };
   const from = planningDayStart(member, start);
   const until = planningDayStart(member, today);
   const active = new Set(
@@ -82,7 +113,9 @@ export function learnedCapacity(db: Db, member: Member, today = planningDate(mem
     finished.set(day, (finished.get(day) ?? 0) + (t.minutes ?? DEFAULT_ESTIMATE_MINUTES));
   }
   return [1, 2, 3, 4, 5, 6, 7].map((dow) => {
-    const samples = [...active].filter((d) => Temporal.PlainDate.from(d).dayOfWeek === dow).map((d) => finished.get(d) ?? 0);
+    const samples = [...active]
+      .filter((d) => Temporal.PlainDate.from(d).dayOfWeek === dow)
+      .map((d) => (finished.get(d) ?? 0) * scale(d));
     const base = defaultCapacity(dow);
     if (samples.length === 0) return { weekday: dow, minutes: base, samples: 0, confidence: 0 };
     const confidence = Math.min(samples.length / FULL_WEIGHT_SAMPLES, 1);
@@ -104,7 +137,14 @@ export function capacityFor(date: string, member?: Pick<Member, 'capacity'>, lea
   return learned?.find((d) => d.weekday === dow)?.minutes ?? (isWeekend(date) ? DEFAULT_CAPACITY.weekend : DEFAULT_CAPACITY.weekday);
 }
 
-function level(minutes: number, capacity: number): LoadLevel {
+/** Room for tasks on a date once its calendar is counted against a usual day's. */
+export function roomAfterEvents(base: number, busyMinutes: number, usualMinutes: number) {
+  if (base === 0) return 0;
+  const room = base * freeShare(busyMinutes, usualMinutes);
+  return Math.min(Math.round(room / 5) * 5, Math.round(base * MAX_ROOM_SHARE));
+}
+
+export function loadLevel(minutes: number, capacity: number): LoadLevel {
   // A day off has no room, so anything on it is too much.
   if (capacity === 0) return minutes > 0 ? 'over' : 'light';
   const ratio = minutes / capacity;
@@ -114,7 +154,10 @@ function level(minutes: number, capacity: number): LoadLevel {
   return 'over';
 }
 
-/** How full each day is for one member: their planned tasks plus shared ones, against capacity. */
+/**
+ * How full each day is for one member: their planned tasks plus shared ones, against the room the
+ * day has once their calendar is counted.
+ */
 export function getLoad(db: Db, me: Member, forMember: Member, start: string, end: string): DayLoad[] {
   if (end < start) throw new DomainError('The end date is before the start date.');
   if (daysBetween(start, end) >= MAX_RANGE_DAYS) throw new DomainError(`Ask for ${MAX_RANGE_DAYS} days or fewer at a time.`);
@@ -124,10 +167,15 @@ export function getLoad(db: Db, me: Member, forMember: Member, start: string, en
     assignee: { memberId: forMember.id, includeShared: true },
   });
   const learned = learnedCapacity(db, forMember);
+  const busy = busyByDay(db, forMember, start, end);
+  const usual = usualBusy(db, forMember, planningDate(forMember));
   return dateRange(start, end).map((date) => {
     const day = planned.filter((t) => t.plannedDate === date);
     const minutes = day.reduce((sum, t) => sum + (t.estimateMinutes ?? DEFAULT_ESTIMATE_MINUTES), 0);
-    const capacity = capacityFor(date, forMember, learned);
+    const base = capacityFor(date, forMember, learned);
+    const cal = busy.get(date) ?? { minutes: 0, events: 0 };
+    const usualMinutes = usual.get(Temporal.PlainDate.from(date).dayOfWeek) ?? 0;
+    const capacity = roomAfterEvents(base, cal.minutes, usualMinutes);
     return {
       date,
       weekday: weekday(date),
@@ -136,7 +184,11 @@ export function getLoad(db: Db, me: Member, forMember: Member, start: string, en
       plannedMinutes: minutes,
       guessed: day.filter((t) => t.estimateMinutes == null).length,
       capacityMinutes: capacity,
-      level: level(minutes, capacity),
+      baseCapacityMinutes: base,
+      eventMinutes: cal.minutes,
+      events: cal.events,
+      usualEventMinutes: usualMinutes,
+      level: loadLevel(minutes, capacity),
     };
   });
 }

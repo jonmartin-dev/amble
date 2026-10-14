@@ -281,6 +281,7 @@ export function createTasks(db: Db, actor: Actor, inputs: NewTask[]): TaskDetail
           mustDo: input.mustDo ?? false,
           estimateMinutes: input.estimateMinutes ?? null,
           estimateSource: input.estimateMinutes != null ? (input.estimateSource ?? 'user') : null,
+          aiEstimateMinutes: input.estimateSource === 'ai' ? (input.estimateMinutes ?? null) : null,
           createdAt: actor.at ?? now,
           updatedAt: now,
         })

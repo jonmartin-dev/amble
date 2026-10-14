@@ -64,7 +64,9 @@ describe('local connector over stdio', () => {
       'get_task',
       'get_today',
       'move_tasks',
+      'plan_week',
       'search_tasks',
+      'suggest_day',
       'update_task',
     ].sort());
     const addTasks = tools.find((t) => t.name === 'add_tasks')!;
@@ -110,6 +112,15 @@ describe('local connector over stdio', () => {
 
     const gap = await call('find_gap', { due: 'tomorrow', estimate_minutes: 45 });
     expect(gap.fits).toBe(true);
+
+    await call('add_tasks', { tasks: [{ title: 'Renew the car registration', due: 'today', estimate_minutes: 20 }] });
+    const suggested = await call('suggest_day');
+    expect(suggested.suggestions).toEqual([expect.objectContaining({ title: 'Renew the car registration', reason: "It's due today. It fits in the time today has left." })]);
+    expect((await call('get_today')).load).toMatchObject({ plannedMinutes: 0 });
+
+    const week = await call('plan_week');
+    expect(week.days).toHaveLength(7);
+    expect(week.plan.map((p: { title: string }) => p.title)).toContain('Renew the car registration');
   });
 
   it('returns readable errors Claude can act on', async () => {

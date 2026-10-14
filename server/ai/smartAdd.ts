@@ -134,6 +134,18 @@ function line(...parts: (string | null | undefined | false)[]) {
   return parts.filter(Boolean).join(' · ');
 }
 
+/** Sizes people set themselves, most recent first, one per title: examples of how long things take here. */
+export function ownEstimates(db: Db, limit: number) {
+  const sized = db
+    .select({ title: tasks.title, minutes: tasks.estimateMinutes })
+    .from(tasks)
+    .where(eq(tasks.estimateSource, 'user'))
+    .orderBy(desc(tasks.updatedAt))
+    .limit(limit * 3)
+    .all();
+  return [...new Map(sized.map((s) => [s.title.toLowerCase(), s])).values()].slice(0, limit);
+}
+
 /** The household as Haiku needs it, with short refs in place of ids. */
 export function buildContext(db: Db, me: Member, hints: AddHints = {}) {
   const today = planningDate(me);
@@ -225,14 +237,7 @@ export function buildContext(db: Db, me: Member, hints: AddHints = {}) {
     );
   });
 
-  const sized = db
-    .select({ title: tasks.title, minutes: tasks.estimateMinutes })
-    .from(tasks)
-    .where(eq(tasks.estimateSource, 'user'))
-    .orderBy(desc(tasks.updatedAt))
-    .limit(SIZE_EXAMPLES * 3)
-    .all();
-  const sizes = [...new Map(sized.map((s) => [s.title.toLowerCase(), s])).values()].slice(0, SIZE_EXAMPLES);
+  const sizes = ownEstimates(db, SIZE_EXAMPLES);
   if (sizes.length) out.push('', 'How long things take here (their own estimates):', sizes.map((s) => `${s.title}: ${s.minutes} min`).join('; '));
 
   const explicit = new Set(hints.explicit ?? []);
@@ -266,7 +271,7 @@ export function buildContext(db: Db, me: Member, hints: AddHints = {}) {
 // Every field comes back, with null for "not set" (the API limits how many can be optional).
 type Maybe<T> = T | null | undefined;
 const isDate = (v: Maybe<string>): v is string => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v));
-const roundEstimate = (m: Maybe<number>) =>
+export const roundEstimate = (m: Maybe<number>) =>
   m && Number.isFinite(m) && m > 0 ? Math.min(1440, m < 10 ? Math.round(m) : Math.round(m / 5) * 5) : null;
 const clean = (s: Maybe<string>) => s?.trim().replace(/\s+/g, ' ') || null;
 const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
