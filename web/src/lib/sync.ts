@@ -2,7 +2,7 @@
 // tells the screen how it's going. The screen updates the moment a change is made (see local.ts),
 // so nothing here makes anyone wait.
 import { useSyncExternalStore } from 'react';
-import { basePath } from './api.ts';
+import { send } from './api.ts';
 import { addOp, clearOps, countOps, flush, takeFailures, type Blocked, type Failure, type Op } from './outbox.ts';
 
 export interface SyncState {
@@ -113,7 +113,7 @@ export function kick() {
         break;
       }
       set({ pending: waiting, syncing: true });
-      const result = await flush(basePath).catch(() => ({ sent: [], failed: [], blocked: 'offline' as const }));
+      const result = await flush(send).catch(() => ({ sent: [], failed: [], blocked: 'offline' as const }));
       const pending = await countOps().catch(() => 0);
       sentAny ||= result.sent.length > 0;
       set({ pending, syncing: false, blocked: pending ? result.blocked : null, ...(result.sent.length && { online: true }) });
@@ -151,6 +151,8 @@ export function startSync(h: SyncHandlers) {
     if (document.visibilityState === 'visible') kick();
   });
   navigator.serviceWorker?.addEventListener('message', (e) => {
+    // A reminder's Done or Snooze, queued by the service worker for this device's worker to apply.
+    if ((e.data as { type?: string } | null)?.type === 'outbox-added') return kick();
     if ((e.data as { type?: string } | null)?.type !== 'outbox-flushed') return;
     void reportFailures();
     void countOps().then((pending) => set({ pending, blocked: pending ? state.blocked : null }));

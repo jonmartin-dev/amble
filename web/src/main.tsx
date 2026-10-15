@@ -49,6 +49,8 @@ import { ConnectionsPage } from './pages/Connections.tsx';
 import { GroupsSettings } from './pages/GroupsSettings.tsx';
 import { Settings } from './pages/Settings.tsx';
 import { SignIn } from './pages/SignIn.tsx';
+import { DeviceBlocked, Welcome } from './pages/Welcome.tsx';
+import { onDevice, onDeviceChange, useDeviceState } from './lib/device.ts';
 import { Stats } from './pages/Stats.tsx';
 import { Today } from './pages/Today.tsx';
 
@@ -74,6 +76,8 @@ function SyncBridge() {
       }),
     [qc, snack],
   );
+  // On a device, the worker says when something changed by itself, like a size guess.
+  useEffect(() => onDeviceChange(() => refreshViews(qc)), [qc]);
   return null;
 }
 
@@ -100,6 +104,7 @@ function Root() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   // The page on screen. The location changes the moment a link is tapped, but the old page stays
   // until the new one is ready; keying on the location would build the old page again in between.
+  const deviceState = useDeviceState();
   const shown = useRouterState({ select: (s) => s.matches.at(-1)?.pathname ?? s.location.pathname });
   const navigate = useNavigate();
   const [adding, setAdding] = useState(false);
@@ -128,7 +133,7 @@ function Root() {
 
   // Notifications follow whoever is signed in here, so tell the server about this device again.
   useEffect(() => {
-    if (memberId && navigator.onLine) void refreshPush().catch(() => {});
+    if (memberId && navigator.onLine && !onDevice) void refreshPush().catch(() => {});
   }, [memberId]);
   // Tapping a reminder while the app is open brings it to that task.
   useEffect(() => {
@@ -148,8 +153,10 @@ function Root() {
   useEffect(() => (memberId ? syncCalendarsWhileOpen(qc) : undefined), [qc, memberId]);
 
   if (pathname === '/privacy') return <Privacy />;
+  if (onDevice && deviceState !== 'ready' && deviceState !== 'starting') return <DeviceBlocked state={deviceState} />;
   if (session.isPending) return <div className="min-h-dvh" />;
   if (!session.data && session.isError) return <Offline />;
+  if (onDevice && !session.data?.member) return <Welcome />;
   if (!session.data?.member || pathname === '/signin') return <SignIn />;
   // The consent page stands alone, without the app's toolbar.
   if (pathname.startsWith('/connect/')) return <Outlet />;
@@ -274,11 +281,13 @@ declare module '@tanstack/react-router' {
 const queryClient = new QueryClient({
   defaultOptions: {
     // Kept as long as the saved copy on the device, so what was loaded still opens offline.
-    queries: { retry: 1, refetchOnWindowFocus: true, gcTime: CACHE_MAX_AGE_MS },
+    // On a device the data is right here, so nothing waits for a connection.
+    queries: { retry: 1, refetchOnWindowFocus: true, gcTime: CACHE_MAX_AGE_MS, networkMode: onDevice ? 'always' : 'online' },
+    mutations: { networkMode: onDevice ? 'always' : 'online' },
   },
 });
 // TanStack Query assumes it starts online; tell it the truth so offline reads don't spin.
-onlineManager.setOnline(navigator.onLine);
+onlineManager.setOnline(onDevice || navigator.onLine);
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

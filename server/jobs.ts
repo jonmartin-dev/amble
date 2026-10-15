@@ -39,8 +39,9 @@ export function startJobs(jobs: Job[]) {
   };
   const first = setTimeout(tick, FIRST_TICK_MS);
   const every = setInterval(tick, TICK_MS);
-  first.unref();
-  every.unref();
+  // On the server they mustn't keep the process alive; a browser's timers have no such thing.
+  (first as { unref?: () => void }).unref?.();
+  (every as { unref?: () => void }).unref?.();
   return () => {
     clearTimeout(first);
     clearInterval(every);

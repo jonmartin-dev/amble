@@ -8,6 +8,7 @@ import Phone from '~icons/material-symbols/phone-android-outline-rounded';
 import { pushHint } from '../components/ReminderSheet.tsx';
 import { ListGroup, SectionTitle, segment, SubpageHeader, Switch } from '../components/ui.tsx';
 import { api } from '../lib/api.ts';
+import { onDevice } from '../lib/device.ts';
 import { reminderLabel, shortDate, isoDate } from '../lib/dates.ts';
 import { disablePush, enablePush, usePushState, type PushState } from '../lib/push.ts';
 import { usePushDevices, useReminders } from '../lib/queries.ts';
@@ -35,7 +36,8 @@ export function notificationSummary(state: PushState | null) {
 export function Notifications() {
   const qc = useQueryClient();
   const snack = useSnackbar();
-  const { online } = useSyncState();
+  // On a device the change is made right here, connection or not.
+  const online = useSyncState().online || onDevice;
   const push = usePushState();
   const { data } = usePushDevices();
   const { data: upcoming } = useReminders();
@@ -113,6 +115,12 @@ export function Notifications() {
         </button>
       )}
       {!online && <p className="mt-2 px-1 text-sm text-on-surface-variant">Changing this needs a connection.</p>}
+      {onDevice && (
+        <p className="mt-2 px-1 text-sm text-on-surface-variant">
+          With no Almanac server, a reminder shows while Almanac is open in this browser. Keep it open in a tab, or install it, to be
+          reminded.
+        </p>
+      )}
 
       {others.length > 0 && (
         <>

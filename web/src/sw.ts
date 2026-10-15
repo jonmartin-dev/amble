@@ -8,6 +8,8 @@ import { addOp, flush } from './lib/outbox.ts';
 
 declare const __ALMANAC_BUILD__: string;
 declare const __ALMANAC_ASSETS__: string[];
+/** A build that runs Almanac on the device: there's no server to send the outbox to. */
+declare const __ALMANAC_DEVICE__: boolean;
 
 // The DOM typings don't describe a service worker's scope; these are the parts used here.
 interface ExtendableEvent extends Event {
@@ -124,13 +126,18 @@ sw.addEventListener('fetch', (event) => {
 
 /** Sends the outbox and tells open windows; the result says whether anything is still waiting. */
 async function sendOutbox() {
-  const result = await flush(base);
+  if (__ALMANAC_DEVICE__) {
+    // The app's own worker applies changes; an open window sends them now, or the next one opened will.
+    for (const client of await sw.clients.matchAll({ type: 'window' })) client.postMessage({ type: 'outbox-added' });
+    return { sent: [], failed: [], blocked: null };
+  }
+  const result = await flush((path, init) => fetch(`${base}/api${path}`, init));
   for (const client of await sw.clients.matchAll({ type: 'window' })) client.postMessage({ type: 'outbox-flushed' });
   return result;
 }
 
 sw.addEventListener('sync', (event) => {
-  if (event.tag !== 'almanac-outbox') return;
+  if (event.tag !== 'almanac-outbox' || __ALMANAC_DEVICE__) return;
   event.waitUntil(
     sendOutbox().then((result) => {
       // Rejecting asks the browser to try again later.

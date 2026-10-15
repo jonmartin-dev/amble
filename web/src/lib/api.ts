@@ -1,6 +1,7 @@
 import type { AiEffort, AiProviderId } from '../../../shared/ai.ts';
 import type { Proposal } from '../../../shared/proposals.ts';
 import type { Repeat } from '../../../shared/repeat.ts';
+import { deviceFetch, onDevice } from './device.ts';
 import type { ThemePrefs } from './theme.ts';
 
 export type { Repeat, Proposal };
@@ -11,7 +12,8 @@ declare global {
   }
 }
 
-export const basePath = window.__ALMANAC__?.basePath ?? '';
+// The server writes its base path into the page; a device build is told it when it's built.
+export const basePath = window.__ALMANAC__?.basePath ?? (onDevice ? import.meta.env.BASE_URL.replace(/\/$/, '') : '');
 
 export const appUrl = (path: string) => `${basePath}${path}`;
 
@@ -26,10 +28,15 @@ export class ApiError extends Error {
 /** Status 0: the request never reached the server. */
 export const OFFLINE_MESSAGE = "You're offline, so that didn't go through. Try again once you're connected.";
 
+/** fetch() for a path under /api: over the network, or to the API running on this device. */
+export function send(path: string, init?: RequestInit): Promise<Response> {
+  return onDevice ? deviceFetch(path, init) : fetch(appUrl(`/api${path}`), init);
+}
+
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(appUrl(`/api${path}`), {
+    res = await send(path, {
       ...init,
       headers: { 'Content-Type': 'application/json', ...init?.headers },
     });
@@ -61,7 +68,15 @@ export interface Member {
 
 export interface Session {
   member: Member | null;
-  auth: { provider: string; oidc: boolean; devEmails: string[]; privacyContact: string; ai: { provider: AiProviderId; name: string } | null };
+  auth: {
+    provider: string;
+    oidc: boolean;
+    devEmails: string[];
+    privacyContact: string;
+    ai: { provider: AiProviderId; name: string } | null;
+    /** `device`: Almanac runs on this device, with no server and no sign-in. */
+    mode?: 'device';
+  };
 }
 
 export interface Group {

@@ -63,13 +63,13 @@ function exclusive<T>(fn: () => Promise<T>): Promise<T> {
  * turns down is dropped and reported; anything that might work later (no connection, a server
  * error) stops the queue so later changes don't overtake it.
  */
-export function flush(base: string): Promise<FlushResult> {
+export function flush(send: (path: string, init: RequestInit) => Promise<Response>): Promise<FlushResult> {
   return exclusive(async () => {
     const result: FlushResult = { sent: [], failed: [], blocked: null };
     for (const op of await listOps()) {
       let res: Response;
       try {
-        res = await fetch(`${base}/api${op.path}`, {
+        res = await send(op.path, {
           method: op.method,
           credentials: 'same-origin',
           headers: {

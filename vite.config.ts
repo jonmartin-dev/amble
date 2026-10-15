@@ -8,6 +8,9 @@ import { build, type Plugin } from 'vite';
 import { configDefaults, defineConfig } from 'vitest/config';
 
 const server = `http://localhost:${process.env.PORT ?? 8787}`;
+// VITE_ALMANAC_DEVICE=1 builds the app that runs Almanac on the device, with no server: static
+// files for any host, under ALMANAC_BASE (default "/").
+const device = process.env.VITE_ALMANAC_DEVICE === '1';
 
 function filesIn(dir: string, prefix = ''): string[] {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
@@ -35,7 +38,10 @@ function serviceWorker(): Plugin {
       for (const f of files.sort()) hash.update(f).update(fs.readFileSync(path.join(outDir, f)));
       // The page is fetched from the server, which fills in the base path. Fonts for other
       // scripts download only when a page needs them, so the worker keeps those as they come.
-      const assets = files.filter((f) => f !== 'index.html' && (!f.endsWith('.woff2') || /-latin(-ext)?-/.test(f)));
+      // A server build never starts the device's database worker, so phones don't fetch it.
+      const assets = files.filter(
+        (f) => f !== 'index.html' && (!f.endsWith('.woff2') || /-latin(-ext)?-/.test(f)) && (device || !/(api\.worker|sqlite3)/.test(f)),
+      );
       await build({
         configFile: false,
         logLevel: 'warn',
@@ -43,6 +49,7 @@ function serviceWorker(): Plugin {
         define: {
           __ALMANAC_BUILD__: JSON.stringify(hash.digest('hex').slice(0, 12)),
           __ALMANAC_ASSETS__: JSON.stringify(assets),
+          __ALMANAC_DEVICE__: JSON.stringify(device),
         },
         build: {
           outDir,
@@ -58,11 +65,19 @@ function serviceWorker(): Plugin {
 export default defineConfig({
   root: 'web',
   // Relative asset URLs plus a server-injected <base href> let one build run under any path prefix.
-  base: './',
+  // A device build has no server to write that in, so it's built for its path.
+  base: device ? (process.env.ALMANAC_BASE ?? '/') : './',
   publicDir: 'public',
   plugins: [react(), tailwindcss(), Icons({ compiler: 'jsx', jsx: 'react' }), serviceWorker()],
+  resolve: {
+    // drizzle's driver module names better-sqlite3, which the device's worker never uses.
+    alias: process.env.VITEST ? {} : { 'better-sqlite3': path.join(import.meta.dirname, 'web/src/worker/no-native.ts') },
+  },
+  // SQLite's WebAssembly build finds its .wasm file itself; pre-bundling would break that.
+  optimizeDeps: { exclude: ['@sqlite.org/sqlite-wasm'] },
+  worker: { format: 'es' },
   build: {
-    outDir: '../dist/web',
+    outDir: device ? '../dist/device' : '../dist/web',
     emptyOutDir: true,
   },
   test: {

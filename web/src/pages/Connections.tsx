@@ -7,6 +7,7 @@ import Copy from '~icons/material-symbols/content-copy-outline-rounded';
 import { ButtonGroup, SectionTitle, SubpageHeader } from '../components/ui.tsx';
 import { useSnackbar } from '../lib/snackbar.tsx';
 import { api } from '../lib/api.ts';
+import { onDevice } from '../lib/device.ts';
 import { expressive } from '../lib/motion.ts';
 
 interface Connections {
@@ -102,7 +103,35 @@ function Steps({ assistant, url }: { assistant: Assistant; url: string | undefin
   );
 }
 
+/** On a device with no server: what connecting an assistant takes. */
+function NeedsServer() {
+  return (
+    <>
+      <SubpageHeader title="Connect an assistant" />
+      <p className="px-1 text-on-surface-variant">
+        Ask Claude or ChatGPT to add tasks, plan your week, hand something to someone, or put milk on the grocery list.
+      </p>
+      <section className="mt-5 rounded-[2rem] bg-secondary-container p-5 text-on-secondary-container">
+        <h2 className="display text-xl font-medium">This needs an Almanac server</h2>
+        <p className="mt-2">
+          Claude and ChatGPT reach Almanac from their own computers on the internet, so they need an address that's always there. A
+          phone or a browser tab can't be that.
+        </p>
+        <p className="mt-2">
+          Almanac's server runs as one Docker container on a computer you keep on, like a home server. It joins your household's sync
+          as one more copy, and gives you the address to connect. Almanac's docs walk through setting it up.
+        </p>
+      </section>
+    </>
+  );
+}
+
 export function ConnectionsPage() {
+  if (onDevice) return <NeedsServer />;
+  return <ServerConnections />;
+}
+
+function ServerConnections() {
   const queryClient = useQueryClient();
   const snack = useSnackbar();
   const { data } = useQuery({ queryKey: ['connections'], queryFn: () => api<Connections>('/connections') });

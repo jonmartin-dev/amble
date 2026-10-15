@@ -14,6 +14,7 @@ import Timer from '~icons/material-symbols/timer-outline-rounded';
 import Trophy from '~icons/material-symbols/trophy-outline-rounded';
 import { ListGroup, SectionTitle, SubpageHeader, Switch, minutesLabel } from '../components/ui.tsx';
 import { type Member } from '../lib/api.ts';
+import { onDevice } from '../lib/device.ts';
 import { useSaveMe } from '../lib/mutations.ts';
 import { signOut } from '../lib/persist.ts';
 import { usePushState } from '../lib/push.ts';
@@ -114,7 +115,12 @@ export function Settings() {
                 },
               ]
             : []),
-          { icon: <Forum className="size-6" />, title: 'Connect an assistant', subtitle: 'Plan from a Claude or ChatGPT chat', to: '/connections' },
+          {
+            icon: <Forum className="size-6" />,
+            title: 'Connect an assistant',
+            subtitle: onDevice ? 'Plan from Claude or ChatGPT, with your own Almanac server' : 'Plan from a Claude or ChatGPT chat',
+            to: '/connections',
+          },
         ]}
       />
 
@@ -122,7 +128,8 @@ export function Settings() {
       <ListGroup
         rows={[
           { icon: <Policy className="size-6" />, title: 'Privacy', subtitle: 'What Almanac keeps and why', to: '/privacy' },
-          { icon: <Logout className="size-6" />, title: 'Sign out', onClick: () => void signOut(qc) },
+          // On a device there's nobody to sign out; the data is this device's.
+          ...(onDevice ? [] : [{ icon: <Logout className="size-6" />, title: 'Sign out', onClick: () => void signOut(qc) }]),
         ]}
       />
     </>

@@ -3,6 +3,8 @@
 // about a reminder they set.
 import { useCallback, useEffect, useState } from 'react';
 import { api } from './api.ts';
+import { onDevice } from './device.ts';
+import { kvDel, kvGet, kvSet } from './idb.ts';
 
 /**
  * - unsupported: this browser can't show notifications from a web app.
@@ -14,7 +16,14 @@ export type PushState = 'unsupported' | 'needs-install' | 'blocked' | 'off' | 'o
 const isApple = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const installed = () => window.matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true;
 
-export const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+// On a device with no server, the app shows reminders itself, so only notifications are needed.
+export const pushSupported = () => (onDevice ? 'Notification' in window : 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window);
+
+/** On a device, the address that stands for "this browser" once reminders are on here. */
+const DEVICE_ENDPOINT = 'device-endpoint';
+async function deviceEndpoint() {
+  return kvGet<string>(DEVICE_ENDPOINT).catch(() => undefined);
+}
 
 function keyBytes(base64url: string) {
   const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (base64url.length % 4)) % 4);
@@ -33,8 +42,12 @@ function sameKey(sub: PushSubscription, publicKey: string) {
 const registration = () => navigator.serviceWorker.getRegistration();
 
 /** This device's subscription, if notifications are on here. */
-export async function currentSubscription() {
+export async function currentSubscription(): Promise<{ endpoint: string; unsubscribe(): Promise<unknown> } | null> {
   if (!pushSupported()) return null;
+  if (onDevice) {
+    const endpoint = await deviceEndpoint();
+    return endpoint ? { endpoint, unsubscribe: () => kvDel(DEVICE_ENDPOINT) } : null;
+  }
   return (await (await registration())?.pushManager.getSubscription()) ?? null;
 }
 
@@ -59,6 +72,12 @@ export async function enablePush(): Promise<PushState> {
   if (!pushSupported()) return pushState();
   const permission = await Notification.requestPermission();
   if (permission !== 'granted') return permission === 'denied' ? 'blocked' : 'off';
+  if (onDevice) {
+    const endpoint = (await deviceEndpoint()) ?? `device:${crypto.randomUUID()}`;
+    await api('/push/subscriptions', { method: 'POST', body: JSON.stringify({ endpoint, keys: { p256dh: '-', auth: '-' } }) });
+    await kvSet(DEVICE_ENDPOINT, endpoint);
+    return 'on';
+  }
   const reg = await registration();
   if (!reg) throw new Error("Notifications need the installed app. Reload Almanac and try again.");
   const { publicKey } = await api<{ publicKey: string }>('/push');
@@ -79,7 +98,7 @@ export async function disablePush() {
  * signed in here and a new server key doesn't leave the device silently signed up with the old one.
  */
 export async function refreshPush() {
-  if (!pushSupported() || Notification.permission !== 'granted') return;
+  if (onDevice || !pushSupported() || Notification.permission !== 'granted') return;
   const reg = await registration();
   if (!reg || !(await reg.pushManager.getSubscription())) return;
   const { publicKey } = await api<{ publicKey: string }>('/push');

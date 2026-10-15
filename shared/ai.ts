@@ -28,6 +28,13 @@ export interface AiProvider {
   /** Fastest first; the first is the default. */
   models: AiModel[];
   note?: string;
+  /**
+   * When Almanac runs on a device, calls go straight from the browser, which only works if the
+   * provider allows it (CORS). Checked with a preflight on 2026-10-15.
+   */
+  fromBrowser: boolean;
+  /** What to know about using it from a device, if anything. */
+  deviceNote?: string;
 }
 
 export const AI_PROVIDERS: AiProvider[] = [
@@ -38,6 +45,7 @@ export const AI_PROVIDERS: AiProvider[] = [
     keyUrl: 'https://console.anthropic.com/settings/keys',
     json: 'schema',
     models: [{ id: 'claude-haiku-5-5', name: 'Claude Haiku 5.5', price: [0.1, 0.5], effort: 'medium' }],
+    fromBrowser: true,
   },
   {
     id: 'openai',
@@ -46,6 +54,7 @@ export const AI_PROVIDERS: AiProvider[] = [
     keyUrl: 'https://platform.openai.com/api-keys',
     json: 'schema',
     models: [{ id: 'gpt-6-luna', name: 'GPT-6 Luna', price: [0.1, 0.5], effort: 'medium' }],
+    fromBrowser: true,
   },
   {
     id: 'gemini',
@@ -58,6 +67,7 @@ export const AI_PROVIDERS: AiProvider[] = [
       { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash-Lite', price: [0.1, 0.4], effort: 'default', free: 'tier' },
     ],
     note: "Gemini's free tier needs no card. On it, Google may use what's sent to improve its products.",
+    fromBrowser: true,
   },
   {
     id: 'zai',
@@ -69,6 +79,8 @@ export const AI_PROVIDERS: AiProvider[] = [
       { id: 'glm-4.7-flash', name: 'GLM-4.7-Flash', price: [0, 0], effort: 'default', free: 'model' },
       { id: 'glm-5.3-flash', name: 'GLM-5.3-Flash', price: [0.15, 0.5], effort: 'default' },
     ],
+    fromBrowser: false,
+    deviceNote: "Z.ai doesn't take calls straight from a browser. Use GLM through OpenRouter here, or from your own Almanac server.",
   },
   {
     id: 'openrouter',
@@ -83,6 +95,7 @@ export const AI_PROVIDERS: AiProvider[] = [
       { id: 'z-ai/glm-4.7-flash', name: 'GLM-4.7-Flash', price: [0.06, 0.4], effort: 'default' },
     ],
     note: 'One key for models from every provider.',
+    fromBrowser: true,
   },
   {
     id: 'custom',
@@ -91,6 +104,9 @@ export const AI_PROVIDERS: AiProvider[] = [
     json: 'schema',
     models: [],
     note: 'Any service with an OpenAI-style API: Ollama (http://localhost:11434/v1) or LM Studio (http://localhost:1234/v1) on your own machine, Groq, Mistral, DeepSeek and others.',
+    fromBrowser: true,
+    deviceNote:
+      "From a browser, the service has to allow it: start Ollama with OLLAMA_ORIGINS set to this page's address, or turn on CORS in LM Studio's server settings.",
   },
 ];
 

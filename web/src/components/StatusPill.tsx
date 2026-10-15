@@ -6,6 +6,7 @@ import Login from '~icons/material-symbols/login-rounded';
 import Sync from '~icons/material-symbols/sync-rounded';
 import Upgrade from '~icons/material-symbols/upgrade-rounded';
 import { appUrl } from '../lib/api.ts';
+import { onDevice } from '../lib/device.ts';
 import { expressive } from '../lib/motion.ts';
 import { applyUpdate, useUpdateReady } from '../lib/pwa.ts';
 import { useSyncState } from '../lib/sync.ts';
@@ -69,6 +70,8 @@ export function StatusPill() {
       text: `Sign in to sync ${changes(sync.pending)}`,
       action: { label: 'Sign in', run: () => window.location.assign(appUrl(`/auth/login?return=${encodeURIComponent(location.pathname)}`)) },
     };
+  } else if (onDevice) {
+    // Changes go straight into the database on this device, so there's nothing to wait for.
   } else if (!sync.online || sync.blocked === 'offline') {
     status = { key: 'offline', icon: <CloudOff className="size-[18px]" aria-hidden />, text: sync.pending ? `Offline · ${changes(sync.pending)} to sync` : 'Offline' };
   } else if (sync.blocked === 'server') {

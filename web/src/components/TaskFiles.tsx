@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'motion/react';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import AttachFile from '~icons/material-symbols/attach-file-add-rounded';
 import AudioFile from '~icons/material-symbols/audio-file-outline-rounded';
 import Close from '~icons/material-symbols/close-rounded';
@@ -10,7 +10,8 @@ import Draft from '~icons/material-symbols/draft-outline-rounded';
 import ImageIcon from '~icons/material-symbols/image-outline-rounded';
 import Movie from '~icons/material-symbols/movie-outline-rounded';
 import Pdf from '~icons/material-symbols/picture-as-pdf-outline-rounded';
-import { appUrl, type Task, type TaskFile } from '../lib/api.ts';
+import { appUrl, send as sendRequest, type Task, type TaskFile } from '../lib/api.ts';
+import { deviceFetch, onDevice } from '../lib/device.ts';
 import { editTask } from '../lib/local.ts';
 import { expressive } from '../lib/motion.ts';
 import { refreshViews, useSend } from '../lib/mutations.ts';
@@ -21,8 +22,62 @@ import { useBackToClose } from '../lib/viewport.ts';
 // Photos get a smaller copy this many pixels across, for the task page and for Claude.
 const PREVIEW_PX = 1600;
 
-const fileUrl = (f: TaskFile, download = false) => appUrl(`/api/files/${f.id}${download ? '?download=1' : ''}`);
-const previewUrl = (f: TaskFile) => appUrl(`/api/files/${f.id}/preview`);
+const filePath = (f: TaskFile, download = false) => `/files/${f.id}${download ? '?download=1' : ''}`;
+const previewPath = (f: TaskFile) => `/files/${f.id}/preview`;
+const fileUrl = (f: TaskFile, download = false) => appUrl(`/api${filePath(f, download)}`);
+
+/**
+ * Where to show a file from: its address on the server, or on a device (where there's no server to
+ * ask), a copy read from the device's own store.
+ */
+function useFileSrc(path: string | null) {
+  const [src, setSrc] = useState<string | null>(() => (onDevice || !path ? null : appUrl(`/api${path}`)));
+  useEffect(() => {
+    if (!onDevice || !path) return;
+    let url: string | null = null;
+    let gone = false;
+    void deviceFetch(path)
+      .then((res) => (res.ok ? res.blob() : null))
+      .then((blob) => {
+        if (!blob || gone) return;
+        url = URL.createObjectURL(blob);
+        setSrc(url);
+      })
+      .catch(() => {});
+    return () => {
+      gone = true;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [path]);
+  return src;
+}
+
+/** On a device, opening or downloading a file means making a copy for the browser to show. */
+async function openOnDevice(f: TaskFile, download: boolean) {
+  const res = await deviceFetch(filePath(f, download));
+  if (!res.ok) return;
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement('a');
+  a.href = url;
+  if (download) a.download = f.name;
+  else a.target = '_blank';
+  a.rel = 'noreferrer';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+/** Props for a link that opens or downloads a file, wherever it's kept. */
+function fileLink(f: TaskFile, download: boolean) {
+  if (!onDevice) return download ? { href: fileUrl(f, true), download: f.name } : { href: fileUrl(f), target: '_blank', rel: 'noreferrer' };
+  return {
+    href: '#',
+    onClick: (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      void openOnDevice(f, download);
+    },
+  };
+}
 // Photos a browser can draw. HEIC (from iPhones) mostly can't, so it shows as a file.
 const isPhoto = (f: Pick<TaskFile, 'mime'>) => /^image\/(png|jpeg|gif|webp|avif)$/.test(f.mime);
 
@@ -42,7 +97,18 @@ function FileIcon({ mime, className }: { mime: string; className?: string }) {
 }
 
 /** Sends a file straight to the server, reporting how far along it is. */
-function upload(taskId: string, file: File, onProgress: (share: number) => void): Promise<TaskFile> {
+async function upload(taskId: string, file: File, onProgress: (share: number) => void): Promise<TaskFile> {
+  if (onDevice) {
+    const res = await deviceFetch(`/tasks/${taskId}/files?name=${encodeURIComponent(file.name)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': file.type || 'application/octet-stream' },
+      body: file,
+    });
+    const body = (await res.json().catch(() => null)) as { file?: TaskFile; error?: string } | null;
+    if (!res.ok || !body?.file) throw new Error(body?.error ?? `Couldn't add ${file.name}.`);
+    onProgress(1);
+    return body.file;
+  }
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', appUrl(`/api/tasks/${taskId}/files?name=${encodeURIComponent(file.name)}`));
@@ -87,6 +153,7 @@ async function makePreview(file: File): Promise<Blob | null> {
 /** A photo or file with no copy on this device yet shows its icon instead. */
 function Thumb({ file }: { file: TaskFile }) {
   const [failed, setFailed] = useState(false);
+  const src = useFileSrc(file.preview ? previewPath(file) : filePath(file));
   if (failed) {
     return (
       <span className="grid size-full place-items-center bg-surface-high text-on-surface-variant">
@@ -94,12 +161,15 @@ function Thumb({ file }: { file: TaskFile }) {
       </span>
     );
   }
-  return <img src={file.preview ? previewUrl(file) : fileUrl(file)} alt={file.name} loading="lazy" decoding="async" onError={() => setFailed(true)} className="size-full object-cover" />;
+  if (!src) return <span className="block size-full bg-surface-high" />;
+  return <img src={src} alt={file.name} loading="lazy" decoding="async" onError={() => setFailed(true)} className="size-full object-cover" />;
 }
 
 /** A photo filling the screen, with a way to open the original. */
 function Viewer({ file, onClose }: { file: TaskFile | null; onClose: () => void }) {
   useBackToClose(file != null, onClose);
+  const full = useFileSrc(file ? filePath(file) : null);
+  const preview = useFileSrc(file?.preview ? previewPath(file) : null);
   return (
     <AnimatePresence>
       {file && (
@@ -117,12 +187,12 @@ function Viewer({ file, onClose }: { file: TaskFile | null; onClose: () => void 
               <Close className="size-6" aria-hidden />
             </button>
             <p className="min-w-0 flex-1 truncate text-sm">{file.name}</p>
-            <a href={fileUrl(file, true)} download={file.name} aria-label="Download the original" className="grid size-12 place-items-center rounded-full hover:bg-white/10">
+            <a {...fileLink(file, true)} aria-label="Download the original" className="grid size-12 place-items-center rounded-full hover:bg-white/10">
               <Download className="size-6" aria-hidden />
             </a>
           </div>
           <motion.img
-            src={fileUrl(file)}
+            src={full ?? preview ?? undefined}
             alt={file.name}
             className="min-h-0 flex-1 object-contain p-3"
             initial={{ scale: 0.94 }}
@@ -130,7 +200,7 @@ function Viewer({ file, onClose }: { file: TaskFile | null; onClose: () => void 
             exit={{ scale: 0.96 }}
             transition={expressive.defaultSpatial}
             // A photo can be the preview first and sharpen when the full one arrives.
-            style={file.preview ? { backgroundImage: `url(${previewUrl(file)})`, backgroundSize: 'contain', backgroundPosition: 'center', backgroundRepeat: 'no-repeat', backgroundOrigin: 'content-box' } : undefined}
+            style={preview ? { backgroundImage: `url(${preview})`, backgroundSize: 'contain', backgroundPosition: 'center', backgroundRepeat: 'no-repeat', backgroundOrigin: 'content-box' } : undefined}
           />
         </motion.div>
       )}
@@ -147,7 +217,8 @@ export function TaskFiles({ task }: { task: Task }) {
   const qc = useQueryClient();
   const snack = useSnackbar();
   const send = useSend();
-  const { online } = useSyncState();
+  // On a device the file goes into its own store, so no connection is needed.
+  const online = useSyncState().online || onDevice;
   const picker = useRef<HTMLInputElement>(null);
   const [uploads, setUploads] = useState<{ key: string; name: string; progress: number }[]>([]);
   const [viewing, setViewing] = useState<TaskFile | null>(null);
@@ -165,7 +236,7 @@ export function TaskFiles({ task }: { task: Task }) {
         if (isPhoto(saved)) {
           const preview = await makePreview(file);
           if (preview) {
-            const res = await fetch(appUrl(`/api/files/${saved.id}/preview`), { method: 'POST', headers: { 'Content-Type': preview.type }, body: preview }).catch(() => null);
+            const res = await sendRequest(`/files/${saved.id}/preview`, { method: 'POST', headers: { 'Content-Type': preview.type }, body: preview }).catch(() => null);
             if (res?.ok) editTask(qc, task.id, (t) => ({ files: t.files.map((f) => (f.id === saved.id ? { ...f, preview: true } : f)) }));
           }
         }
@@ -233,11 +304,11 @@ export function TaskFiles({ task }: { task: Task }) {
           {others.map((f) => (
             <li key={f.id} className="flex items-center gap-3 rounded-2xl px-2 py-1">
               <FileIcon mime={f.mime} className="size-5 shrink-0 text-on-surface-variant" />
-              <a href={fileUrl(f)} target="_blank" rel="noreferrer" className="min-w-0 flex-1 py-2">
+              <a {...fileLink(f, false)} className="min-w-0 flex-1 py-2">
                 <span className="block truncate text-primary">{f.name}</span>
                 <span className="block text-xs text-on-surface-variant">{sizeLabel(f.size)}</span>
               </a>
-              <a href={fileUrl(f, true)} download={f.name} aria-label={`Download ${f.name}`} className="grid size-9 place-items-center rounded-full text-on-surface-variant hover:bg-surface-high">
+              <a {...fileLink(f, true)} aria-label={`Download ${f.name}`} className="grid size-9 place-items-center rounded-full text-on-surface-variant hover:bg-surface-high">
                 <Download className="size-5" aria-hidden />
               </a>
               {removeButton(f)}
