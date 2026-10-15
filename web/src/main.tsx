@@ -369,3 +369,14 @@ createRoot(document.getElementById('root')!).render(
 );
 
 registerServiceWorker();
+
+// The page (or, beside an open task, the list) has scrolled: the strip under a phone's status bar
+// fades out over what's beneath it (styles.css). Other scrollers, like a sheet's, don't count.
+document.addEventListener(
+  'scroll',
+  (e) => {
+    const scroller = e.target === document ? document.scrollingElement : e.target instanceof HTMLElement && e.target.tagName === 'MAIN' ? e.target : null;
+    if (scroller) document.documentElement.toggleAttribute('data-scrolled', scroller.scrollTop > 0);
+  },
+  { capture: true, passive: true },
+);

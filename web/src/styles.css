@@ -117,17 +117,19 @@ body {
 
 /*
  * Behind the phone's status bar when the app draws under it (the Android app, or Almanac added to
- * an iPhone's home screen): the page's own color, fading out just below the bar, so the clock and
- * icons never sit on what scrolls beneath them and nothing stops at a hard edge. Where there's no
- * status bar to cover, the inset is 0 and so is all of it. Above the toolbars, under sheets and
- * their scrim.
+ * an iPhone's home screen): the page's own color, so the clock and icons never sit on what scrolls
+ * beneath them. Once something has scrolled under it (data-scrolled, set in main.tsx), it fades
+ * out just below the bar rather than stopping at a hard edge; at the top of a page the fade would
+ * only cover the page's first line. Where there's no status bar, the inset is 0 and so is all of
+ * it. Above the toolbars, under sheets and their scrim.
  */
 body::before {
-  --fade: min(env(safe-area-inset-top), 1.75rem);
+  --fade: 0px;
   content: '';
   position: fixed;
   inset: 0 0 auto;
   height: calc(env(safe-area-inset-top) + var(--fade));
+  transition: height 150ms;
   background: linear-gradient(
     var(--md-surface) env(safe-area-inset-top),
     color-mix(in srgb, var(--md-surface) 55%, transparent) calc(env(safe-area-inset-top) + var(--fade) * 0.4),
@@ -135,6 +137,9 @@ body::before {
   );
   z-index: 15;
   pointer-events: none;
+}
+:root[data-scrolled] body::before {
+  --fade: min(env(safe-area-inset-top), 1.75rem);
 }
 
 /* Expressive headlines lean on the font's roundness axis. */
