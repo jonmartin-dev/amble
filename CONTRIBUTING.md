@@ -10,7 +10,7 @@ Every change should keep these true:
 2. **Suggest, never move.** The planner and the AI features propose; nothing changes until a person taps Add or Accept. An assistant (Claude or ChatGPT) acting through the connector at someone's request is the one exception.
 3. **Load-aware.** Every suggestion respects how full a day already is, calendar included.
 4. **Shared household, private when wanted.** Everything is shared unless a group is marked private.
-5. **Self-host first.** One container, one SQLite file, config in environment variables. Nothing about one household's setup is hard-coded.
+5. **Yours to keep.** On a device with nothing to host, or one container with one SQLite file; config in environment variables. Nothing about one household's setup is hard-coded.
 
 ## Getting started
 
@@ -23,6 +23,8 @@ pnpm dev                 # the app on http://localhost:5173, the server on 8787
 ```
 
 With dev sign-in on, the sign-in page offers a "sign in as" picker: everyone in `ALMANAC_ADMIN_EMAILS`, `ALMANAC_ALLOWED_EMAILS` and the database, or `dev@almanac.local` when there's nobody yet.
+
+`pnpm dev:device` runs the app with no server instead (http://localhost:5174): the API runs in a worker in the browser, on SQLite in WebAssembly. [docs/google-drive.md](docs/google-drive.md) has what sync through Google Drive needs.
 
 For something to look at, build the demo household in an empty folder and run the app on it:
 
@@ -39,6 +41,8 @@ Smart add, estimates and the planner's wording need an AI model: set one up in S
 |---|---|
 | `server/` | The Hono server: the API (`api.ts`), sign-in (`auth/`), the connector for Claude and ChatGPT (`connector.ts`, `oauth/`, `mcp/`), Google Calendar (`calendar/`), web push (`notify/`), AI features and their providers (`ai/`), the scheduler (`jobs.ts`) and the database (`db/`) |
 | `server/domain/` | The rules for tasks, lists, repeats, load and planning, shared by the API and the connector |
+| `server/sync/` | Sync between copies through Google Drive: recording changes (`capture.ts`), merging them (`state.ts`) and the rounds with Drive (`service.ts`, `server.ts`) |
+| `server/local.ts`, `web/src/worker/` | Almanac with no server: the same API in a web worker on SQLite in WebAssembly (`server/db/wasm.ts`) |
 | `shared/` | Code the server and the app both use: list templates, repeat rules, smart add proposals |
 | `web/src/` | The React app: `pages/`, `components/`, `lib/` (queries, the offline outbox, theming, motion) and the service worker (`sw.ts`) |
 | `drizzle/` | Database migrations, applied when the server starts |
@@ -57,9 +61,10 @@ A new list template makes a good first change: one entry in `shared/templates.ts
 ```sh
 pnpm typecheck
 pnpm test
+pnpm test:wasm
 ```
 
-Both must pass. For changes people can see, also run the app on a demo household and use these:
+All three must pass. `test:wasm` runs the same tests on the WebAssembly SQLite the device app uses. For changes people can see, also run the app on a demo household and use these:
 
 - `node scripts/smoke.ts <email>` clicks through the core loop at phone size and fails on any broken step or console error. It changes the demo data.
 - `node scripts/screens.ts <email>` captures every screen at phone size in several themes into `design/screens/` (not committed), for looking over a change in light and dark. Set `ALMANAC_VIEWPORT=820x1180` to capture at tablet size.
@@ -71,6 +76,13 @@ Both must pass. For changes people can see, also run the app on a demo household
 ## Database changes
 
 Change `server/db/schema.ts`, run `pnpm db:generate`, and commit the new migration in `drizzle/` with it. Migrations run on start, on databases people already have, so they must keep existing data working.
+
+Sync has a few rules of its own:
+
+- A new table with household data goes in `server/sync/tables.ts`, or it won't reach other devices. Columns that belong to one copy (whether this device showed a reminder) are listed there as local.
+- A row two devices could each make on their own (the next task a repeating one makes, a person's reminder on a task) gets an id worked out from what it is (`server/lib/ids.ts`), so it merges instead of showing up twice.
+- A rule that spans rows, like one open task per repeating series, can be broken by two devices keeping it separately; `reconcile()` in `server/sync/state.ts` puts it right after a merge, the same way on every copy.
+- Changes are recorded by triggers and timed once per request. Anything that writes outside a request (a background job) calls the sync service's `stamp()` after.
 
 ## How the code is written
 

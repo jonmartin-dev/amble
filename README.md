@@ -1,8 +1,8 @@
 # Almanac
 
-A calm, shared, self-hosted planner for a household. It knows how full each day already is, from your tasks and your Google Calendar, and suggests what to do today and which day has room for something due later. It never nags.
+A calm, shared planner for a household. It knows how full each day already is, from your tasks and your Google Calendar, and suggests what to do today and which day has room for something due later. It never nags.
 
-Status: early but usable. The day list, backlog, task details, smart add, repeating tasks, lists from eleven templates, handing tasks to each other, the calendar, stats, the activity feed, settings and the connector for Claude and ChatGPT work, offline too. Capacity is learned from what gets done, Google Calendar shapes how full each day is, and the planner suggests what to do today and where things fit. Reminders and files on tasks work too. An Android app is next.
+Status: early but usable. The day list, backlog, task details, smart add, repeating tasks, lists from eleven templates, handing tasks to each other, the calendar, stats, the activity feed, settings and the connector for Claude and ChatGPT work, offline too. Capacity is learned from what gets done, Google Calendar shapes how full each day is, and the planner suggests what to do today and where things fit. Reminders and files on tasks work too. It also runs with no server at all, on the device, and keeps a household in step through Google Drive. An Android app is next.
 
 <p>
   <img src="docs/screenshots/briefing.png" width="160" alt="Here's today: the day's load, calendar events, a task handed over and a suggestion">
@@ -34,6 +34,7 @@ Status: early but usable. The day list, backlog, task details, smart add, repeat
 - Works offline: the app and what you last loaded open without a connection, changes show at once and sync in order when you're back, and if someone changed the same thing in the meantime the later change wins
 - Installable app (PWA) designed in Material 3 Expressive, with its spring motion tokens. It fits the screen it's on: a floating toolbar on phones, a navigation rail on a foldable or small tablet, and on wider screens a task or list opens beside the page you picked it from
 - Material You theming: pick any color and Almanac generates the full Material 3 palette (2025 spec) in five styles and three contrast levels, light, dark or automatic. It's saved per person and follows you across devices.
+- No server needed: the same app runs entirely on your device, with nothing to sign up for, and can back itself up to your Google Drive and share a household through it. Only the assistant connector needs a server
 - A connector (MCP) for Claude and ChatGPT with its own OAuth sign-in: either can add, plan, complete and hand off tasks, keep shopping lists, check how full each day is, suggest what to do today, draft a week's plan, set reminders you ask for and look at photos on tasks
 
 ## Run it locally
@@ -48,9 +49,18 @@ pnpm dev                # http://localhost:5173
 
 [CONTRIBUTING.md](CONTRIBUTING.md) covers the layout, the checks to run and how the code is written. `pnpm test` runs the tests, including contrast checks for every theme. `node --env-file=.env scripts/eval-smart-add.ts` scores smart add against real household phrasing at each effort level, on the model the environment sets (a fraction of a cent per case). For a realistic household to look at, `node scripts/demo.ts <empty-folder> <your-email>` writes a demo database; run the app on it with `ALMANAC_DATA_DIR=<that-folder> pnpm dev`. With that running (and Chrome installed), `node scripts/screens.ts <email>` captures every screen at phone size in several themes (`ALMANAC_VIEWPORT=820x1180` for a tablet), and `node scripts/smoke.ts <email>` clicks through the core loop and fails on any broken step or console error. The demo includes a sample calendar, so the briefing and planner have events to work around. Offline needs the service worker, which only a production build has: run `pnpm build`, start `node --env-file=.env server/index.ts` on the demo database, and `ALMANAC_URL=http://localhost:8787 node scripts/offline.ts <email>` goes offline, makes changes, comes back and checks they synced.
 
+## Run it with no server
+
+```sh
+pnpm dev:device        # http://localhost:5174
+pnpm build:device      # static files in dist/device, for any static host
+```
+
+This build runs Almanac's API in a web worker on the device, on SQLite compiled to WebAssembly and kept in the browser's own storage. First open asks what to call you and starts; nothing leaves the device. Settings, Sync and backup keeps a copy in your Google Drive and brings your other devices and your household in step, with no server in between. AI features work too, with a key that stays on the device. [docs/google-drive.md](docs/google-drive.md) covers building it with a Google client, the Google Cloud setup, and adding a server to a household later.
+
 ## Use it from Claude or ChatGPT
 
-Almanac includes a connector (MCP) that Claude and ChatGPT can both use. They can add, plan, complete and hand off tasks, keep shopping lists, and check how full each day is, acting as whoever connected them. Activity shows which assistant made each change.
+Almanac's server includes a connector (MCP) that Claude and ChatGPT can both use. They can add, plan, complete and hand off tasks, keep shopping lists, and check how full each day is, acting as whoever connected them. Activity shows which assistant made each change.
 
 Both connect to the same address: open Connect an assistant from Settings (under AI) in Almanac and copy it. It's `<ALMANAC_PUBLIC_URL>/mcp`.
 
@@ -85,6 +95,8 @@ The app listens on `127.0.0.1:18085` (change with `ALMANAC_PORT`); put your reve
 For Google sign-in, create an OAuth client of type "Web application" with the redirect URI `<ALMANAC_PUBLIC_URL>/auth/callback`, and set the consent screen's publishing status to "In production" so sessions with Calendar access don't expire after 7 days. Any other OpenID Connect provider works too; [docs/sign-in.md](docs/sign-in.md) has the steps for Authelia, Authentik and Keycloak, and what to check when sign-in fails. Set `ALMANAC_PRIVACY_CONTACT` to put a contact on the public `/privacy` page, which Google's consent screen links to.
 
 Back up `data/`: it holds the database and `files/`, the files people add to tasks. `node server/backup.ts` inside the container writes a consistent copy of the database to `data/snapshots/almanac-latest.db` for file-level backups.
+
+A household that syncs through Google Drive can have the server as one more copy, so the connector sees and changes the same things as everyone's phones: an admin connects it in Settings, Sync with Google Drive ([docs/google-drive.md](docs/google-drive.md)).
 
 Reminders reach phones through web push. Almanac makes its push keys on first start and keeps them in the database, so there's nothing to configure; people turn notifications on per device in Settings, Notifications. On iPhone and iPad that works once Almanac is added to the home screen.
 
