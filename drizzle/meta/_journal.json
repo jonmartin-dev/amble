@@ -85,6 +85,20 @@
       "when": 1792036492421,
       "tag": "0011_sync_aliases",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1792095197023,
+      "tag": "0012_phones",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1792095923337,
+      "tag": "0013_drop_phones",
+      "breakpoints": true
     }
   ]
 }
