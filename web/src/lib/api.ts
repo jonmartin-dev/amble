@@ -162,6 +162,8 @@ export interface UpcomingReminder {
   taskId: string;
   title: string;
   at: string;
+  /** The line under the title in its notification. */
+  body: string | null;
 }
 
 export interface DayLoad {

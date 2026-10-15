@@ -12,9 +12,12 @@ const RETRY_FOR_MS = 30 * 60 * 1000;
 
 export const SNOOZE_MINUTES = 60;
 
-/** The line under the task's title: its deadline if that's close, or the start of its notes. */
-export function reminderBody(task: Pick<Task, 'dueDate' | 'notes'>, member: Member): string | undefined {
-  const today = planningDate(member);
+/**
+ * The line under the task's title: its deadline if that's close, or the start of its notes. `at` is
+ * when it shows, for a phone that schedules it ahead.
+ */
+export function reminderBody(task: Pick<Task, 'dueDate' | 'notes'>, member: Member, at = new Date()): string | undefined {
+  const today = planningDate(member, Temporal.Instant.fromEpochMilliseconds(at.getTime()));
   if (task.dueDate === today) return 'Due today';
   if (task.dueDate === addDays(today, 1)) return 'Due tomorrow';
   const note = task.notes

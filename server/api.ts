@@ -64,6 +64,7 @@ import {
 } from './domain/tasks.ts';
 import { addDays, planningDate } from './lib/dates.ts';
 import type { Push } from './notify/push.ts';
+import { reminderBody } from './notify/reminders.ts';
 import { madeAt } from './requests.ts';
 
 const date = z.iso.date();
@@ -555,7 +556,12 @@ export function registerApi(
     return c.json(result);
   });
 
-  app.get('/api/reminders', (c) => c.json({ reminders: upcomingReminders(db, me(c)) }));
+  // With the line each notification shows, for the Android app, which schedules them ahead.
+  app.get('/api/reminders', (c) => {
+    const member = me(c);
+    const upcoming = upcomingReminders(db, member).map(({ dueDate, notes, ...r }) => ({ ...r, body: reminderBody({ dueDate, notes }, member, r.at) ?? null }));
+    return c.json({ reminders: upcoming });
+  });
 
   app.post('/api/reminders/:id/snooze', async (c) => {
     const { minutes } = await body(c, z.object({ minutes: z.number().int().min(5).max(7 * 24 * 60) }));

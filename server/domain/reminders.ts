@@ -66,7 +66,7 @@ export function snoozeReminder(db: Db, member: Member, id: string, minutes: numb
 /** A person's reminders still to come, soonest first, on tasks that are still open. */
 export function upcomingReminders(db: Db, member: Member) {
   return db
-    .select({ id: reminders.id, taskId: tasks.id, title: tasks.title, at: reminders.fireAt })
+    .select({ id: reminders.id, taskId: tasks.id, title: tasks.title, at: reminders.fireAt, dueDate: tasks.dueDate, notes: tasks.notes })
     .from(reminders)
     .innerJoin(tasks, eq(reminders.taskId, tasks.id))
     .where(and(eq(reminders.memberId, member.id), isNull(reminders.sentAt), eq(tasks.status, 'open')))

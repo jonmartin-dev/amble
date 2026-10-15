@@ -254,6 +254,14 @@ describe('sending reminders', () => {
     expect(reminderBody({ dueDate: null, notes: null }, jon)).toBeUndefined();
   });
 
+  it('words coming reminders for when they show, for a phone that schedules them ahead', async () => {
+    const tomorrow = addDays(today, 1);
+    const at = Temporal.PlainDate.from(tomorrow).toZonedDateTime({ timeZone: 'America/Chicago', plainTime: '09:00' }).toInstant().toString();
+    await as(jon).post('/tasks', { title: 'Renew the parking permit', dueDate: tomorrow, remindAt: at });
+    const { json } = await as(jon).get('/reminders');
+    expect(json.reminders).toEqual([expect.objectContaining({ title: 'Renew the parking permit', body: 'Due today' })]);
+  });
+
   it('sends a test notification to every device', async () => {
     const { json } = await as(jon).post('/push/test');
     expect(json).toEqual({ devices: 1, sent: 1, gone: 0, failed: 0 });
