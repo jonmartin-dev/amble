@@ -64,7 +64,22 @@ export interface Ai {
   complete<T extends z.ZodType>(setup: AiSetup, req: AiRequest<T>): Promise<AiAnswer<z.output<T>>>;
   /** Keeps a model set up in the app, or with null goes back to the environment's. */
   save(settings: AiSettings | null): void;
+  /** Whether a key saved in the app can still be opened, for Settings to say so. */
+  keyState(): 'none' | 'saved' | 'unreadable';
 }
+
+/** How a saved key is kept: sealed on the server; on a device, as the device keeps everything else. */
+export interface KeyBox {
+  seal(key: string): string;
+  /** The key, or undefined when it can't be opened anymore. */
+  open(sealed: string): string | undefined;
+}
+
+/** Sealed under the server's OAuth client secret, like calendar tokens (server/lib/seal.ts). */
+export const sealedKeys = (secret: string): KeyBox => ({
+  seal: (key) => seal(secret, KEY_PURPOSE, key),
+  open: (sealed) => unseal(secret, KEY_PURPOSE, sealed),
+});
 
 /** What the admin sets in Settings, AI. */
 export interface AiSettings {
@@ -107,15 +122,14 @@ export function fromEnvironment(config: Config): AiSetup | null {
   };
 }
 
-export function createAi(config: Config, db?: Db, fetchImpl: typeof fetch = fetch): Ai {
-  const secret = config.oidc.clientSecret;
+export function createAi(config: Config, db?: Db, fetchImpl: typeof fetch = fetch, keys: KeyBox = sealedKeys(config.oidc.clientSecret)): Ai {
   let cached: { setup: AiSetup | null } | null = null;
 
   const read = (): AiSetup | null => {
     const row = db?.select().from(serverSettings).where(eq(serverSettings.key, 'ai')).get();
     if (!row) return fromEnvironment(config);
     const saved = row.value as Stored;
-    const apiKey = saved.key ? unseal(secret, KEY_PURPOSE, saved.key) : '';
+    const apiKey = saved.key ? keys.open(saved.key) : '';
     // A key sealed under an old client secret can't be read; it needs entering again.
     if (apiKey === undefined) return null;
     return { ...saved, apiKey, source: 'settings' };
@@ -141,19 +155,20 @@ export function createAi(config: Config, db?: Db, fetchImpl: typeof fetch = fetc
       }
       const { apiKey, ...rest } = settings;
       const before = db.select().from(serverSettings).where(eq(serverSettings.key, 'ai')).get()?.value as Stored | undefined;
-      const key = apiKey ? seal(secret, KEY_PURPOSE, apiKey) : before?.provider === settings.provider ? before.key : '';
+      const key = apiKey ? keys.seal(apiKey) : before?.provider === settings.provider ? before.key : '';
       const value: Stored = { ...rest, key };
       db.insert(serverSettings).values({ key: 'ai', value }).onConflictDoUpdate({ target: serverSettings.key, set: { value } }).run();
     },
+    keyState: () => (db ? savedKeyState(db, config, keys) : 'none'),
   };
   return ai;
 }
 
 /** Whether a saved setup still has a key the server can open (for Settings to say so). */
-export function savedKeyState(db: Db, config: Config): 'none' | 'saved' | 'unreadable' {
+export function savedKeyState(db: Db, config: Config, keys: KeyBox = sealedKeys(config.oidc.clientSecret)): 'none' | 'saved' | 'unreadable' {
   const saved = db.select().from(serverSettings).where(eq(serverSettings.key, 'ai')).get()?.value as Stored | undefined;
   if (!saved?.key) return 'none';
-  return unseal(config.oidc.clientSecret, KEY_PURPOSE, saved.key) === undefined ? 'unreadable' : 'saved';
+  return keys.open(saved.key) === undefined ? 'unreadable' : 'saved';
 }
 
 /** What to call the model in messages: "Claude Haiku 5.5", or the id of one Almanac doesn't know. */
@@ -174,7 +189,9 @@ async function anthropicCall<T extends z.ZodType>(setup: AiSetup, req: AiRequest
   let client = anthropicClients.get(setup.apiKey);
   if (!client) {
     // Smart add waits on this call, so fail fast and fall back rather than hang.
-    client = new Anthropic({ apiKey: setup.apiKey, timeout: 45_000, maxRetries: 1 });
+    // On a device the call goes straight from the app's worker, which Anthropic allows when asked.
+    const onDevice = typeof document !== 'undefined' || 'WorkerGlobalScope' in globalThis;
+    client = new Anthropic({ apiKey: setup.apiKey, timeout: 45_000, maxRetries: 1, dangerouslyAllowBrowser: onDevice });
     anthropicClients.set(setup.apiKey, client);
   }
   const response = await client.messages.parse({

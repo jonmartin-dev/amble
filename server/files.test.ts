@@ -10,7 +10,8 @@ import { config, type Config } from './config.ts';
 import { openDatabase, type Db } from './db/index.ts';
 import { attachments, members, type Member } from './db/schema.ts';
 import { seedStarterGroups } from './db/seed.ts';
-import { createFileStore, fileType, cleanName, sweepFiles, type FileStore } from './domain/files.ts';
+import { fileType, cleanName, sweepFiles } from './domain/files.ts';
+import { createFileStore, type DiskFileStore } from './lib/disk-files.ts';
 import { createGroup } from './domain/household.ts';
 import { completeTasks, createTasks, getTask } from './domain/tasks.ts';
 import { planningDate } from './lib/dates.ts';
@@ -36,7 +37,7 @@ const PHOTO = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc
 
 let db: Db;
 let app: ReturnType<typeof createApp>;
-let store: FileStore;
+let store: DiskFileStore;
 let dir: string;
 let jon: Member;
 let alex: Member;
@@ -188,7 +189,7 @@ describe('files on tasks', () => {
     await as(jon).request('DELETE', `/files/${gone.id}`);
     const goneSha = db.select().from(attachments).all().find((a) => a.id === gone.id)!.sha256;
     const later = Date.now() + 8 * 24 * 60 * 60 * 1000;
-    expect(sweepFiles(db, store, later)).toEqual({ purged: 1, deleted: 1 });
+    expect(await sweepFiles(db, store, later)).toEqual({ purged: 1, deleted: 1 });
     expect(fs.existsSync(store.pathOf(goneSha))).toBe(false);
     expect(db.select().from(attachments).all().map((a) => a.id)).toEqual([kept.id]);
   });

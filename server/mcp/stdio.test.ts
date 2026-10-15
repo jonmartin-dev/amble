@@ -9,7 +9,7 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { openDatabase } from '../db/index.ts';
 import { attachments, members, tasks } from '../db/schema.ts';
-import { createFileStore } from '../domain/files.ts';
+import { createFileStore } from '../lib/disk-files.ts';
 
 const entry = fileURLToPath(new URL('../mcp-stdio.ts', import.meta.url));
 let dataDir: string;

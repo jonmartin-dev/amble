@@ -7,7 +7,8 @@ import { listSections, listTemplate, LIST_TEMPLATES } from '../../shared/templat
 import { config } from '../config.ts';
 import type { Db } from '../db/index.ts';
 import { attachments, listItems, pushSubscriptions, tasks, type Group, type ListItem, type Member } from '../db/schema.ts';
-import { createFileStore, type FileStore } from '../domain/files.ts';
+import type { FileStore } from '../domain/files.ts';
+import { createFileStore } from '../lib/disk-files.ts';
 import {
   createGroup,
   DomainError,
@@ -436,18 +437,18 @@ export function createMcpServer({
       if (found.length !== 1) return text(found.length ? 'More than one file starts with that id. Use more of it.' : `No file with id ${id}.`, true);
       const file = found[0]!;
       const sha = file.previewSha256 ?? file.sha256;
-      const path = files.pathOf(sha);
-      if (!fs.existsSync(path)) return text(`${file.name} is missing from the server.`, true);
-      const size = fs.statSync(path).size;
+      const stored = await files.get(sha);
+      if (!stored) return text(`${file.name} is missing from the server.`, true);
+      const { size } = stored;
       if (READABLE_IMAGES.has(file.mime) || file.previewSha256) {
         if (size > IMAGE_MAX_BYTES) return text(`${file.name} is too big to look at here (${Math.round(size / 1024 / 1024)} MB).`, true);
-        const data = fs.readFileSync(path);
+        const data = Buffer.from(await stored.bytes());
         const mimeType = file.previewSha256 ? sniffImage(data) : file.mime;
         return { content: [{ type: 'text' as const, text: file.name }, { type: 'image' as const, data: data.toString('base64'), mimeType }] };
       }
       if (file.mime.startsWith('text/') || file.mime === 'application/json') {
         if (size > TEXT_MAX_BYTES) return text(`${file.name} is too long to read here.`, true);
-        return text(`${file.name}:\n\n${fs.readFileSync(path, 'utf8')}`);
+        return text(`${file.name}:\n\n${new TextDecoder().decode(await stored.bytes())}`);
       }
       return text(`${file.name} is a ${file.mime} file, which can't be opened through the connector. It's on the task in Almanac.`, true);
     },

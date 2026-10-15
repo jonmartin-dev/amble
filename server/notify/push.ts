@@ -7,6 +7,9 @@ import type { Config } from '../config.ts';
 import type { Db } from '../db/index.ts';
 import { pushSubscriptions, serverSettings, type Member } from '../db/schema.ts';
 import { DomainError } from '../domain/household.ts';
+import { deviceName, type NewSubscription, type Push, type PushMessage, type PushResult } from './devices.ts';
+
+export { deviceName, type NewSubscription, type Push, type PushMessage, type PushResult };
 
 // Where browsers' push services live. A subscription has to point at one of them, so the server
 // never posts to an address someone made up.
@@ -15,32 +18,6 @@ const PUSH_HOSTS = ['googleapis.com', 'mozilla.com', 'apple.com', 'windows.com']
 // A reminder that can't be delivered within a few hours (the phone was off) isn't worth showing.
 const TTL_SECONDS = 4 * 60 * 60;
 const SEND_TIMEOUT_MS = 10_000;
-
-export interface PushMessage {
-  title: string;
-  body?: string;
-  /** A newer notification with the same tag replaces the older one. */
-  tag?: string;
-  /** The app page to open when it's tapped. */
-  url?: string;
-  /** Buttons on the notification, handled by the service worker. */
-  actions?: { action: string; title: string }[];
-  /** For the service worker: which reminder, task and person it's about. */
-  data?: Record<string, unknown>;
-}
-
-export interface PushResult {
-  devices: number;
-  sent: number;
-  /** Devices the push service no longer knows (notifications turned off, app removed); forgotten. */
-  gone: number;
-  failed: number;
-}
-
-export interface NewSubscription {
-  endpoint: string;
-  keys: { p256dh: string; auth: string };
-}
 
 type Send = (sub: Subscription, payload: string, options: RequestOptions) => Promise<unknown>;
 
@@ -51,40 +28,6 @@ function vapidKeys(db: Db): { publicKey: string; privateKey: string } {
   if (existing) return existing;
   db.insert(serverSettings).values({ key: 'vapid', value: webpush.generateVAPIDKeys() }).onConflictDoNothing().run();
   return read()!;
-}
-
-/** "Chrome on Android" from a user agent, near enough to tell someone's devices apart. */
-export function deviceName(userAgent: string | undefined | null): string | null {
-  if (!userAgent) return null;
-  const ua = userAgent;
-  const browser = /Edg\//.test(ua)
-    ? 'Edge'
-    : /SamsungBrowser/.test(ua)
-      ? 'Samsung Internet'
-      : /Firefox\//.test(ua)
-        ? 'Firefox'
-        : /Chrome\//.test(ua)
-          ? 'Chrome'
-          : /Safari\//.test(ua)
-            ? 'Safari'
-            : null;
-  const os = /Android/.test(ua)
-    ? 'Android'
-    : /iPhone/.test(ua)
-      ? 'iPhone'
-      : /iPad/.test(ua)
-        ? 'iPad'
-        : /CrOS/.test(ua)
-          ? 'ChromeOS'
-          : /Windows/.test(ua)
-            ? 'Windows'
-            : /Mac OS X|Macintosh/.test(ua)
-              ? 'Mac'
-              : /Linux/.test(ua)
-                ? 'Linux'
-                : null;
-  if (browser && os) return `${browser} on ${os}`;
-  return browser ?? os;
 }
 
 function checkEndpoint(endpoint: string) {
@@ -100,7 +43,7 @@ function checkEndpoint(endpoint: string) {
   }
 }
 
-export function createPush(db: Db, config: Config, send: Send = (sub, payload, options) => webpush.sendNotification(sub, payload, options)) {
+export function createPush(db: Db, config: Config, send: Send = (sub, payload, options) => webpush.sendNotification(sub, payload, options)): Push {
   const keys = vapidKeys(db);
   // Push services want a way to reach whoever runs the server: its address, or an admin's email.
   const subject = config.publicUrl.startsWith('https://') ? config.publicUrl : `mailto:${config.adminEmails[0] ?? 'almanac@example.com'}`;
@@ -181,4 +124,3 @@ export function createPush(db: Db, config: Config, send: Send = (sub, payload, o
   };
 }
 
-export type Push = ReturnType<typeof createPush>;

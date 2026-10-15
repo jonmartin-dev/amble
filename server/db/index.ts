@@ -2,22 +2,28 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Database from 'better-sqlite3';
-import { drizzle } from 'drizzle-orm/better-sqlite3';
-import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
+import { readMigrationFiles } from 'drizzle-orm/migrator';
+import type { Sqlite3Static } from '@sqlite.org/sqlite-wasm';
 import { config } from '../config.ts';
-import * as schema from './schema.ts';
+import { applyMigrations, drizzleOn, type Migration } from './open.ts';
+import { asBetterSqlite, WasmClient } from './wasm.ts';
+
+export type { Db } from './open.ts';
 
 const migrationsFolder = fileURLToPath(new URL('../../drizzle', import.meta.url));
 
+let migrations: Migration[] | undefined;
+
 export function openDatabase(file = path.join(config.dataDir, 'almanac.db')) {
   if (file !== ':memory:') fs.mkdirSync(path.dirname(file), { recursive: true });
-  const sqlite = new Database(file);
+  // `ALMANAC_SQLITE=wasm pnpm test` runs every test on the app's WebAssembly SQLite instead.
+  const wasm = (globalThis as { __almanacSqlite3?: Sqlite3Static }).__almanacSqlite3;
+  const sqlite = wasm && file === ':memory:' ? asBetterSqlite(new WasmClient(wasm, new wasm.oo1.DB(':memory:', 'c'))) : new Database(file);
   sqlite.pragma('journal_mode = WAL');
   sqlite.pragma('foreign_keys = ON');
   sqlite.pragma('busy_timeout = 5000');
-  const db = drizzle(sqlite, { schema });
-  migrate(db, { migrationsFolder });
+  const db = drizzleOn(sqlite);
+  migrations ??= readMigrationFiles({ migrationsFolder });
+  applyMigrations(db, migrations);
   return db;
 }
-
-export type Db = ReturnType<typeof openDatabase>;

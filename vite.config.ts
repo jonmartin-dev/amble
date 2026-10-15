@@ -5,7 +5,7 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import Icons from 'unplugin-icons/vite';
 import { build, type Plugin } from 'vite';
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 
 const server = `http://localhost:${process.env.PORT ?? 8787}`;
 
@@ -68,6 +68,10 @@ export default defineConfig({
   test: {
     // Vite's root is web/, but server tests live beside the server code.
     dir: import.meta.dirname,
+    // Worktrees of other sessions live under .claude/ and carry their own copy of every test.
+    exclude: [...configDefaults.exclude, '.claude/**'],
+    // `ALMANAC_SQLITE=wasm pnpm test` runs the suite on the WebAssembly SQLite the app's worker uses.
+    setupFiles: process.env.ALMANAC_SQLITE === 'wasm' ? [path.join(import.meta.dirname, 'server/test-wasm.ts')] : [],
     // material-color-utilities has extensionless ESM imports that only a bundler resolves.
     server: { deps: { inline: ['@material/material-color-utilities'] } },
   },

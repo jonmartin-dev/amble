@@ -17,6 +17,7 @@
     "start": "node server/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:wasm": "node scripts/test-wasm.ts",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
@@ -36,6 +37,7 @@
     "@iconify-json/material-symbols": "^1.2.95",
     "@modelcontextprotocol/client": "2.3.1",
     "@resvg/resvg-js": "2.6.2",
+    "@sqlite.org/sqlite-wasm": "3.53.4-build1",
     "@svgr/core": "^8.1.0",
     "@svgr/plugin-jsx": "^8.1.0",
     "@tailwindcss/vite": "4.3.3",
@@ -55,6 +57,7 @@
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "tailwindcss": "4.3.3",
+    "temporal-polyfill": "1.0.5",
     "typescript": "7.0.2",
     "unplugin-icons": "24.0.0",
     "vite": "8.3.4",

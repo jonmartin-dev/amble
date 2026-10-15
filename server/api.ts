@@ -1,7 +1,5 @@
 // The app's JSON API over the task layer. Every route here runs behind the sign-in guard and
 // logs changes as made "via app".
-import fs from 'node:fs';
-import { Readable } from 'node:stream';
 import { count, eq, isNull } from 'drizzle-orm';
 import type { Context, Hono } from 'hono';
 import { z } from 'zod';
@@ -9,7 +7,7 @@ import { AI_PROVIDERS, aiModel, aiProvider, type AiProviderId } from '../shared/
 import type { AddHints, Proposal } from '../shared/proposals.ts';
 import { applyOrganize, applyProposals } from './ai/apply.ts';
 import { organizeBacklog, planMyWeek, type OrganizeSuggestion } from './ai/plan.ts';
-import { AiUnavailable, checkSetup, fromEnvironment, modelName, monthSpendUsd, savedKeyState, type Ai } from './ai/client.ts';
+import { AiUnavailable, checkSetup, fromEnvironment, modelName, monthSpendUsd, type Ai } from './ai/client.ts';
 import { smartAdd } from './ai/smartAdd.ts';
 import type { CalendarSync } from './calendar/sync.ts';
 import { inviteMember } from './auth/members.ts';
@@ -28,6 +26,7 @@ import {
   removeAttachment,
   servedAs,
   setPreview,
+  tooBigMessage,
   type FileStore,
 } from './domain/files.ts';
 import {
@@ -46,7 +45,7 @@ import {
   type Actor,
 } from './domain/household.ts';
 import { addListItems, checkListItems, getListItems, listHistory, openTrip, resetList, setListSections, updateListItem } from './domain/lists.ts';
-import { defaultCapacity, findGap, getLoad, learnedCapacity } from './domain/load.ts';
+import { defaultCapacity, findGap, getLoad, learnedCapacity, MAX_CAPACITY_MINUTES } from './domain/load.ts';
 import { dismissSuggestion, findGaps, getBriefing, markBriefingSeen } from './domain/planner.ts';
 import { snoozeReminder, upcomingReminders } from './domain/reminders.ts';
 import { repeatSchema } from './domain/repeat.ts';
@@ -130,13 +129,10 @@ const PREVIEW_TYPES = ['image/webp', 'image/jpeg', 'image/png'];
 const PREVIEW_MAX_BYTES = 3 * 1024 * 1024;
 
 /** What kind of image a preview is, from its first bytes. */
-function imageType(file: string) {
-  const fd = fs.openSync(file, 'r');
-  const head = Buffer.alloc(12);
-  fs.readSync(fd, head, 0, 12, 0);
-  fs.closeSync(fd);
-  if (head.toString('ascii', 0, 4) === 'RIFF' && head.toString('ascii', 8, 12) === 'WEBP') return 'image/webp';
-  if (head[0] === 0x89 && head.toString('ascii', 1, 4) === 'PNG') return 'image/png';
+export function imageType(bytes: Uint8Array) {
+  const ascii = (from: number, to: number) => String.fromCharCode(...bytes.subarray(from, to));
+  if (ascii(0, 4) === 'RIFF' && ascii(8, 12) === 'WEBP') return 'image/webp';
+  if (bytes[0] === 0x89 && ascii(1, 4) === 'PNG') return 'image/png';
   return 'image/jpeg';
 }
 
@@ -252,6 +248,46 @@ export function registerApi(
     if (err instanceof DomainError) return c.json({ error: err.message }, 400);
     console.error('Request failed:', err);
     return c.json({ error: 'Something went wrong. Try again.' }, 500);
+  });
+
+  const themeSchema = z.object({
+    mode: z.enum(['system', 'light', 'dark']),
+    seed: z.string().regex(/^#[0-9a-f]{6}$/i),
+    style: z.enum(['tonal', 'expressive', 'vibrant', 'fidelity', 'neutral']),
+    contrast: z.union([z.literal(0), z.literal(0.5), z.literal(1)]),
+  });
+
+  // ---- you ----------------------------------------------------------------------------------
+
+  app.patch('/api/me', async (c) => {
+    // theme: null resets to the default theme.
+    // capacity: null resets every weekday to the default; a missing weekday uses the default too.
+    const parsed = z
+      .object({
+        theme: themeSchema.nullable().optional(),
+        capacity: z
+          .partialRecord(z.enum(['1', '2', '3', '4', '5', '6', '7']), z.number().int().min(0).max(MAX_CAPACITY_MINUTES))
+          .nullable()
+          .optional(),
+        showStreaks: z.boolean().optional(),
+        smartAdd: z.boolean().optional(),
+      })
+      .safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: 'Those settings look wrong. Try again.' }, 400);
+    const me = c.get('member')!;
+    const { theme, capacity, showStreaks, smartAdd } = parsed.data;
+    const updated = db
+      .update(members)
+      .set({
+        ...(theme !== undefined && { theme }),
+        ...(capacity !== undefined && { capacity }),
+        ...(showStreaks !== undefined && { showStreaks }),
+        ...(smartAdd !== undefined && { smartAdd }),
+      })
+      .where(eq(members.id, me.id))
+      .returning()
+      .get();
+    return c.json({ member: updated });
   });
 
   // ---- household ----------------------------------------------------------------------------
@@ -541,17 +577,19 @@ export function registerApi(
     return file;
   };
   const gone = (c: Context<Env>) => c.json({ error: 'That file is gone.' }, 404);
-  const tooBig = () => `Files can be up to ${Math.round(config.maxFileBytes / 1024 / 1024)} MB.`;
+  const tooBig = () => tooBigMessage(config.maxFileBytes);
 
   /** Streams stored bytes back. They never change, so browsers can keep them. */
-  const sendFile = (c: Context<Env>, sha256: string, type: string, inline: boolean, name: string) => {
-    const file = files.pathOf(sha256);
-    if (!fs.existsSync(file)) return gone(c);
+  const sendFile = async (c: Context<Env>, sha256: string, kind: string | ((bytes: Uint8Array) => string), inline: boolean, name: string) => {
+    const file = await files.get(sha256);
+    if (!file) return gone(c);
     if (c.req.header('if-none-match') === `"${sha256}"`) return c.body(null, 304);
     const ascii = name.replace(/[^\x20-\x7e]|["\\]/g, '_');
-    return c.body(Readable.toWeb(fs.createReadStream(file)) as ReadableStream, 200, {
+    // A preview's type comes from its first bytes.
+    const type = typeof kind === 'function' ? kind(await file.bytes()) : kind;
+    return c.body(file.stream(), 200, {
       'Content-Type': type,
-      'Content-Length': String(fs.statSync(file).size),
+      'Content-Length': String(file.size),
       'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name)}`,
       'Cache-Control': 'private, max-age=31536000, immutable',
       ETag: `"${sha256}"`,
@@ -587,17 +625,17 @@ export function registerApi(
     return c.body(null, 204);
   });
 
-  app.get('/api/files/:id', (c) => {
+  app.get('/api/files/:id', async (c) => {
     const file = visibleFile(c);
     if (!file || file.removedAt) return gone(c);
     const { type, inline } = servedAs(file.mime);
     return sendFile(c, file.sha256, type, inline && c.req.query('download') !== '1', file.name);
   });
 
-  app.get('/api/files/:id/preview', (c) => {
+  app.get('/api/files/:id/preview', async (c) => {
     const file = visibleFile(c);
     if (!file || file.removedAt || !file.previewSha256) return gone(c);
-    return sendFile(c, file.previewSha256, imageType(files.pathOf(file.previewSha256)), true, file.name);
+    return sendFile(c, file.previewSha256, imageType, true, file.name);
   });
 
   app.delete('/api/files/:id', (c) => {
@@ -779,7 +817,7 @@ export function registerApi(
               keyEnding: setup.apiKey ? setup.apiKey.slice(-4) : null,
             }
           : null,
-      keyUnreadable: admin && !setup && savedKeyState(db, config) === 'unreadable',
+      keyUnreadable: admin && !setup && ai.keyState() === 'unreadable',
     });
   });
 
