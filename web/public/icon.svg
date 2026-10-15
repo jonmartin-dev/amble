@@ -1,12 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="160" fill="#B6EFD8"/>
-  <circle cx="256" cy="292" r="104" fill="#2E6A57"/>
-  <rect x="96" y="292" width="320" height="140" fill="#B6EFD8"/>
-  <rect x="112" y="318" width="288" height="28" rx="14" fill="#2E6A57"/>
-  <rect x="160" y="370" width="192" height="28" rx="14" fill="#2E6A57" opacity="0.55"/>
-  <g stroke="#2E6A57" stroke-width="22" stroke-linecap="round">
-    <line x1="256" y1="104" x2="256" y2="148"/>
-    <line x1="132" y1="160" x2="160" y2="190"/>
-    <line x1="380" y1="160" x2="352" y2="190"/>
+  <!-- Amble: the sun coming up behind rolling hills. The hills run past the edges so the art can go
+       full-bleed (scripts/icons.ts squares off the corners for maskable icons). -->
+  <clipPath id="shape"><rect width="512" height="512" rx="160"/></clipPath>
+  <g clip-path="url(#shape)">
+    <rect width="512" height="512" fill="#FDE6D2"/>
+    <circle cx="314" cy="250" r="84" fill="#EE8C52"/>
+    <path d="M-128 396C40 340 196 244 314 246C430 248 560 300 640 324V640H-128Z" fill="#8DBBA6"/>
+    <path d="M-128 476C0 404 92 334 184 338C294 343 384 424 640 404V640H-128Z" fill="#2E6A57"/>
   </g>
 </svg>
