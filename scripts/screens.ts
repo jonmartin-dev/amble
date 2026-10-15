@@ -16,9 +16,13 @@ const routes = [
   '/settings',
   '/settings/groups',
   '/settings/capacity',
+  '/settings/calendars',
+  '/settings/notifications',
+  '/settings/ai',
   '/appearance',
   '/connections',
   '/household',
+  '/privacy',
 ];
 const only = process.argv[3]?.split(',');
 const allVariants = [
@@ -120,13 +124,13 @@ for (const v of variants) {
   if (rich) {
     await page.goto(`${base}/task/${rich.id}`);
     await page.waitForLoadState('networkidle');
-    await page.getByText(/Someday|Today|Tomorrow|day$/).first().click();
+    await page.locator('main').getByText(/Someday|Today|Tomorrow|day$/).locator('visible=true').first().click();
     await page.waitForTimeout(900);
     await page.screenshot({ path: `${out}/${v.name}-move.png` });
     console.log(`${out}/${v.name}-move.png`);
     await closeSheet();
     await page.waitForTimeout(400);
-    await page.getByRole('button', { name: /Doesn't repeat|Every|Weekly|Monthly|after it's done/ }).first().click();
+    await page.getByRole('button', { name: /Doesn't repeat|Every|Weekly|Monthly|after it's done/ }).locator('visible=true').first().click();
     await page.waitForTimeout(900);
     await shoot('repeat', false);
     await closeSheet();
@@ -135,7 +139,8 @@ for (const v of variants) {
   await page.goto(`${base}/backlog`);
   await page.waitForLoadState('networkidle');
   await page.getByRole('button', { name: 'New group or list' }).click();
-  await page.getByRole('button', { name: 'Shopping-style list' }).click();
+  await page.getByRole('radio', { name: 'List', exact: true }).click();
+  await page.getByRole('radiogroup', { name: 'Kind of list' }).getByRole('radio').nth(1).click();
   await page.waitForTimeout(800);
   await shoot('new-list', false);
   await closeSheet();
