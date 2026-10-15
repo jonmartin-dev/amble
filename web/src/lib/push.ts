@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from './api.ts';
 import { onDevice } from './device.ts';
 import { kvDel, kvGet, kvSet } from './idb.ts';
-import { askPhoneNotifyPermission, cancelPhoneReminders, native, phoneNotifyPermission, schedulePhoneReminders } from './native.ts';
+import { askPhoneNotifyPermission, cancelPhoneReminders, checkInBackground, native, phoneNotifyPermission, schedulePhoneReminders } from './native.ts';
 
 /**
  * - unsupported: this browser can't show notifications from a web app.
@@ -84,7 +84,7 @@ export async function enablePush(): Promise<PushState> {
     const endpoint = (await deviceEndpoint()) ?? `device:${crypto.randomUUID()}`;
     await api('/push/subscriptions', { method: 'POST', body: JSON.stringify({ endpoint, keys: { p256dh: '-', auth: '-' } }) });
     await kvSet(DEVICE_ENDPOINT, endpoint);
-    if (native) await schedulePhoneReminders();
+    if (native) await syncPhoneReminders();
     return 'on';
   }
   const reg = await registration();
@@ -103,9 +103,14 @@ export async function disablePush() {
   if (native) await cancelPhoneReminders();
 }
 
-/** In the Android app, with reminders on here: hands the phone the coming ones again, after a change. */
+/**
+ * In the Android app, with reminders on here: hands the phone the coming ones again, after a
+ * change, and keeps it checking in the background for ones set elsewhere.
+ */
 export async function syncPhoneReminders() {
-  if (native && (await currentSubscription())) await schedulePhoneReminders();
+  if (!native || !(await currentSubscription())) return;
+  await schedulePhoneReminders();
+  await checkInBackground();
 }
 
 /**

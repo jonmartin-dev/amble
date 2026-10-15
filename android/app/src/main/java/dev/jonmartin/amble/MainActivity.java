@@ -10,6 +10,7 @@ public class MainActivity extends BridgeActivity {
         // The app's own plugins go in before Capacitor starts.
         registerPlugin(GoogleDrivePlugin.class);
         registerPlugin(TodayWidgetPlugin.class);
+        registerPlugin(ReminderCheckPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

@@ -48,7 +48,7 @@ export function createReminderSender(db: Db, push: Push, basePath: string) {
             { action: 'done', title: 'Done' },
             { action: 'snooze', title: 'Snooze 1 hour' },
           ],
-          data: { kind: 'reminder', reminderId: reminder.id, taskId: task.id, memberId: member.id, snoozeMinutes: SNOOZE_MINUTES },
+          data: { kind: 'reminder', reminderId: reminder.id, taskId: task.id, memberId: member.id, snoozeMinutes: SNOOZE_MINUTES, at: reminder.fireAt.getTime() },
         });
         if (result.sent > 0) {
           markReminder(db, reminder.id, 'sent');

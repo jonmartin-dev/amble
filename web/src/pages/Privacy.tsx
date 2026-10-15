@@ -55,7 +55,7 @@ function DevicePrivacy() {
         <h2>Reminders</h2>
         <p>
           {native
-            ? 'A reminder you set is handed to your phone, which shows it at its time. Nothing goes through a push service.'
+            ? 'A reminder you set is handed to your phone, which shows it at its time. With sync on, the phone also checks your household’s file in Drive about every 15 minutes for reminders you set elsewhere. Nothing goes through a push service.'
             : 'A reminder you set shows as a notification from this browser while Amble is open. Nothing goes through a push service.'}
         </p>
         <h2>AI features</h2>

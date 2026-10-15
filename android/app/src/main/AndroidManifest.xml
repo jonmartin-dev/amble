@@ -36,6 +36,11 @@
                 android:resource="@xml/widget_today_info" />
         </receiver>
 
+        <!-- Shows a reminder the background check found (ReminderCheck), at its time. -->
+        <receiver
+            android:name=".ReminderAlarm"
+            android:exported="false" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

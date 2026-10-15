@@ -1,6 +1,8 @@
 // Amble as the Android app: Capacitor around the device build. The phone itself shows each
 // reminder at its time, even with Amble closed, so the app hands it the coming ones whenever they
-// may have changed. Done and Snooze on a notification work as they do for web push.
+// may have changed. For reminders set elsewhere while Amble is closed (through Claude, say), the
+// phone checks the household in the background (ReminderCheck.java). Done and Snooze on a
+// notification work as they do for web push.
 import { App } from '@capacitor/app';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
@@ -21,6 +23,14 @@ const AHEAD = 100;
 // doesn't need showing again when the app catches up.
 const HANDED_KEY = 'almanac-phone-reminders';
 const KEEP_MS = 7 * 24 * 60 * 60 * 1000;
+
+interface ReminderCheckPlugin {
+  start(options: { fileId: string; email: string | null; memberId: string }): Promise<void>;
+  stop(): Promise<void>;
+  handOver(options: { reminders: Record<string, number> }): Promise<void>;
+  shown(): Promise<{ reminders: Record<string, number> }>;
+}
+const ReminderCheck = registerPlugin<ReminderCheckPlugin>('ReminderCheck');
 
 /** Android wants a 32-bit number for each notification. */
 function notificationId(reminderId: string) {
@@ -137,6 +147,20 @@ async function reschedule() {
   } catch {
     // Without storage, a reminder can show twice when the app catches up; never not at all.
   }
+  // The background check leaves these to the phone's own alarms.
+  await ReminderCheck.handOver({ reminders: kept }).catch(() => {});
+}
+
+/**
+ * While the household syncs through Drive, the phone checks its file about every 15 minutes for
+ * this person's reminders set elsewhere, and shows them with Amble closed. Stops otherwise.
+ */
+export async function checkInBackground() {
+  if (!native) return;
+  const sync = await api<{ on: boolean; target: { fileId: string } | null; account: { email: string } | null }>('/sync');
+  const { member } = await api<{ member: { id: string } | null }>('/session');
+  if (sync.on && sync.target && member) await ReminderCheck.start({ fileId: sync.target.fileId, email: sync.account?.email ?? null, memberId: member.id });
+  else await ReminderCheck.stop();
 }
 
 /** Takes every reminder back from the phone: notifications are off here. */
@@ -144,17 +168,23 @@ export async function cancelPhoneReminders() {
   const { notifications } = await LocalNotifications.getPending();
   if (notifications.length) await LocalNotifications.cancel({ notifications: notifications.map((n) => ({ id: n.id })) });
   localStorage.removeItem(HANDED_KEY);
+  await ReminderCheck.stop().catch(() => {});
 }
 
 /**
  * The app's own reminder check found one due: the phone showed it already if it was handed over
  * for that time, or shows it now (one set for right now, say).
  */
-export async function showOnPhone(message: { title: string; body?: string; tag?: string; data?: { reminderId?: string; taskId?: string } }) {
+export async function showOnPhone(message: { title: string; body?: string; tag?: string; data?: { reminderId?: string; taskId?: string; at?: number } }) {
   if ((await phoneNotifyPermission()) !== 'granted') return false;
   const id = message.data?.reminderId ?? message.tag;
   const at = id ? handed()[id] : undefined;
   if (at != null && at <= Date.now()) return true;
+  // Or the background check showed it, for that time, while the app was closed.
+  if (id && message.data?.at != null) {
+    const { reminders } = await ReminderCheck.shown().catch(() => ({ reminders: {} as Record<string, number> }));
+    if (reminders[id] === message.data.at) return true;
+  }
   await setUp();
   await LocalNotifications.schedule({
     notifications: [
@@ -253,8 +283,21 @@ export async function updateTodayWidget() {
 /** Opens quick add, from the widget's +. */
 export const QUICK_ADD = 'amble:quick-add';
 
-/** Where a link from the widget goes: dev.jonmartin.amble://task/<id>, ://add or ://today. */
-function followLink(url: string, open: (path: string) => void) {
+/** Done or Snooze on a reminder's notification; null for anything else. */
+function reminderAction(action: string, taskId: string, reminderId: string | null | undefined) {
+  return action === 'done'
+    ? api(`/tasks/${taskId}/complete`, { method: 'POST', body: JSON.stringify({ done: true }) })
+    : action === 'snooze' && reminderId
+      ? api(`/reminders/${reminderId}/snooze`, { method: 'POST', body: JSON.stringify({ minutes: SNOOZE_MINUTES }) })
+      : null;
+}
+
+/**
+ * Where a link from the widget or the background check's notifications goes:
+ * dev.jonmartin.amble://task/<id>, ://add or ://today. A notification's Done and Snooze add ?do=,
+ * with the reminder and the notification.
+ */
+function followLink(url: string, open: (path: string) => void, changed: () => void) {
   let link: URL;
   try {
     link = new URL(url);
@@ -262,7 +305,12 @@ function followLink(url: string, open: (path: string) => void) {
     return;
   }
   const id = link.pathname.replace(/^\//, '');
-  if (link.host === 'task' && id) open(`/task/${id}`);
+  const act = link.host === 'task' && id ? reminderAction(link.searchParams.get('do') ?? '', id, link.searchParams.get('reminder')) : null;
+  if (act) {
+    const notification = Number(link.searchParams.get('notification'));
+    if (notification) void LocalNotifications.removeDeliveredNotificationsById({ ids: [notification] }).catch(() => {});
+    void act.then(changed, () => {});
+  } else if (link.host === 'task' && id) open(`/task/${id}`);
   else {
     open('/');
     // After the page it's on has drawn.
@@ -287,25 +335,20 @@ export function startPhone({ open, changed, resumed }: { open: (path: string) =>
     LocalNotifications.addListener('localNotificationActionPerformed', ({ actionId, notification }) => {
       const { reminderId, taskId } = (notification.extra ?? {}) as { reminderId?: string; taskId?: string };
       if (!taskId) return;
-      const act =
-        actionId === 'done'
-          ? api(`/tasks/${taskId}/complete`, { method: 'POST', body: JSON.stringify({ done: true }) })
-          : actionId === 'snooze' && reminderId
-            ? api(`/reminders/${reminderId}/snooze`, { method: 'POST', body: JSON.stringify({ minutes: SNOOZE_MINUTES }) })
-            : null;
+      const act = reminderAction(actionId, taskId, reminderId);
       if (act) void act.then(changed, () => {});
       else open(`/task/${taskId}`);
     }),
     // Back in front, maybe on a new day: the widget catches up.
     App.addListener('resume', resumed),
-    App.addListener('appUrlOpen', ({ url }) => followLink(url, open)),
+    App.addListener('appUrlOpen', ({ url }) => followLink(url, open, changed)),
     App.addListener('backButton', ({ canGoBack }) => {
       if (canGoBack) history.back();
       else void App.minimizeApp();
     }),
   ];
-  // Opened from the widget: the link that opened it.
-  void App.getLaunchUrl().then((launch) => launch?.url && followLink(launch.url, open));
+  // Opened from the widget or a notification: the link that opened it.
+  void App.getLaunchUrl().then((launch) => launch?.url && followLink(launch.url, open, changed));
   return () => {
     for (const l of listeners) void l.then((h) => h.remove());
   };

@@ -3,6 +3,7 @@
 The Android app is the device build ([Amble with no server](google-drive.md)) inside [Capacitor](https://capacitorjs.com): Amble's API runs in a worker in the app, on SQLite kept on the phone, with nothing to sign up for. What the app adds over the same build in a browser:
 
 - **Reminders with the app closed.** The app hands Android each coming reminder, and the phone shows it at its time with Done and Snooze on it. Android can hold a reminder back a few minutes while the phone is idle unless Amble is allowed "Alarms and reminders"; Settings, Notifications offers that.
+- **Reminders set elsewhere, with the app closed.** While the household syncs through Drive, the phone reads its file about every 15 minutes in the background and sets alarms for your coming reminders it didn't have yet, such as one Claude set through the server. A reminder set elsewhere for the next few minutes can be late; one set on the phone never is. No push service is involved.
 - **Sync without the hourly tap.** Google sign-in goes through Google Play services, which renews Drive access by itself, so the app keeps syncing for as long as Amble is allowed.
 - **Joining a household with Google's own picker,** which Google Play services shows over the app.
 - **A home-screen widget** with today's tasks and how full the day is. The app hands it a copy whenever something changes; after the day ends (4am) it asks you to open Amble until you do.
