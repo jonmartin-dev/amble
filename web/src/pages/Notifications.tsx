@@ -1,6 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import Alarm from '~icons/material-symbols/alarm-outline-rounded';
 import Close from '~icons/material-symbols/close-rounded';
 import Devices from '~icons/material-symbols/devices-outline-rounded';
 import Bell from '~icons/material-symbols/notifications-active-outline-rounded';
@@ -9,6 +10,7 @@ import { pushHint } from '../components/ReminderSheet.tsx';
 import { ListGroup, SectionTitle, segment, SubpageHeader, Switch } from '../components/ui.tsx';
 import { api } from '../lib/api.ts';
 import { onDevice } from '../lib/device.ts';
+import { allowExactReminders, exactReminders, native } from '../lib/native.ts';
 import { reminderLabel, shortDate, isoDate } from '../lib/dates.ts';
 import { disablePush, enablePush, usePushState, type PushState } from '../lib/push.ts';
 import { usePushDevices, useReminders } from '../lib/queries.ts';
@@ -22,7 +24,7 @@ export function notificationSummary(state: PushState | null) {
     case 'off':
       return 'Off on this device';
     case 'blocked':
-      return 'Blocked in this browser';
+      return native ? "Off in Android's settings" : 'Blocked in this browser';
     case 'needs-install':
       return 'Add Almanac to your home screen first';
     case 'unsupported':
@@ -43,13 +45,27 @@ export function Notifications() {
   const { data: upcoming } = useReminders();
   const [busy, setBusy] = useState(false);
   const others = data?.devices.filter((d) => d.endpoint !== push.endpoint) ?? [];
+  // In the Android app: whether reminders can show on the minute, checked again on coming back from Android's settings.
+  const [exact, setExact] = useState<boolean | null>(null);
+  const checkExact = useCallback(() => (native ? void exactReminders().then(setExact, () => setExact(null)) : undefined), []);
+  useEffect(() => {
+    checkExact();
+    const onVisible = () => document.visibilityState === 'visible' && checkExact();
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [checkExact]);
 
   const toggle = async (on: boolean) => {
     setBusy(true);
     try {
       if (on) {
         const state = await enablePush();
-        if (state === 'blocked') snack({ message: 'Notifications are blocked for Almanac. Allow them in the browser’s site settings, then try again.' });
+        if (state === 'blocked')
+          snack({
+            message: native
+              ? 'Notifications are off for Almanac. Turn them on in Android’s settings for Almanac, then try again.'
+              : 'Notifications are blocked for Almanac. Allow them in the browser’s site settings, then try again.',
+          });
       } else await disablePush();
     } catch (e) {
       snack({ message: (e as Error).message });
@@ -109,6 +125,24 @@ export function Notifications() {
           },
         ]}
       />
+      {native && push.state === 'on' && exact === false && (
+        <div className="mt-3">
+          <ListGroup
+            rows={[
+              {
+                icon: <Alarm className="size-6" />,
+                title: 'On the minute',
+                subtitle: 'Android can hold reminders back a few minutes while the phone is idle. Allow Alarms and reminders for Almanac to have them on time.',
+                trailing: (
+                  <button type="button" onClick={() => void allowExactReminders().then(checkExact)} className="rounded-full bg-secondary-container px-4 py-2 text-sm font-medium text-on-secondary-container">
+                    Allow
+                  </button>
+                ),
+              },
+            ]}
+          />
+        </div>
+      )}
       {push.state === 'on' && (
         <button type="button" onClick={() => void test()} disabled={!online} className="mt-3 rounded-full px-4 py-2 text-sm font-medium text-primary hover:bg-surface-high disabled:opacity-40">
           Send a test notification
@@ -117,8 +151,9 @@ export function Notifications() {
       {!online && <p className="mt-2 px-1 text-sm text-on-surface-variant">Changing this needs a connection.</p>}
       {onDevice && (
         <p className="mt-2 px-1 text-sm text-on-surface-variant">
-          With no Almanac server, a reminder shows while Almanac is open in this browser. Keep it open in a tab, or install it, to be
-          reminded.
+          {native
+            ? 'Your phone shows each reminder at its time, even with Almanac closed.'
+            : 'With no Almanac server, a reminder shows while Almanac is open in this browser. Keep it open in a tab, or install it, to be reminded.'}
         </p>
       )}
 

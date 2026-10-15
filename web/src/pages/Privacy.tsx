@@ -1,5 +1,6 @@
 import { appUrl } from '../lib/api.ts';
 import { onDevice } from '../lib/device.ts';
+import { native } from '../lib/native.ts';
 import { useSession } from '../lib/queries.ts';
 
 // What each provider says it does with what's sent through its API. Others link to their own terms.
@@ -43,12 +44,16 @@ function DevicePrivacy() {
           files on tasks stay on the devices of whoever added them.
         </p>
         <p>
-          Google gives the app a key to your Drive that lasts about an hour and is kept only in this tab. If someone in the household
-          runs their own Almanac server and connects it, the server is one more copy of the household's file.
+          {native
+            ? 'Android gives the app a key to your Drive that lasts about an hour, and a fresh one while you allow Almanac.'
+            : 'Google gives the app a key to your Drive that lasts about an hour and is kept only in this tab.'}{' '}
+          If someone in the household runs their own Almanac server and connects it, the server is one more copy of the household's file.
         </p>
         <h2>Reminders</h2>
         <p>
-          A reminder you set shows as a notification from this browser while Almanac is open. Nothing goes through a push service.
+          {native
+            ? 'A reminder you set is handed to your phone, which shows it at its time. Nothing goes through a push service.'
+            : 'A reminder you set shows as a notification from this browser while Almanac is open. Nothing goes through a push service.'}
         </p>
         <h2>AI features</h2>
         {auth?.ai ? (

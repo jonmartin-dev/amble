@@ -1,15 +1,40 @@
 // Google sign-in for Drive sync, in the page: Google hands the app a short-lived access token
 // (about an hour), and the Picker lets someone choose a household file shared with them. A browser
-// can't renew the token without a tap, so when it runs out the app asks.
+// can't renew the token without a tap, so when it runs out the app asks. The Android app signs in
+// through Google Play services instead (android/.../GoogleDrivePlugin.java), which renews it.
+import { registerPlugin } from '@capacitor/core';
 import { DRIVE_SCOPES, HOUSEHOLD_MIME } from '../../../server/sync/drive.ts';
 import { basePath } from './api.ts';
+import { native } from './native.ts';
 
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
 const API_KEY = import.meta.env.VITE_GOOGLE_API_KEY as string | undefined;
 const APP_ID = import.meta.env.VITE_GOOGLE_APP_ID as string | undefined;
 
-/** This build was given a Google client to sign in with. */
-export const googleConfigured = Boolean(CLIENT_ID);
+interface GoogleDrivePlugin {
+  authorize(options: { interactive?: boolean; email?: string }): Promise<{ accessToken: string; scopes: string[] }>;
+  pick(options: { mimeTypes?: string; email?: string }): Promise<{ fileId: string | null }>;
+  clearToken(options: { token: string }): Promise<void>;
+  revoke(options: { email: string }): Promise<void>;
+}
+const GoogleDrive = registerPlugin<GoogleDrivePlugin>('GoogleDrive');
+
+/** This build was given a Google client to sign in with (the Android app has its own). */
+export const googleConfigured = native || Boolean(CLIENT_ID);
+
+// The Android app's latest token, to hand back if Google turns it down.
+let nativeToken: string | null = null;
+
+/** A Drive token from Android: silently, or (from a tap) showing Google's screens if they're needed. */
+async function fromAndroid(interactive: boolean, email?: string): Promise<string | null> {
+  try {
+    nativeToken = (await GoogleDrive.authorize({ interactive, email })).accessToken;
+    return nativeToken;
+  } catch (err) {
+    if (!interactive && (err as { code?: string }).code === 'NEEDS_SIGN_IN') return null;
+    throw err;
+  }
+}
 
 const TOKEN_KEY = 'almanac-google-token';
 // Renew a little early, so a sync doesn't start with a token that runs out halfway.
@@ -62,11 +87,25 @@ function saved(): Token | null {
 export const currentToken = () => saved()?.token ?? null;
 
 export function forgetToken() {
+  if (native) {
+    if (nativeToken) void GoogleDrive.clearToken({ token: nativeToken }).catch(() => {});
+    nativeToken = null;
+    return;
+  }
   try {
     sessionStorage.removeItem(TOKEN_KEY);
   } catch {
     // Storage off: nothing was kept.
   }
+}
+
+/**
+ * A token for a round of sync, or null when it has to wait for a tap. With `tap`, a browser goes to
+ * Google (and the page leaves); the Android app shows Google's screens over it.
+ */
+export async function syncToken(tap: boolean, email?: string): Promise<string | null> {
+  if (native) return fromAndroid(tap, email);
+  return currentToken() ?? (tap ? signInWithGoogle('sync', email) : null);
 }
 
 const PENDING_KEY = 'almanac-google-pending';
@@ -158,24 +197,24 @@ export function resumeAfterGoogle(action: string): { error: string | null } | nu
 
 /** A token now, or a trip to Google for one that comes back to carry on with `action`. */
 export async function tokenFromTap(action: string, hint?: string): Promise<string> {
+  if (native) return (await fromAndroid(true, hint))!;
   return currentToken() ?? signInWithGoogle(action, hint);
 }
 
+// Household files are gzipped (Drive can go by what's inside, whatever type Almanac gives them).
+const HOUSEHOLD_TYPES = `${HOUSEHOLD_MIME},application/x-gzip,application/gzip`;
+
 /** Google's picker, for choosing the household file someone shared. Resolves with its id, or null. */
-export async function pickHouseholdFile(token: string): Promise<string | null> {
+export async function pickHouseholdFile(token: string, email?: string): Promise<string | null> {
+  if (native) return (await GoogleDrive.pick({ mimeTypes: HOUSEHOLD_TYPES, email })).fileId;
   if (!API_KEY || !APP_ID) throw new Error("This copy of Almanac isn't set up to pick files from Google Drive.");
   await load('https://apis.google.com/js/api.js');
   await new Promise<void>((resolve) => window.gapi.load('picker', () => resolve()));
   const picker = window.google.picker;
   return new Promise<string | null>((resolve) => {
-    // Household files are gzipped (Drive goes by what's inside, whatever type Almanac gives them), with
-    // Almanac in the name; this keeps documents and photos out of the list.
+    // Almanac in the name keeps other gzipped files out of the list.
     const view = (mine: boolean) =>
-      new picker.DocsView(picker.ViewId.DOCS)
-        .setOwnedByMe(mine)
-        .setMode(picker.DocsViewMode.LIST)
-        .setMimeTypes(`${HOUSEHOLD_MIME},application/x-gzip,application/gzip`)
-        .setQuery('Almanac');
+      new picker.DocsView(picker.ViewId.DOCS).setOwnedByMe(mine).setMode(picker.DocsViewMode.LIST).setMimeTypes(HOUSEHOLD_TYPES).setQuery('Almanac');
     const shared = view(false);
     const mine = view(true);
     new picker.PickerBuilder()

@@ -24,7 +24,7 @@ import { syncCalendarsWhileOpen } from './lib/calendar.ts';
 import { EXPANDED, InPane, isDetail, useMedia } from './lib/layout.ts';
 import { refreshViews } from './lib/mutations.ts';
 import { CACHE_MAX_AGE_MS, CACHE_VERSION, claimDevice, idbPersister, prefetchForOffline, shouldSave } from './lib/persist.ts';
-import { refreshPush } from './lib/push.ts';
+import { refreshPush, syncPhoneReminders } from './lib/push.ts';
 import { registerServiceWorker } from './lib/pwa.ts';
 import { get, useSession } from './lib/queries.ts';
 import { SnackbarProvider, useSnackbar } from './lib/snackbar.tsx';
@@ -54,8 +54,16 @@ import { SyncSettings } from './pages/SyncSettings.tsx';
 import { startDriveSync, syncSoon } from './lib/drive-sync.ts';
 import { takeGoogleReturn } from './lib/google.ts';
 import { onDevice, onDeviceChange, useDeviceState } from './lib/device.ts';
+import { native, QUICK_ADD, startPhone, updateTodayWidget } from './lib/native.ts';
 import { Stats } from './pages/Stats.tsx';
 import { Today } from './pages/Today.tsx';
+
+/** In the Android app: the phone's reminders and home-screen widget follow what changed. */
+function phoneChanged() {
+  if (!native) return;
+  void syncPhoneReminders().catch(() => {});
+  void updateTodayWidget().catch(() => {});
+}
 
 /** Sends the outbox for as long as the app runs, and says when the server turned a change down. */
 function SyncBridge() {
@@ -68,6 +76,7 @@ function SyncBridge() {
           refreshViews(qc);
           // On a device, a change here goes out to Google Drive soon after.
           syncSoon();
+          phoneChanged();
         },
         onFailed: (failures) => {
           const [first] = failures;
@@ -84,9 +93,36 @@ function SyncBridge() {
     [qc, snack],
   );
   // On a device, the worker says when something changed by itself, like a size guess.
-  useEffect(() => onDeviceChange(() => refreshViews(qc)), [qc]);
+  useEffect(
+    () =>
+      onDeviceChange(() => {
+        refreshViews(qc);
+        phoneChanged();
+      }),
+    [qc],
+  );
   // On a device that syncs through Google Drive, rounds run while the app is open.
-  useEffect(() => startDriveSync(() => refreshViews(qc)), [qc]);
+  useEffect(
+    () =>
+      startDriveSync(() => {
+        refreshViews(qc);
+        phoneChanged();
+      }),
+    [qc],
+  );
+  // In the Android app: the phone gets the coming reminders, and its notifications' buttons act here.
+  useEffect(() => {
+    phoneChanged();
+    return startPhone({
+      open: (path) => void router.navigate({ to: path as '/' }),
+      resumed: phoneChanged,
+      changed: () => {
+        refreshViews(qc);
+        syncSoon();
+        phoneChanged();
+      },
+    });
+  }, [qc]);
   return null;
 }
 
@@ -117,6 +153,12 @@ function Root() {
   const shown = useRouterState({ select: (s) => s.matches.at(-1)?.pathname ?? s.location.pathname });
   const navigate = useNavigate();
   const [adding, setAdding] = useState(false);
+  // The Android widget's + opens quick add.
+  useEffect(() => {
+    const add = () => setAdding(true);
+    window.addEventListener(QUICK_ADD, add);
+    return () => window.removeEventListener(QUICK_ADD, add);
+  }, []);
   const memberId = session.data?.member?.id;
   useSyncMemberTheme();
 

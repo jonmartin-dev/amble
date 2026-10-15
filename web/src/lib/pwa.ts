@@ -1,6 +1,7 @@
 // Registers the service worker and notices when a new version has been deployed. The new one
 // installs in the background and waits; the app offers a reload instead of running stale code.
 import { useSyncExternalStore } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { appUrl, basePath } from './api.ts';
 
 const CHECK_EVERY_MS = 30 * 60 * 1000;
@@ -34,7 +35,8 @@ export function applyUpdate() {
 }
 
 export function registerServiceWorker() {
-  if (!('serviceWorker' in navigator) || !import.meta.env.PROD) return;
+  // The Android app has its files with it, and updates come with the app.
+  if (!('serviceWorker' in navigator) || !import.meta.env.PROD || Capacitor.isNativePlatform()) return;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (reloading) window.location.reload();
   });

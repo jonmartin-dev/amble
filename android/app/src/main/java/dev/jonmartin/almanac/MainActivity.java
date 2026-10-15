@@ -1,0 +1,15 @@
+package dev.jonmartin.almanac;
+
+import android.os.Bundle;
+import com.getcapacitor.BridgeActivity;
+
+public class MainActivity extends BridgeActivity {
+
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+        // The app's own plugins go in before Capacitor starts.
+        registerPlugin(GoogleDrivePlugin.class);
+        registerPlugin(TodayWidgetPlugin.class);
+        super.onCreate(savedInstanceState);
+    }
+}

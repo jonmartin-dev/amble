@@ -9,6 +9,7 @@ import Warning from '~icons/material-symbols/warning-outline-rounded';
 import { ListGroup, SectionTitle, SubpageHeader } from '../components/ui.tsx';
 import { api, ApiError, appUrl } from '../lib/api.ts';
 import { onDevice } from '../lib/device.ts';
+import { native } from '../lib/native.ts';
 import { refreshStatus, syncNow, useDriveSync, type DriveSyncStatus } from '../lib/drive-sync.ts';
 import { googleConfigured, pickHouseholdFile, resumeAfterGoogle, tokenFromTap } from '../lib/google.ts';
 import { refreshViews } from '../lib/mutations.ts';
@@ -42,7 +43,7 @@ export async function joinHousehold(action: string, email?: string) {
   const token = await tokenFromTap(action, email);
   // Files this account made or picked before show up without the picker.
   const { households } = await api<{ households: { id: string; name: string }[] }>('/sync/households', { method: 'POST', body: JSON.stringify({ token }) });
-  const fileId = households.length === 1 ? households[0]!.id : await pickHouseholdFile(token);
+  const fileId = households.length === 1 ? households[0]!.id : await pickHouseholdFile(token, email);
   if (!fileId) return null;
   return api<DriveSyncStatus>('/sync/connect', { method: 'POST', body: JSON.stringify({ token, mode: 'join', fileId }) });
 }
@@ -319,8 +320,9 @@ function DeviceSync() {
             ]}
           />
           <p className="mt-2 px-1 text-sm text-on-surface-variant">
-            While Almanac is open it syncs every minute. Google lets a browser keep access for about an hour, so now and then it asks you to tap
-            to carry on.
+            {native
+              ? 'It syncs when Almanac opens, every minute while it’s open, and soon after each change.'
+              : 'While Almanac is open it syncs every minute. Google lets a browser keep access for about an hour, so now and then it asks you to tap to carry on.'}
           </p>
 
           <SectionTitle>Household</SectionTitle>

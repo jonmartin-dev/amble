@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from './api.ts';
 import { onDevice } from './device.ts';
 import { kvDel, kvGet, kvSet } from './idb.ts';
+import { askPhoneNotifyPermission, cancelPhoneReminders, native, phoneNotifyPermission, schedulePhoneReminders } from './native.ts';
 
 /**
  * - unsupported: this browser can't show notifications from a web app.
@@ -16,8 +17,10 @@ export type PushState = 'unsupported' | 'needs-install' | 'blocked' | 'off' | 'o
 const isApple = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const installed = () => window.matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true;
 
-// On a device with no server, the app shows reminders itself, so only notifications are needed.
-export const pushSupported = () => (onDevice ? 'Notification' in window : 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window);
+// On a device with no server, the app shows reminders itself, so only notifications are needed;
+// in the Android app, the phone shows them.
+export const pushSupported = () =>
+  native || (onDevice ? 'Notification' in window : 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window);
 
 /** On a device, the address that stands for "this browser" once reminders are on here. */
 const DEVICE_ENDPOINT = 'device-endpoint';
@@ -53,6 +56,11 @@ export async function currentSubscription(): Promise<{ endpoint: string; unsubsc
 
 export async function pushState(): Promise<PushState> {
   if (!pushSupported()) return isApple() && !installed() ? 'needs-install' : 'unsupported';
+  if (native) {
+    const permission = await phoneNotifyPermission();
+    if (permission === 'denied') return 'blocked';
+    return permission === 'granted' && (await currentSubscription()) ? 'on' : 'off';
+  }
   if (Notification.permission === 'denied') return 'blocked';
   return Notification.permission === 'granted' && (await currentSubscription()) ? 'on' : 'off';
 }
@@ -70,12 +78,13 @@ async function subscribe(reg: ServiceWorkerRegistration, publicKey: string) {
 /** Asks the browser for permission (call it from a tap) and signs this device up for reminders. */
 export async function enablePush(): Promise<PushState> {
   if (!pushSupported()) return pushState();
-  const permission = await Notification.requestPermission();
+  const permission = native ? await askPhoneNotifyPermission() : await Notification.requestPermission();
   if (permission !== 'granted') return permission === 'denied' ? 'blocked' : 'off';
   if (onDevice) {
     const endpoint = (await deviceEndpoint()) ?? `device:${crypto.randomUUID()}`;
     await api('/push/subscriptions', { method: 'POST', body: JSON.stringify({ endpoint, keys: { p256dh: '-', auth: '-' } }) });
     await kvSet(DEVICE_ENDPOINT, endpoint);
+    if (native) await schedulePhoneReminders();
     return 'on';
   }
   const reg = await registration();
@@ -91,6 +100,12 @@ export async function disablePush() {
   if (!sub) return;
   await api('/push/unsubscribe', { method: 'POST', body: JSON.stringify({ endpoint: sub.endpoint }) }).catch(() => {});
   await sub.unsubscribe();
+  if (native) await cancelPhoneReminders();
+}
+
+/** In the Android app, with reminders on here: hands the phone the coming ones again, after a change. */
+export async function syncPhoneReminders() {
+  if (native && (await currentSubscription())) await schedulePhoneReminders();
 }
 
 /**

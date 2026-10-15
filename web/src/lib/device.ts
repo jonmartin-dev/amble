@@ -1,6 +1,7 @@
 // Almanac with no server: the API runs in a worker on this device (web/src/worker/api.worker.ts),
 // and requests the app would send over the network go to it instead. Only one tab can have the
 // database open; another tab waits, and can take it over.
+import { Capacitor } from '@capacitor/core';
 import { useSyncExternalStore } from 'react';
 import type { FromWorker, ToWorker } from '../worker/protocol.ts';
 
@@ -80,8 +81,11 @@ function startWorker() {
       const w = waiting.get(m.id);
       waiting.delete(m.id);
       w?.resolve(new Response(m.body, { status: m.status, headers: m.headers }));
-    } else if (m.type === 'notify') void showNotification(m.message).then((ok) => send({ type: 'notified', id: m.id, ok }));
-    else if (m.type === 'changed') for (const l of changeListeners) l();
+    } else if (m.type === 'notify') {
+      // In the Android app the phone shows reminders, mostly ahead of the app noticing them.
+      const shown = Capacitor.isNativePlatform() ? import('./native.ts').then((n) => n.showOnPhone(m.message)) : showNotification(m.message);
+      void shown.catch(() => false).then((ok) => send({ type: 'notified', id: m.id, ok }));
+    } else if (m.type === 'changed') for (const l of changeListeners) l();
   });
   worker.addEventListener('error', (e) => {
     failure = e.message || 'The worker stopped.';

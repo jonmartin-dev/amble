@@ -5,6 +5,7 @@ import Bell from '~icons/material-symbols/notifications-outline-rounded';
 import type { Task } from '../lib/api.ts';
 import { addDays, dayLabel, isoDate, reminderLabel, reminderPhrase, todayIso } from '../lib/dates.ts';
 import { expressive } from '../lib/motion.ts';
+import { native } from '../lib/native.ts';
 import { useTaskActions } from '../lib/mutations.ts';
 import { enablePush, usePushState, type PushState } from '../lib/push.ts';
 import { useSnackbar } from '../lib/snackbar.tsx';
@@ -40,7 +41,9 @@ export function pushHint(state: PushState | null) {
     case 'off':
       return 'Notifications are off on this device.';
     case 'blocked':
-      return "Notifications are blocked for Almanac in this browser's site settings, so reminders can't show here.";
+      return native
+        ? "Notifications are off for Almanac in Android's settings, so reminders can't show here."
+        : "Notifications are blocked for Almanac in this browser's site settings, so reminders can't show here.";
     case 'needs-install':
       return 'Add Almanac to your home screen (Share, then Add to Home Screen) to get reminders on this device.';
     case 'unsupported':

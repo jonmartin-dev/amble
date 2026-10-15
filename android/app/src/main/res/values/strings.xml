@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Almanac</string>
+    <string name="title_activity_main">Almanac</string>
+    <string name="package_name">dev.jonmartin.almanac</string>
+    <string name="custom_url_scheme">dev.jonmartin.almanac</string>
+</resources>

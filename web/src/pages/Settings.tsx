@@ -13,9 +13,11 @@ import Palette from '~icons/material-symbols/palette-outline-rounded';
 import Policy from '~icons/material-symbols/policy-outline-rounded';
 import Timer from '~icons/material-symbols/timer-outline-rounded';
 import Trophy from '~icons/material-symbols/trophy-outline-rounded';
+import Widgets from '~icons/material-symbols/widgets-outline-rounded';
 import { ListGroup, SectionTitle, SubpageHeader, Switch, minutesLabel } from '../components/ui.tsx';
 import { type Member } from '../lib/api.ts';
 import { onDevice } from '../lib/device.ts';
+import { native, pinTodayWidget } from '../lib/native.ts';
 import { useDriveSync } from '../lib/drive-sync.ts';
 import { useSaveMe } from '../lib/mutations.ts';
 import { signOut } from '../lib/persist.ts';
@@ -83,7 +85,14 @@ export function Settings() {
       {onDevice ? (
         <>
           <SectionTitle>This device</SectionTitle>
-          <ListGroup rows={[{ icon: <CloudSync className="size-6" />, title: 'Sync and backup', subtitle: syncSummary, to: '/settings/sync' }]} />
+          <ListGroup
+            rows={[
+              { icon: <CloudSync className="size-6" />, title: 'Sync and backup', subtitle: syncSummary, to: '/settings/sync' },
+              ...(native
+                ? [{ icon: <Widgets className="size-6" />, title: 'Today on your home screen', subtitle: "A widget with today's tasks", onClick: () => void pinTodayWidget() }]
+                : []),
+            ]}
+          />
         </>
       ) : (
         me?.role === 'admin' && (

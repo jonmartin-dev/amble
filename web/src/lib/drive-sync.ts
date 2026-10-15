@@ -4,7 +4,8 @@
 import { useSyncExternalStore } from 'react';
 import { api } from './api.ts';
 import { onDevice } from './device.ts';
-import { currentToken, forgetToken, googleConfigured, resumeAfterGoogle, signInWithGoogle } from './google.ts';
+import { forgetToken, googleConfigured, resumeAfterGoogle, syncToken } from './google.ts';
+import { native } from './native.ts';
 
 export interface DriveSyncStatus {
   on: boolean;
@@ -62,19 +63,20 @@ export function syncNow({ tap = false } = {}): Promise<void> {
     try {
       const status = state.status ?? (await refreshStatus());
       if (!status.on) return;
-      let token = currentToken();
-      if (!token && tap) token = await signInWithGoogle('sync', status.account?.email);
-      if (!token) {
-        set({ needsGoogle: true });
-        return;
-      }
-      set({ syncing: true, needsGoogle: false });
-      const result = await api<{ merged: number; uploaded: boolean; error: string | null }>('/sync/run', { method: 'POST', body: JSON.stringify({ token }) });
-      if (result.error === SIGN_IN_AGAIN) {
+      // The Android app can get a fresh token itself when Google turns one down, so it tries twice.
+      for (let attempt = 0; attempt < (native ? 2 : 1); attempt++) {
+        const token = await syncToken(tap, status.account?.email);
+        if (!token) {
+          set({ needsGoogle: true });
+          return;
+        }
+        set({ syncing: true, needsGoogle: false });
+        const result = await api<{ merged: number; uploaded: boolean; error: string | null }>('/sync/run', { method: 'POST', body: JSON.stringify({ token }) });
+        if (result.merged > 0) onMerged?.();
+        if (result.error !== SIGN_IN_AGAIN) break;
         forgetToken();
-        set({ needsGoogle: true });
+        set({ needsGoogle: !native || attempt > 0 });
       }
-      if (result.merged > 0) onMerged?.();
       await refreshStatus();
     } finally {
       set({ syncing: false });
