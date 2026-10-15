@@ -19,7 +19,7 @@ Since the household moved into Drive, the server is just another copy that syncs
 | Calendar load | Reading Google Calendar needs a client secret and a refresh token, which only the server has | No calendar in the day's load (see [Calendar](#calendar)) |
 | One AI key for the household, with a monthly cap | The server holds the key | Each device sets up its own |
 | Files shared between people | Files uploaded through the server's page are stored on the server | Files stay on the device that added them, as they already do with Drive |
-| Drive access that renews quietly in a browser | A refresh token takes Google's client secret, which a static page can't hold | Today a browser asks for a tap about once an hour (the Android app renews on its own). See [Keeping a browser signed in to Drive](#keeping-a-browser-signed-in-to-drive): this has to be fixed before the web app is the only one |
+| Drive access that renews in place in a browser | A refresh token takes Google's client secret, which a static page can't hold | A browser renews with a quick trip to Google while nobody's using the page (see [Keeping a browser signed in to Drive](#keeping-a-browser-signed-in-to-drive)) |
 | A household with no Google at all | Sign-in with any OpenID provider, data on the server | Everything syncs through Google Drive |
 
 The connector stands out. The others either have a device-side substitute or affect only people using a browser on a computer.
@@ -43,12 +43,12 @@ Losses, against the server's page today: reminders only while Amble is open, no 
 
 ## Keeping a browser signed in to Drive
 
-Today the web app gets Drive access through Google's redirect sign-in (`response_type=token` in `web/src/lib/google.ts`). The token lasts an hour and comes with no refresh token, so when it runs out the app shows "Sync paused" and waits for a tap. That's not acceptable for an app meant to sit open on a computer, so it gets fixed in two steps, before the web app replaces the server's page.
+Built 2026-10-15 (`web/src/lib/google.ts`, `server/google-token.ts`). Before that, the web app got Drive access only through Google's redirect sign-in (`response_type=token`): the token lasted an hour, came with no refresh token, and when it ran out the app showed "Sync paused" and waited for a tap. Now it renews in two ways.
 
-1. **Renew without asking (no server).** When the token runs out, send the page back through the same sign-in with `prompt=none` and `login_hint` set to the person's address. Google's documentation describes `prompt=none` as "Don't display any authentication or consent screens": while the person is signed in to Google and has already allowed Amble, it comes straight back with a new token. The bounce reloads the page, so it happens when Amble opens and when the tab is in the background, never under someone's hands. Only a signed-out browser or a revoked grant falls back to the Continue button.
-2. **Renew in place (a tiny token endpoint).** Google's recommended flow for single-page apps is the authorization code flow with PKCE, which gives a refresh token. For a "Web application" client, Google's token endpoint wants the client secret for that, including on every refresh. So a small endpoint holds the secret and adds it to the two calls, sign-in and refresh, and nothing else. It stores nothing; the browser keeps its own refresh token. For people with an Amble server it's a route on the server. For the public web app it's a free Cloudflare Worker (or a Pages Function) beside the static files. Sync then keeps going in the background with no reloads at all.
+1. **In place, through a tiny token endpoint.** Google's recommended flow for single-page apps is the authorization code flow with PKCE, which gives a refresh token. For a "Web application" client, Google's token endpoint wants the client secret for that, including on every refresh. So a small endpoint holds the secret and adds it to the two calls, trading the code and refreshing, and nothing else. It stores nothing; the browser keeps its own refresh token. On an Amble server it's the `/google/token` route; for a web app with no server, the same code runs as a free Cloudflare Worker (`deploy/google-token-worker`). Sync keeps going with no reloads at all.
+2. **Without an endpoint, by a quiet trip to Google.** When the token runs out, the page goes back through the same sign-in with `prompt=none` and `login_hint` set to the person's address. Google's documentation describes `prompt=none` as "Don't display any authentication or consent screens": while the person is signed in to Google and has already allowed Amble, it comes straight back with a new token. The trip reloads the page, so it happens only when Amble opens, when its tab is in the background with changes to send, or when the page has sat untouched for two minutes with nothing open or being typed in.
 
-The first step is a day's work and fixes most of it. The second retires the implicit flow, which Google describes as considered insecure for single-page apps.
+Both were tried in Chrome against Google with a real account: signing in through the code flow and refreshing in place, the quiet trip with no refresh token, and a quiet trip Google turns down, which shows Continue once and doesn't retry for six hours. Stopping sync forgets the refresh token instead of revoking it: Google would revoke the whole grant for that client, an Amble server's included. Setup is in [google-drive.md](google-drive.md#keeping-a-browser-signed-in).
 
 ## Calendar
 
@@ -97,15 +97,15 @@ Today a household can run entirely on a self-hosted server with another sign-in 
 - **Quiet renewal depends on Google's session.** Someone signed out of Google in that browser, or who removed Amble's access, still gets the Continue button. That's the right outcome, and rare.
 - **The token endpoint holds a secret.** It should answer only Amble's own origins, send nothing but Google's two token calls, and log nothing.
 - **iPhones** get the web app only. Safari can clear a site's storage after 7 days without a visit unless it was added to the home screen, and reminders show only while Amble is open. The real answer is an iOS build of the Capacitor app, which needs a Mac and an Apple developer account.
-- **The connector's reminder note is wrong today.** When an assistant sets a reminder, `set_reminder` in `server/mcp/server.ts` warns that the person "hasn't turned on notifications on any device yet" if the server has no push registration for them. Someone who uses only the Android app does get the reminder, since it syncs to the phone. Fix it first; it stands on its own.
+- **The connector's reminder note was wrong** (fixed 2026-10-15). `set_reminder` warned that the person "hasn't turned on notifications on any device yet" whenever the server had no push registration for them, though the reminder reaches their phone through sync. It now warns only when the server neither pushes nor syncs.
 - **One more move for installed web apps.** The device build's service worker replaces the server build's at the same address, and the app starts empty until the person joins the household again.
 
 ## Recommendation and order of work
 
 Do it, in this order, with the week in step 3 as the point to decide:
 
-1. Fix the connector's reminder note.
-2. Make a browser renew Drive access on its own: the `prompt=none` bounce first, then the token endpoint.
+1. Fix the connector's reminder note. Done.
+2. Make a browser renew Drive access on its own: the `prompt=none` bounce first, then the token endpoint. Done.
 3. Host the device build beside the server's page (at `/amble/app/`, say) and use it on a computer for a week.
 4. Settle calendar: devices read their own, or the server shares busy minutes.
 5. Decide on households without Google.
