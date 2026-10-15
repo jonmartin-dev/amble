@@ -117,16 +117,22 @@ body {
 
 /*
  * Behind the phone's status bar when the app draws under it (the Android app, or Almanac added to
- * an iPhone's home screen): a strip of the page's own color, so the clock and icons never sit on
- * what scrolls beneath them. Where there's no status bar to cover, the inset is 0 and so is the
- * strip. Above the toolbars, under sheets and their scrim.
+ * an iPhone's home screen): the page's own color, fading out just below the bar, so the clock and
+ * icons never sit on what scrolls beneath them and nothing stops at a hard edge. Where there's no
+ * status bar to cover, the inset is 0 and so is all of it. Above the toolbars, under sheets and
+ * their scrim.
  */
 body::before {
+  --fade: min(env(safe-area-inset-top), 1.75rem);
   content: '';
   position: fixed;
   inset: 0 0 auto;
-  height: env(safe-area-inset-top);
-  background: var(--md-surface);
+  height: calc(env(safe-area-inset-top) + var(--fade));
+  background: linear-gradient(
+    var(--md-surface) env(safe-area-inset-top),
+    color-mix(in srgb, var(--md-surface) 55%, transparent) calc(env(safe-area-inset-top) + var(--fade) * 0.4),
+    transparent
+  );
   z-index: 15;
   pointer-events: none;
 }
