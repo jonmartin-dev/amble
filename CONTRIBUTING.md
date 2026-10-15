@@ -48,6 +48,10 @@ Smart add, estimates and the planner's wording need an AI model: set one up in S
 
 A new list template makes a good first change: one entry in `shared/templates.ts`, plus its icon in `GROUP_ICONS` (`server/domain/household.ts`) and `web/src/components/icons.tsx`. The tests check that the three agree.
 
+## Help wanted
+
+- **Connect a real ChatGPT account.** The ChatGPT side of the connector follows OpenAI's auth docs and is tested against ChatGPT's real client metadata document, but nobody has signed in from ChatGPT itself yet. If your plan has Developer mode (Business, Enterprise or Edu to make changes, Pro to read), follow the ChatGPT steps on Connect an assistant against your own Almanac, ask `@Almanac` to add a task, and check that Activity says "via ChatGPT". Open an issue with how it went, especially any error during sign-in or the tool scan.
+
 ## Before you open a pull request
 
 ```sh
@@ -58,7 +62,7 @@ pnpm test
 Both must pass. For changes people can see, also run the app on a demo household and use these:
 
 - `node scripts/smoke.ts <email>` clicks through the core loop at phone size and fails on any broken step or console error. It changes the demo data.
-- `node scripts/screens.ts <email>` captures every screen at phone size in several themes into `design/screens/` (not committed), for looking over a change in light and dark.
+- `node scripts/screens.ts <email>` captures every screen at phone size in several themes into `design/screens/` (not committed), for looking over a change in light and dark. Set `ALMANAC_VIEWPORT=820x1180` to capture at tablet size.
 - `node scripts/offline.ts <email>` checks offline use end to end. It needs a production build; the comment at the top of the script says how to run it.
 - `node scripts/readme-shots.ts` retakes the screenshots in the README, if the screens they show changed.
 
