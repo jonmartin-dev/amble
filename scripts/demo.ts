@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { config } from '../server/config.ts';
 import { openDatabase } from '../server/db/index.ts';
-import { activity, calendarAccounts, calendarEvents, calendarSources, members, tasks } from '../server/db/schema.ts';
+import { activity, calendarAccounts, calendarEvents, calendarSources, members, oauthClients, oauthGrants, tasks } from '../server/db/schema.ts';
 import { seedStarterGroups } from '../server/db/seed.ts';
 import { WEEKDAYS } from '../shared/templates.ts';
 import { createGroup, resolveGroup, type Actor } from '../server/domain/household.ts';
@@ -112,7 +112,7 @@ for (let daysAgo = 70; daysAgo >= 1; daysAgo--) {
     db.insert(activity)
       .values([
         { memberId: me.id, via: 'app', action: 'task.created', taskId: task.id, detail: { title }, createdAt: addedAt },
-        { memberId: who.id, via: n % 5 === 0 ? 'claude' : 'app', action: 'task.completed', taskId: task.id, createdAt: doneAt },
+        { memberId: who.id, via: n % 10 === 0 ? 'chatgpt' : n % 5 === 0 ? 'claude' : 'app', action: 'task.completed', taskId: task.id, createdAt: doneAt },
       ])
       .run();
   }
@@ -217,5 +217,18 @@ events.push(
   allDay('trip', 'Lake weekend', addDays(today, 5), 2, true),
 );
 db.insert(calendarEvents).values(events).run();
+
+// Claude and ChatGPT connected through the connector, as their Activity entries say. Their client
+// documents are fetched the first time either signs in again.
+const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000);
+for (const [id, name, redirect, since, used] of [
+  ['https://claude.ai/oauth/mcp-oauth-client-metadata', 'Claude', 'https://claude.ai/api/mcp/auth_callback', 24 * 40, 2],
+  ['https://chatgpt.com/oauth/client.json', 'ChatGPT', 'https://chatgpt.com/connector_platform_oauth_redirect', 24 * 9, 27],
+] as const) {
+  db.insert(oauthClients).values({ id, kind: 'metadata', name, redirectUris: [redirect] }).run();
+  db.insert(oauthGrants)
+    .values({ memberId: me.id, clientId: id, clientName: name, scope: 'almanac', resource: `${config.publicUrl}/mcp`, createdAt: hoursAgo(since), lastUsedAt: hoursAgo(used) })
+    .run();
+}
 
 console.log(`Demo household written to ${file}`);

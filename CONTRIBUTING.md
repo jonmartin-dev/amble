@@ -7,7 +7,7 @@ Thanks for wanting to help with Almanac. It's a small project for households, bu
 Every change should keep these true:
 
 1. **Calm by default.** No red overdue counts, no badges, no notifications nobody asked for. Overdue things quietly come back as suggestions.
-2. **Suggest, never move.** The planner and the AI features propose; nothing changes until a person taps Add or Accept. Claude, acting through the connector at someone's request, is the one exception.
+2. **Suggest, never move.** The planner and the AI features propose; nothing changes until a person taps Add or Accept. An assistant (Claude or ChatGPT) acting through the connector at someone's request is the one exception.
 3. **Load-aware.** Every suggestion respects how full a day already is, calendar included.
 4. **Shared household, private when wanted.** Everything is shared unless a group is marked private.
 5. **Self-host first.** One container, one SQLite file, config in environment variables. Nothing about one household's setup is hard-coded.
@@ -37,7 +37,7 @@ Smart add, estimates and the planner's wording need an AI model: set one up in S
 
 | Folder | What's in it |
 |---|---|
-| `server/` | The Hono server: the API (`api.ts`), sign-in (`auth/`), the Claude connector (`connector.ts`, `oauth/`, `mcp/`), Google Calendar (`calendar/`), web push (`notify/`), AI features and their providers (`ai/`), the scheduler (`jobs.ts`) and the database (`db/`) |
+| `server/` | The Hono server: the API (`api.ts`), sign-in (`auth/`), the connector for Claude and ChatGPT (`connector.ts`, `oauth/`, `mcp/`), Google Calendar (`calendar/`), web push (`notify/`), AI features and their providers (`ai/`), the scheduler (`jobs.ts`) and the database (`db/`) |
 | `server/domain/` | The rules for tasks, lists, repeats, load and planning, shared by the API and the connector |
 | `shared/` | Code the server and the app both use: list templates, repeat rules, smart add proposals |
 | `web/src/` | The React app: `pages/`, `components/`, `lib/` (queries, the offline outbox, theming, motion) and the service worker (`sw.ts`) |

@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Sparkle from '~icons/material-symbols/auto-awesome-outline-rounded';
 import Check from '~icons/material-symbols/check-rounded';
 import Copy from '~icons/material-symbols/content-copy-outline-rounded';
-import { SubpageHeader } from '../components/ui.tsx';
+import { ButtonGroup, SectionTitle, SubpageHeader } from '../components/ui.tsx';
 import { useSnackbar } from '../lib/snackbar.tsx';
 import { api } from '../lib/api.ts';
 import { expressive } from '../lib/motion.ts';
@@ -13,6 +13,13 @@ interface Connections {
   mcpUrl: string;
   connections: { id: string; clientName: string; createdAt: string; lastUsedAt: string | null }[];
 }
+
+type Assistant = 'claude' | 'chatgpt';
+
+const ASSISTANTS: { value: Assistant; label: string }[] = [
+  { value: 'claude', label: 'Claude' },
+  { value: 'chatgpt', label: 'ChatGPT' },
+];
 
 const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 
@@ -25,6 +32,76 @@ function ago(iso: string | null) {
   return `used ${rtf.format(-Math.round(minutes / 1440), 'day')}`;
 }
 
+/** The connector's address with a copy button. Shown whole, since people sometimes type it. */
+function Address({ url }: { url: string | undefined }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    if (!url) return;
+    await navigator.clipboard.writeText(url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  };
+  return (
+    <div className="mt-2 -ml-5 flex items-center gap-2 rounded-2xl bg-surface-lowest p-2 pl-4 text-on-surface">
+      <code className="min-w-0 flex-1 text-sm break-all">{url ?? '…'}</code>
+      <motion.button
+        type="button"
+        onClick={() => void copy()}
+        whileTap={{ scale: 0.92 }}
+        transition={expressive.fastSpatial}
+        aria-label="Copy address"
+        className="grid size-11 shrink-0 place-items-center rounded-full bg-primary text-on-primary"
+      >
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.span
+            key={copied ? 'done' : 'copy'}
+            initial={{ scale: 0.4, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.4, opacity: 0 }}
+            transition={expressive.fastSpatial}
+          >
+            {copied ? <Check className="size-5" /> : <Copy className="size-5" />}
+          </motion.span>
+        </AnimatePresence>
+      </motion.button>
+    </div>
+  );
+}
+
+function Steps({ assistant, url }: { assistant: Assistant; url: string | undefined }) {
+  if (assistant === 'claude') {
+    return (
+      <>
+        <ol className="flex list-decimal flex-col gap-3 pl-5">
+          <li>In Claude, open Settings, then Connectors, and choose Add custom connector.</li>
+          <li>
+            Name it Almanac and paste this address:
+            <Address url={url} />
+          </li>
+          <li>Choose Connect, then Allow on the Almanac page that opens.</li>
+        </ol>
+        <p className="mt-4 text-sm">It works in Claude on the web, the desktop and phone apps, and Claude Code.</p>
+      </>
+    );
+  }
+  return (
+    <>
+      <ol className="flex list-decimal flex-col gap-3 pl-5">
+        <li>In ChatGPT on the web, open Settings, then Apps, then Advanced settings, and turn on Developer mode.</li>
+        <li>
+          Back in Apps, choose Create. Name it Almanac and paste this address:
+          <Address url={url} />
+        </li>
+        <li>Pick OAuth for authentication, then Allow on the Almanac page that opens, and choose Create.</li>
+      </ol>
+      <p className="mt-4 text-sm">
+        Developer mode is a ChatGPT beta, only on the web. On Business, Enterprise and Edu plans ChatGPT can add and change things; on
+        Pro it can only look. In a chat, pick Almanac from the tools menu or type @Almanac.
+      </p>
+    </>
+  );
+}
+
 export function ConnectionsPage() {
   const queryClient = useQueryClient();
   const snack = useSnackbar();
@@ -34,59 +111,33 @@ export function ConnectionsPage() {
     onError: (e: Error) => snack({ message: e.message }),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['connections'] }),
   });
-  const [copied, setCopied] = useState(false);
-
-  const copy = async () => {
-    if (!data) return;
-    await navigator.clipboard.writeText(data.mcpUrl);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1800);
-  };
+  const [assistant, setAssistant] = useState<Assistant>('claude');
 
   return (
     <>
-      <SubpageHeader title="Connect Claude" />
+      <SubpageHeader title="Connect an assistant" />
+      <p className="px-1 text-on-surface-variant">
+        Ask Claude or ChatGPT to add tasks, plan your week, hand something to someone, or put milk on the grocery list. Whichever you
+        connect acts as you, and only you.
+      </p>
 
-      <section className="mt-4 rounded-[2rem] bg-secondary-container p-5 text-on-secondary-container">
-        <div className="flex items-center gap-3">
-          <Sparkle className="size-6" aria-hidden />
-          <h2 className="display text-xl font-medium">Use Almanac from Claude</h2>
-        </div>
-        <p className="mt-2">
-          Ask Claude to add tasks, plan your week, hand something to someone, or put milk on the grocery list. It works in Claude on the
-          web, the desktop and phone apps, and Claude Code.
-        </p>
-        <ol className="mt-4 flex list-decimal flex-col gap-2 pl-5">
-          <li>In Claude, open Settings, then Connectors, and choose Add custom connector.</li>
-          <li>Name it Almanac and paste this address:</li>
-        </ol>
-        <div className="mt-3 flex items-center gap-2 rounded-2xl bg-surface-lowest p-2 pl-4 text-on-surface">
-          <code className="min-w-0 flex-1 truncate text-sm">{data?.mcpUrl ?? '…'}</code>
-          <motion.button
-            type="button"
-            onClick={() => void copy()}
-            whileTap={{ scale: 0.92 }}
+      <SectionTitle>Set it up</SectionTitle>
+      <ButtonGroup value={assistant} options={ASSISTANTS} onChange={setAssistant} label="Assistant" />
+      <section aria-label={`Connect ${assistant === 'claude' ? 'Claude' : 'ChatGPT'}`} className="mt-3 rounded-[2rem] bg-secondary-container p-5 text-on-secondary-container">
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={assistant}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
             transition={expressive.fastSpatial}
-            aria-label="Copy address"
-            className="grid size-11 shrink-0 place-items-center rounded-full bg-primary text-on-primary"
           >
-            <AnimatePresence mode="wait" initial={false}>
-              <motion.span
-                key={copied ? 'done' : 'copy'}
-                initial={{ scale: 0.4, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.4, opacity: 0 }}
-                transition={expressive.fastSpatial}
-              >
-                {copied ? <Check className="size-5" /> : <Copy className="size-5" />}
-              </motion.span>
-            </AnimatePresence>
-          </motion.button>
-        </div>
-        <p className="mt-3 text-sm">Then choose Connect and allow it on the Almanac page that opens. Claude acts as you, and only you.</p>
+            <Steps assistant={assistant} url={data?.mcpUrl} />
+          </motion.div>
+        </AnimatePresence>
       </section>
 
-      <h2 className="mt-8 mb-3 px-1 text-sm font-medium text-primary">Connected</h2>
+      <SectionTitle>Connected</SectionTitle>
       {data && data.connections.length === 0 && (
         <p className="rounded-3xl bg-surface-low p-5 text-on-surface-variant">Nothing is connected yet.</p>
       )}
@@ -100,7 +151,7 @@ export function ConnectionsPage() {
               transition={expressive.fastSpatial}
               className="flex items-center gap-4 rounded-3xl bg-surface-low p-4"
             >
-              <div className="grid size-11 place-items-center rounded-full bg-tertiary-container text-on-tertiary-container">
+              <div className="grid size-11 shrink-0 place-items-center rounded-full bg-tertiary-container text-on-tertiary-container">
                 <Sparkle className="size-5" aria-hidden />
               </div>
               <div className="min-w-0 flex-1">

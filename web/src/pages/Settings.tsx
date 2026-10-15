@@ -114,7 +114,7 @@ export function Settings() {
                 },
               ]
             : []),
-          { icon: <Forum className="size-6" />, title: 'Connect Claude', subtitle: 'Plan from any Claude chat', to: '/connections' },
+          { icon: <Forum className="size-6" />, title: 'Connect an assistant', subtitle: 'Plan from a Claude or ChatGPT chat', to: '/connections' },
         ]}
       />
 

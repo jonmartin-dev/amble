@@ -2,7 +2,7 @@
 
 A calm, shared, self-hosted planner for a household. It knows how full each day already is, from your tasks and your Google Calendar, and suggests what to do today and which day has room for something due later. It never nags.
 
-Status: early but usable. The day list, backlog, task details, smart add, repeating tasks, lists from eleven templates, handing tasks to each other, the calendar, stats, the activity feed, settings and the Claude connector work, offline too. Capacity is learned from what gets done, Google Calendar shapes how full each day is, and the planner suggests what to do today and where things fit. Reminders and files on tasks work too. An Android app is next.
+Status: early but usable. The day list, backlog, task details, smart add, repeating tasks, lists from eleven templates, handing tasks to each other, the calendar, stats, the activity feed, settings and the connector for Claude and ChatGPT work, offline too. Capacity is learned from what gets done, Google Calendar shapes how full each day is, and the planner suggests what to do today and where things fit. Reminders and files on tasks work too. An Android app is next.
 
 <p>
   <img src="docs/screenshots/briefing.png" width="160" alt="Here's today: the day's load, calendar events, a task handed over and a suggestion">
@@ -34,7 +34,7 @@ Status: early but usable. The day list, backlog, task details, smart add, repeat
 - Works offline: the app and what you last loaded open without a connection, changes show at once and sync in order when you're back, and if someone changed the same thing in the meantime the later change wins
 - Installable app (PWA) designed in Material 3 Expressive, with its spring motion tokens. It fits the screen it's on: a floating toolbar on phones, a navigation rail on a foldable or small tablet, and on wider screens a task or list opens beside the page you picked it from
 - Material You theming: pick any color and Almanac generates the full Material 3 palette (2025 spec) in five styles and three contrast levels, light, dark or automatic. It's saved per person and follows you across devices.
-- A Claude connector (MCP) with its own OAuth sign-in: Claude can add, plan, complete and hand off tasks, keep shopping lists, check how full each day is, suggest what to do today, draft a week's plan, set reminders you ask for and look at photos on tasks
+- A connector (MCP) for Claude and ChatGPT with its own OAuth sign-in: either can add, plan, complete and hand off tasks, keep shopping lists, check how full each day is, suggest what to do today, draft a week's plan, set reminders you ask for and look at photos on tasks
 
 ## Run it locally
 
@@ -46,15 +46,21 @@ cp .env.example .env    # dev sign-in is on by default, so no OIDC setup is need
 pnpm dev                # http://localhost:5173
 ```
 
-[CONTRIBUTING.md](CONTRIBUTING.md) covers the layout, the checks to run and how the code is written. `pnpm test` runs the tests, including contrast checks for every theme. `node --env-file=.env scripts/eval-smart-add.ts` scores smart add against real household phrasing at each effort level, on the model the environment sets (a fraction of a cent per case). For a realistic household to look at, `node scripts/demo.ts <empty-folder> <your-email>` writes a demo database; run the app on it with `ALMANAC_DATA_DIR=<that-folder> pnpm dev`. With that running (and Chrome installed), `node scripts/screens.ts <email>` captures every screen at phone size in several themes, and `node scripts/smoke.ts <email>` clicks through the core loop and fails on any broken step or console error. The demo includes a sample calendar, so the briefing and planner have events to work around. Offline needs the service worker, which only a production build has: run `pnpm build`, start `node --env-file=.env server/index.ts` on the demo database, and `ALMANAC_URL=http://localhost:8787 node scripts/offline.ts <email>` goes offline, makes changes, comes back and checks they synced.
+[CONTRIBUTING.md](CONTRIBUTING.md) covers the layout, the checks to run and how the code is written. `pnpm test` runs the tests, including contrast checks for every theme. `node --env-file=.env scripts/eval-smart-add.ts` scores smart add against real household phrasing at each effort level, on the model the environment sets (a fraction of a cent per case). For a realistic household to look at, `node scripts/demo.ts <empty-folder> <your-email>` writes a demo database; run the app on it with `ALMANAC_DATA_DIR=<that-folder> pnpm dev`. With that running (and Chrome installed), `node scripts/screens.ts <email>` captures every screen at phone size in several themes (`ALMANAC_VIEWPORT=820x1180` for a tablet), and `node scripts/smoke.ts <email>` clicks through the core loop and fails on any broken step or console error. The demo includes a sample calendar, so the briefing and planner have events to work around. Offline needs the service worker, which only a production build has: run `pnpm build`, start `node --env-file=.env server/index.ts` on the demo database, and `ALMANAC_URL=http://localhost:8787 node scripts/offline.ts <email>` goes offline, makes changes, comes back and checks they synced.
 
-## Use it from Claude
+## Use it from Claude or ChatGPT
 
-Almanac includes a Claude connector (MCP). Claude can add, plan, complete and hand off tasks, keep shopping lists, and check how full each day is, acting as whoever connected it.
+Almanac includes a connector (MCP) that Claude and ChatGPT can both use. They can add, plan, complete and hand off tasks, keep shopping lists, and check how full each day is, acting as whoever connected them. Activity shows which assistant made each change.
 
-**Remote (claude.ai, the desktop and phone apps, Claude Code).** Open Connect Claude from the account menu in Almanac and copy the address shown, which is `<ALMANAC_PUBLIC_URL>/mcp`. In Claude, go to Settings, Connectors, Add custom connector, paste it, then Connect and Allow. Almanac is its own OAuth 2.1 server: Claude identifies itself with its client metadata document, you sign in with your normal Almanac account, and you can disconnect from the same page. It needs a public HTTPS URL that Claude can reach, and if Almanac runs under a path prefix your proxy must also send `/.well-known/oauth-protected-resource<prefix>` and `/.well-known/oauth-authorization-server<prefix>` to it. Only apps on `ALMANAC_OAUTH_CLIENT_HOSTS` (default `claude.ai,claude.com`) and local loopback apps can connect.
+Both connect to the same address: open Connect an assistant from Settings (under AI) in Almanac and copy it. It's `<ALMANAC_PUBLIC_URL>/mcp`.
 
-**Local (same machine as the database).** `server/mcp-stdio.ts` talks to Claude over stdio and opens the database file directly, with no sign-in and nothing exposed to the network. It acts as the member named by `ALMANAC_MEMBER`, who must have signed in once:
+**Claude (claude.ai, the desktop and phone apps, Claude Code).** In Claude, go to Settings, Connectors, Add custom connector, paste the address, then Connect and Allow.
+
+**ChatGPT (on the web, in Developer mode).** In ChatGPT, turn on Developer mode under Settings, Apps, Advanced settings. Then choose Create in Apps, paste the address, pick OAuth, and Allow on the Almanac page that opens. Developer mode is a beta: as of October 2026 ChatGPT can use every tool on Business, Enterprise and Edu plans, and only the read-only ones on Pro. ChatGPT identifies itself with its client metadata document (`https://chatgpt.com/oauth/client.json`) and comes back to `https://chatgpt.com/connector_platform_oauth_redirect`; dynamic registration works too, if it's picked in the app's OAuth settings.
+
+Almanac is its own OAuth 2.1 server: the assistant identifies itself, you sign in with your normal Almanac account, and you can disconnect from the same page. It needs a public HTTPS URL the assistant can reach, and if Almanac runs under a path prefix your proxy must also send `/.well-known/oauth-protected-resource<prefix>` and `/.well-known/oauth-authorization-server<prefix>` to it. Only apps on `ALMANAC_OAUTH_CLIENT_HOSTS` (default `claude.ai,claude.com,chatgpt.com`) and local loopback apps can connect. If your `.env` sets that list from an older `.env.example`, add `chatgpt.com` to it.
+
+**Local (same machine as the database).** ChatGPT only connects to remote servers, but Claude can also run Almanac locally. `server/mcp-stdio.ts` talks to Claude over stdio and opens the database file directly, with no sign-in and nothing exposed to the network. It acts as the member named by `ALMANAC_MEMBER`, who must have signed in once:
 
 ```sh
 claude mcp add almanac --scope user -e ALMANAC_MEMBER=you@example.com -- node /path/to/almanac/server/mcp-stdio.ts

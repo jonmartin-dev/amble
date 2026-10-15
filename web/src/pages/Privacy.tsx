@@ -62,12 +62,12 @@ export function Privacy() {
             and this page will name it.
           </p>
         )}
-        <h2>Claude connector</h2>
+        <h2>Claude and ChatGPT</h2>
         <p>
-          If you connect Claude to Almanac, Claude can read and change your tasks, lists and plans when you ask it to, acting as you,
-          and look at photos and text files on tasks.
-          What it reads becomes part of your Claude conversation and is handled under your Claude account's privacy settings. You can
-          disconnect it at any time from Connect Claude in Almanac.
+          If you connect Claude or ChatGPT to Almanac, it can read and change your tasks, lists and plans when you ask it to, acting as
+          you, and look at photos and text files on tasks. What it reads becomes part of that conversation and is handled under your
+          Anthropic or OpenAI account's privacy settings. Changes it makes show in Activity as made through it. You can disconnect it at
+          any time from Connect an assistant in Almanac.
         </p>
         <h2>Sharing</h2>
         <p>Almanac never sells your data or shares it with anyone besides the services named above. There are no ads or trackers.</p>

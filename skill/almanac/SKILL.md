@@ -7,7 +7,7 @@ description: Manage household tasks, chores, errands, calls, shopping and grocer
 
 # Almanac
 
-Almanac is a calm, shared household planner. The connector's tools do the work; this skill is how to use them the way the household wants. If the Almanac tools aren't available, say so and point to Connect Claude in the Almanac app instead of keeping the task in the chat.
+Almanac is a calm, shared household planner. The connector's tools do the work; this skill is how to use them the way the household wants. If the Almanac tools aren't available, say so and point to Connect an assistant in the Almanac app instead of keeping the task in the chat.
 
 ## How Almanac thinks
 

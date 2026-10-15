@@ -14,7 +14,7 @@ interface ConnectRequest {
   loopback: boolean;
 }
 
-/** OAuth consent: shown when Claude (or another allowed app) asks to act for the signed-in member. */
+/** OAuth consent: shown when Claude, ChatGPT or another allowed app asks to act for the signed-in member. */
 export function Connect({ requestId }: { requestId: string }) {
   const me = useMe();
   const request = useQuery({
@@ -63,7 +63,7 @@ export function Connect({ requestId }: { requestId: string }) {
       {expired ? (
         <>
           <h1 className="display mt-8 text-[2.5rem] leading-tight font-medium">This link has expired</h1>
-          <p className="mt-3 text-lg text-on-surface-variant">Start connecting again from Claude. Requests last 15 minutes.</p>
+          <p className="mt-3 text-lg text-on-surface-variant">Start connecting again from the assistant. Requests last 15 minutes.</p>
           <a href={appUrl('/')} className="mt-10 rounded-full bg-surface-high px-6 py-4 text-center font-medium">
             Open Almanac
           </a>
@@ -110,7 +110,7 @@ export function Connect({ requestId }: { requestId: string }) {
               Cancel
             </motion.button>
           </div>
-          <p className="mt-6 text-center text-sm text-on-surface-variant">You can disconnect it any time from Connect Claude in Almanac.</p>
+          <p className="mt-6 text-center text-sm text-on-surface-variant">You can disconnect it any time from Connect an assistant in Almanac.</p>
         </>
       )}
     </main>

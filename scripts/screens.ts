@@ -1,6 +1,7 @@
 // Captures every screen at phone size for visual review.
 // Needs `pnpm dev` running with ALMANAC_DEV_LOGIN=1, and Chrome installed.
 // Usage: node scripts/screens.ts [email] [variant,variant]   -> design/screens/*.png
+// ALMANAC_VIEWPORT=820x1180 captures at another size (a tablet, a Fold opened), into files named for it.
 import fs from 'node:fs';
 import { chromium } from 'playwright-core';
 
@@ -32,6 +33,8 @@ const allVariants = [
   { name: 'ocean-dark-vibrant', mode: 'dark', seed: '#3a5ba9', style: 'vibrant' },
 ];
 const variants = only ? allVariants.filter((v) => only.includes(v.name)) : allVariants;
+const [width, height] = (process.env.ALMANAC_VIEWPORT ?? '390x844').split('x').map(Number);
+const file = (variant: string, name: string) => `${out}/${process.env.ALMANAC_VIEWPORT ? `${width}x${height}-` : ''}${variant}-${name}.png`;
 
 fs.mkdirSync(out, { recursive: true });
 const browser = await chromium.launch({ channel: 'chrome' });
@@ -40,7 +43,7 @@ let originalTheme: unknown = undefined;
 
 for (const v of variants) {
   const context = await browser.newContext({
-    viewport: { width: 390, height: 844 },
+    viewport: { width: width!, height: height! },
     deviceScaleFactor: 2,
     isMobile: true,
     hasTouch: true,
@@ -77,9 +80,8 @@ for (const v of variants) {
     await page.waitForTimeout(500);
   };
   const shoot = async (name: string, fullPage = true) => {
-    const file = `${out}/${v.name}-${name}.png`;
-    await page.screenshot({ path: file, fullPage });
-    console.log(file);
+    await page.screenshot({ path: file(v.name, name), fullPage });
+    console.log(file(v.name, name));
   };
   for (const [name, route] of named) {
     await page.goto(`${base}${route}`);
@@ -126,8 +128,7 @@ for (const v of variants) {
     await page.waitForLoadState('networkidle');
     await page.locator('main').getByText(/Someday|Today|Tomorrow|day$/).locator('visible=true').first().click();
     await page.waitForTimeout(900);
-    await page.screenshot({ path: `${out}/${v.name}-move.png` });
-    console.log(`${out}/${v.name}-move.png`);
+    await shoot('move', false);
     await closeSheet();
     await page.waitForTimeout(400);
     await page.getByRole('button', { name: /Doesn't repeat|Every|Weekly|Monthly|after it's done/ }).locator('visible=true').first().click();
@@ -153,24 +154,36 @@ for (const v of variants) {
   await shoot('calendar-month');
   await page.getByRole('button', { name: /, (Light|Steady|Full|Too much|Wide open)/ }).filter({ hasText: /\d/ }).nth(15).click();
   await page.waitForTimeout(900);
-  await page.screenshot({ path: `${out}/${v.name}-day.png` });
-  console.log(`${out}/${v.name}-day.png`);
+  await shoot('day', false);
   await closeSheet();
   await page.getByRole('radio', { name: 'Week' }).click();
 
-  // The connector consent page, as Claude's sign-in would open it (never approved here).
-  const consent = new URLSearchParams({
-    response_type: 'code',
-    client_id: 'https://claude.ai/oauth/mcp-oauth-client-metadata',
-    redirect_uri: 'https://claude.ai/api/mcp/auth_callback',
-    code_challenge: 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM',
-    code_challenge_method: 'S256',
-  });
-  await page.goto(`${base}/oauth/authorize?${consent}`);
+  // Connecting an assistant, with ChatGPT's steps showing.
+  await page.goto(`${base}/connections`);
   await page.waitForLoadState('networkidle');
-  await page.waitForTimeout(900);
-  await page.screenshot({ path: `${out}/${v.name}-consent.png`, fullPage: true });
-  console.log(`${out}/${v.name}-consent.png`);
+  await page.getByRole('radio', { name: 'ChatGPT' }).click();
+  await page.waitForTimeout(600);
+  await shoot('connections-chatgpt');
+
+  // The connector consent page, as Claude's and ChatGPT's sign-in would open it (never approved
+  // here). The server fetches each one's real client metadata document to show it.
+  const assistants = [
+    ['consent', 'https://claude.ai/oauth/mcp-oauth-client-metadata', 'https://claude.ai/api/mcp/auth_callback'],
+    ['consent-chatgpt', 'https://chatgpt.com/oauth/client.json', 'https://chatgpt.com/connector_platform_oauth_redirect'],
+  ];
+  for (const [name, clientId, redirectUri] of assistants) {
+    const consent = new URLSearchParams({
+      response_type: 'code',
+      client_id: clientId!,
+      redirect_uri: redirectUri!,
+      code_challenge: 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM',
+      code_challenge_method: 'S256',
+    });
+    await page.goto(`${base}/oauth/authorize?${consent}`);
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(900);
+    await shoot(name!);
+  }
 
   if (v === variants.at(-1)) {
     await page.request.patch(`${base}/api/me`, { data: { theme: originalTheme } });
