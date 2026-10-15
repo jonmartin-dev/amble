@@ -12,6 +12,7 @@ import { ConnectError, createCalendarSync, type CalendarSync } from './calendar/
 import type { FileStore } from './domain/files.ts';
 import { createFileStore } from './lib/disk-files.ts';
 import { createPush, type Push } from './notify/push.ts';
+import { googleToken } from './google-token.ts';
 import { allowedEmails, isAllowed, upsertMember } from './auth/members.ts';
 import { describeError, type Oidc, SignInError } from './auth/oidc.ts';
 import { createSession, deleteSession, resolveSession, SESSION_COOKIE, SESSION_TTL_MS } from './auth/sessions.ts';
@@ -99,6 +100,13 @@ self.addEventListener('activate', (e) => e.waitUntil((async () => {
       }
       return c.redirect(`${config.publicOrigin}${base}${rest}${url.search}`, c.req.method === 'GET' || c.req.method === 'HEAD' ? 301 : 308);
     });
+  }
+
+  // Keeps a web app running Amble with no server signed in to Drive: it adds the client secret to
+  // Google's token calls (server/google-token.ts). Before the middleware below, since it changes nothing here.
+  const { clientId, clientSecret } = config.calendar;
+  if (clientId && clientSecret) {
+    app.on(['POST', 'OPTIONS'], '/google/token', (c) => googleToken(c.req.raw, { clientId, clientSecret, origins: config.googleTokenOrigins, fetchImpl }));
   }
 
   // Whatever a request changed (the app's, or an assistant's through the connector) goes out to

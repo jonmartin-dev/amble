@@ -16,5 +16,5 @@
     "jsx": "react-jsx",
     "types": ["node", "vite/client", "unplugin-icons/types/react"]
   },
-  "include": ["server", "shared", "web/src", "scripts", "vite.config.ts", "drizzle.config.ts", "capacitor.config.ts"]
+  "include": ["server", "shared", "web/src", "scripts", "vite.config.ts", "drizzle.config.ts", "capacitor.config.ts", "deploy/google-token-worker"]
 }

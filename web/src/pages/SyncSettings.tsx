@@ -9,9 +9,8 @@ import Warning from '~icons/material-symbols/warning-outline-rounded';
 import { ListGroup, SectionTitle, SubpageHeader } from '../components/ui.tsx';
 import { api, ApiError, appUrl } from '../lib/api.ts';
 import { onDevice } from '../lib/device.ts';
-import { native } from '../lib/native.ts';
 import { refreshStatus, syncNow, useDriveSync, type DriveSyncStatus } from '../lib/drive-sync.ts';
-import { googleConfigured, pickHouseholdFile, resumeAfterGoogle, tokenFromTap } from '../lib/google.ts';
+import { forgetRefreshToken, forgetToken, googleConfigured, pickHouseholdFile, resumeAfterGoogle, tokenFromTap } from '../lib/google.ts';
 import { refreshViews } from '../lib/mutations.ts';
 import { useMe } from '../lib/queries.ts';
 import { useSnackbar } from '../lib/snackbar.tsx';
@@ -259,7 +258,11 @@ function DeviceSync() {
 
   const stop = () => {
     if (!confirm('Stop syncing on this device? What’s here stays here, and the copy in Google Drive stays for your other devices.')) return;
-    void run('Stopping', () => api('/sync', { method: 'DELETE' }));
+    void run('Stopping', async () => {
+      await api('/sync', { method: 'DELETE' });
+      forgetToken();
+      forgetRefreshToken();
+    });
   };
 
   if (!googleConfigured) {
@@ -320,9 +323,7 @@ function DeviceSync() {
             ]}
           />
           <p className="mt-2 px-1 text-sm text-on-surface-variant">
-            {native
-              ? 'It syncs when Amble opens, every minute while it’s open, and soon after each change.'
-              : 'While Amble is open it syncs every minute. Google lets a browser keep access for about an hour, so now and then it asks you to tap to carry on.'}
+            It syncs when Amble opens, every minute while it’s open, and soon after each change.
           </p>
 
           <SectionTitle>Household</SectionTitle>

@@ -236,6 +236,7 @@ export function deviceConfig(origin: string, basePath: string, timezone: string)
     allowedEmails: [],
     oidc: { issuer: '', providerName: '', clientId: '', clientSecret: '' },
     calendar: { clientId: '', clientSecret: '' },
+    googleTokenOrigins: [],
     maxFileBytes: 25 * 1024 * 1024,
     devLogin: false,
     oauthClientHosts: [],

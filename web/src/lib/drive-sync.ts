@@ -1,10 +1,12 @@
 // Keeping this device in step with Google Drive while Amble is open: a round when it opens, every
 // minute while it's on screen, and soon after each change. The worker does the merging; this only
-// brings it a Google token. When the token has run out, sync waits for a tap.
+// brings it a Google token. When a browser's token runs out and can't be refreshed in place, it
+// renews with a quick trip to Google at a moment nobody's using the page (google.ts), and asks for a
+// tap only if that trip needed the person.
 import { useSyncExternalStore } from 'react';
 import { api } from './api.ts';
 import { onDevice } from './device.ts';
-import { forgetToken, googleConfigured, resumeAfterGoogle, syncToken } from './google.ts';
+import { canRenewQuietly, forgetToken, googleConfigured, renewQuietly, resumeAfterGoogle, syncToken } from './google.ts';
 import { native } from './native.ts';
 
 export interface DriveSyncStatus {
@@ -19,12 +21,14 @@ export interface DriveSyncStatus {
 export interface DriveSyncState {
   status: DriveSyncStatus | null;
   syncing: boolean;
-  /** Google's token ran out; a tap brings it back. */
+  /** Google wants the person: a tap brings sync back. */
   needsGoogle: boolean;
 }
 
 const EVERY_MS = 60_000;
 const AFTER_CHANGE_MS = 4000;
+// How long the page sits untouched before a renewal that reloads it is fine.
+const IDLE_MS = 2 * 60_000;
 const SIGN_IN_AGAIN = 'Google needs you to sign in again.';
 
 let state: DriveSyncState = { status: null, syncing: false, needsGoogle: false };
@@ -32,6 +36,9 @@ const listeners = new Set<() => void>();
 let onMerged: (() => void) | null = null;
 let soon: ReturnType<typeof setTimeout> | undefined;
 let running: Promise<void> | null = null;
+// The first round after Amble opens, when a reload costs nothing.
+let opening = true;
+let touchedAt = Date.now();
 
 function set(patch: Partial<DriveSyncState>) {
   state = { ...state, ...patch };
@@ -56,6 +63,18 @@ export async function refreshStatus() {
   return status;
 }
 
+/**
+ * Whether reloading the page now would cost nobody anything: Amble just opened, the tab is hidden
+ * with changes to send, or the page has sat untouched with nothing open or being typed in.
+ */
+function quietMoment(status: DriveSyncStatus) {
+  if (opening) return true;
+  if (document.visibilityState === 'hidden') return status.waiting;
+  if (Date.now() - touchedAt < IDLE_MS) return false;
+  const typing = document.activeElement?.matches('input, textarea, select, [contenteditable="true"]');
+  return !typing && !document.querySelector('[role="dialog"], dialog[open]');
+}
+
 /** One round, if sync is on and there's a token. With `tap`, it may open Google's sign-in. */
 export function syncNow({ tap = false } = {}): Promise<void> {
   if (running) return running;
@@ -67,7 +86,11 @@ export function syncNow({ tap = false } = {}): Promise<void> {
       for (let attempt = 0; attempt < (native ? 2 : 1); attempt++) {
         const token = await syncToken(tap, status.account?.email);
         if (!token) {
-          set({ needsGoogle: true });
+          const email = status.account?.email;
+          const quietly = !native && Boolean(email) && canRenewQuietly();
+          if (quietly && quietMoment(status)) await renewQuietly(email!);
+          // Otherwise it waits for a quieter moment, or, if Google wants the person, for a tap.
+          set({ needsGoogle: !quietly });
           return;
         }
         set({ syncing: true, needsGoogle: false });
@@ -79,6 +102,7 @@ export function syncNow({ tap = false } = {}): Promise<void> {
       }
       await refreshStatus();
     } finally {
+      opening = false;
       set({ syncing: false });
       running = null;
     }
@@ -100,15 +124,22 @@ export function startDriveSync(merged: () => void) {
   // Back from Google after a tap on "Continue": the token is in hand now.
   resumeAfterGoogle('sync');
   void refreshStatus()
-    .then((s) => (s.on ? syncNow() : undefined))
+    .then((s) => {
+      if (s.on) return syncNow();
+      opening = false;
+    })
     .catch(() => {});
   const timer = setInterval(() => {
     if (document.visibilityState === 'visible') void syncNow().catch(() => {});
   }, EVERY_MS);
-  const onVisible = () => document.visibilityState === 'visible' && void syncNow().catch(() => {});
+  // Coming back gets a round; so does leaving, to send what changed before the tab is put away.
+  const onVisible = () => void syncNow().catch(() => {});
+  const touched = () => (touchedAt = Date.now());
   document.addEventListener('visibilitychange', onVisible);
+  for (const type of ['pointerdown', 'keydown', 'wheel', 'touchstart']) window.addEventListener(type, touched, { passive: true, capture: true });
   return () => {
     clearInterval(timer);
     document.removeEventListener('visibilitychange', onVisible);
+    for (const type of ['pointerdown', 'keydown', 'wheel', 'touchstart']) window.removeEventListener(type, touched, { capture: true });
   };
 }

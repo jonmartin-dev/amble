@@ -1,0 +1,12 @@
+# The Google token endpoint for a web app with no server (see index.ts and docs/google-drive.md).
+# From this folder: `npx wrangler secret put GOOGLE_CLIENT_SECRET`, then `npx wrangler deploy`.
+# Build the web app with VITE_GOOGLE_TOKEN_URL=https://<this worker's address>/google/token.
+name = "amble-google-token"
+main = "index.ts"
+compatibility_date = "2026-10-01"
+
+[vars]
+# The same "Web application" client the web app signs in with (VITE_GOOGLE_CLIENT_ID).
+GOOGLE_CLIENT_ID = ""
+# Where the web app is served from, comma-separated.
+ALLOWED_ORIGINS = "https://amble.example.com"

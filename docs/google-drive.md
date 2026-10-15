@@ -20,7 +20,7 @@ Amble asks Google only for `drive.appdata` and `drive.file`: its hidden folder, 
 
 What to know before relying on it:
 
-- **The web app needs a tap about once an hour.** A browser gets a Drive token that lasts about an hour and Google won't renew it without a tap, so when it runs out Amble shows "Sync paused" with Continue. The Android app and the server renew on their own.
+- **A browser renews its Drive access by itself.** Google gives a web page a token that lasts about an hour. With a [token endpoint](#keeping-a-browser-signed-in), signing in brings back a refresh token too, and the app renews in place. Without one, it takes a quick trip to Google that shows nothing (`prompt=none`) when Amble opens, when its tab is in the background with changes to send, or when the page has sat untouched for a couple of minutes. Only someone signed out of Google, or who took Amble's access away, sees "Sync paused" with Continue. The Android app and the server renew on their own.
 - **Photos and files on tasks stay on the devices of whoever added them.** The same Drive rule keeps other people's Amble from opening files someone else uploaded.
 - **Private lists are hidden in the app, not in the file.** Everyone in a household has the whole household file in their Drive, and could read it outside Amble.
 - **Everyone needs the same version.** A copy written by a newer Amble (a newer database migration) isn't merged by an older one; the older one says to update.
@@ -33,6 +33,19 @@ VITE_GOOGLE_CLIENT_ID=… VITE_GOOGLE_API_KEY=… VITE_GOOGLE_APP_ID=… AMBLE_B
 ```
 
 That writes static files to `dist/device`. Host them anywhere that serves `index.html` for paths it doesn't have (Cloudflare Pages does when there's no `404.html`). `AMBLE_BASE` is the path it's served under, with slashes at both ends, `/` by default. Without the `VITE_GOOGLE_*` settings the app still works; it just can't sync. `pnpm dev:device` serves it on http://localhost:5174 (and http://127.0.0.1:5174, which the browser treats as another site: handy for trying sync between two "devices" in one browser). In development those settings come from `.env`.
+
+## Keeping a browser signed in
+
+Google hands a web page a refresh token only through the authorization code flow, and for a "Web application" client its token calls want the client secret, which a page can't keep. A small token endpoint adds the secret to those two calls (trading the code, and refreshing) for the app's own addresses. It stores and logs nothing; the browser keeps its refresh token. Build the app with its address:
+
+```sh
+VITE_GOOGLE_TOKEN_URL=https://example.com/amble/google/token … pnpm build:device
+```
+
+- **On an Amble server** it's already there, at `<AMBLE_PUBLIC_URL>/google/token`, whenever the server has a Google client with its secret. It answers pages on the server's own address; list a device app served from anywhere else in `AMBLE_GOOGLE_TOKEN_ORIGINS`.
+- **With no server**, deploy `deploy/google-token-worker` to Cloudflare Workers (free): set `GOOGLE_CLIENT_ID` and `ALLOWED_ORIGINS` in its `wrangler.toml`, run `npx wrangler secret put GOOGLE_CLIENT_SECRET`, then `npx wrangler deploy`, and use `https://<the worker's address>/google/token`.
+
+The Google client needs nothing new: the code flow comes back to the same `/google-return` address. Stopping sync on a device forgets its refresh token rather than revoking it, since Google would take the whole grant for that client, an Amble server's included.
 
 ## Google Cloud setup
 

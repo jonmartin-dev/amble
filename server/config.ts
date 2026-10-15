@@ -88,6 +88,10 @@ export const config = {
     clientId: process.env.GOOGLE_CLIENT_ID || (signInIsGoogle ? (process.env.OIDC_CLIENT_ID ?? '') : ''),
     clientSecret: secret('GOOGLE_CLIENT_SECRET', { optional: true }) || (signInIsGoogle ? oidcClientSecret : ''),
   },
+  // Web apps running Amble with no server that may use this server's /google/token to stay signed in
+  // to Drive (see server/google-token.ts), besides this server's own address. Like
+  // https://amble.example.com, comma-separated.
+  googleTokenOrigins: [new URL(publicUrl).origin, ...list(process.env.AMBLE_GOOGLE_TOKEN_ORIGINS)],
   // Files on tasks are kept under <data dir>/files, each at most this big.
   maxFileBytes: Math.round(Number(process.env.AMBLE_MAX_FILE_MB ?? 25) * 1024 * 1024),
   devLogin: !production && process.env.AMBLE_DEV_LOGIN === '1',

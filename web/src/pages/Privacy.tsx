@@ -1,5 +1,6 @@
 import { appUrl } from '../lib/api.ts';
 import { onDevice } from '../lib/device.ts';
+import { tokenEndpointHost } from '../lib/google.ts';
 import { native } from '../lib/native.ts';
 import { useSession } from '../lib/queries.ts';
 
@@ -46,7 +47,9 @@ function DevicePrivacy() {
         <p>
           {native
             ? 'Android gives the app a key to your Drive that lasts about an hour, and a fresh one while you allow Amble.'
-            : 'Google gives the app a key to your Drive that lasts about an hour and is kept only in this tab.'}{' '}
+            : tokenEndpointHost
+              ? `Google gives the app a key to your Drive that lasts about an hour, kept only in this tab, and a longer-lasting one this browser keeps for getting the next. Getting it goes through ${tokenEndpointHost}, which adds Amble's Google sign-in secret on the way and keeps nothing.`
+              : "Google gives the app a key to your Drive that lasts about an hour and is kept only in this tab. When it runs out, Google gives it a new one, asking you only if you've signed out of Google."}{' '}
           If someone in the household runs their own Amble server and connects it, the server is one more copy of the household's file.
         </p>
         <h2>Reminders</h2>
