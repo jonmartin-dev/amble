@@ -24,7 +24,7 @@ pnpm dev                 # the app on http://localhost:5173, the server on 8787
 
 With dev sign-in on, the sign-in page offers a "sign in as" picker: everyone in `ALMANAC_ADMIN_EMAILS`, `ALMANAC_ALLOWED_EMAILS` and the database, or `dev@almanac.local` when there's nobody yet.
 
-`pnpm dev:device` runs the app with no server instead (http://localhost:5174): the API runs in a worker in the browser, on SQLite in WebAssembly. [docs/google-drive.md](docs/google-drive.md) has what sync through Google Drive needs.
+`pnpm dev:device` runs the app with no server instead (http://localhost:5174): the API runs in a worker in the browser, on SQLite in WebAssembly. [docs/google-drive.md](docs/google-drive.md) has what sync through Google Drive needs. `node scripts/android.ts run` builds the Android app and puts it on a plugged-in phone ([docs/android.md](docs/android.md)).
 
 For something to look at, build the demo household in an empty folder and run the app on it:
 
@@ -43,6 +43,7 @@ Smart add, estimates and the planner's wording need an AI model: set one up in S
 | `server/domain/` | The rules for tasks, lists, repeats, load and planning, shared by the API and the connector |
 | `server/sync/` | Sync between copies through Google Drive: recording changes (`capture.ts`), merging them (`state.ts`) and the rounds with Drive (`service.ts`, `server.ts`) |
 | `server/local.ts`, `web/src/worker/` | Almanac with no server: the same API in a web worker on SQLite in WebAssembly (`server/db/wasm.ts`) |
+| `android/`, `web/src/lib/native.ts`, `capacitor.config.ts` | The Android app: Capacitor around the device build, with the phone's own notifications and Google sign-in (`GoogleDrivePlugin.java`) |
 | `shared/` | Code the server and the app both use: list templates, repeat rules, smart add proposals |
 | `web/src/` | The React app: `pages/`, `components/`, `lib/` (queries, the offline outbox, theming, motion) and the service worker (`sw.ts`) |
 | `drizzle/` | Database migrations, applied when the server starts |

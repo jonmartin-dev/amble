@@ -2,7 +2,7 @@
 
 A calm, shared planner for a household. It knows how full each day already is, from your tasks and your Google Calendar, and suggests what to do today and which day has room for something due later. It never nags.
 
-Status: early but usable. The day list, backlog, task details, smart add, repeating tasks, lists from eleven templates, handing tasks to each other, the calendar, stats, the activity feed, settings and the connector for Claude and ChatGPT work, offline too. Capacity is learned from what gets done, Google Calendar shapes how full each day is, and the planner suggests what to do today and where things fit. Reminders and files on tasks work too. It also runs with no server at all, on the device, and keeps a household in step through Google Drive. An Android app is next.
+Status: early but usable. The day list, backlog, task details, smart add, repeating tasks, lists from eleven templates, handing tasks to each other, the calendar, stats, the activity feed, settings and the connector for Claude and ChatGPT work, offline too. Capacity is learned from what gets done, Google Calendar shapes how full each day is, and the planner suggests what to do today and where things fit. Reminders and files on tasks work too. It also runs with no server at all, on the device or as an Android app, and keeps a household in step through Google Drive.
 
 <p>
   <img src="docs/screenshots/briefing.png" width="160" alt="Here's today: the day's load, calendar events, a task handed over and a suggestion">
@@ -57,6 +57,8 @@ pnpm build:device      # static files in dist/device, for any static host
 ```
 
 This build runs Almanac's API in a web worker on the device, on SQLite compiled to WebAssembly and kept in the browser's own storage. First open asks what to call you and starts; nothing leaves the device. Settings, Sync and backup keeps a copy in your Google Drive and brings your other devices and your household in step, with no server in between. AI features work too, with a key that stays on the device. [docs/google-drive.md](docs/google-drive.md) covers building it with a Google client, the Google Cloud setup, and adding a server to a household later.
+
+The same build is the Android app, through Capacitor: reminders show with the app closed, and Drive sync keeps going without asking you to sign in again. `node scripts/android.ts run` builds it and installs it on a plugged-in phone; [docs/android.md](docs/android.md) has what it needs.
 
 ## Use it from Claude or ChatGPT
 
