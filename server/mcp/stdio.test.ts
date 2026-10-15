@@ -8,7 +8,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { openDatabase } from '../db/index.ts';
-import { attachments, members, tasks } from '../db/schema.ts';
+import { attachments, members, serverSettings, tasks } from '../db/schema.ts';
 import { createFileStore } from '../lib/disk-files.ts';
 
 const entry = fileURLToPath(new URL('../mcp-stdio.ts', import.meta.url));
@@ -145,6 +145,13 @@ describe('local connector over stdio', () => {
       remindMe: `${tomorrow}T09:30`,
       note: expect.stringContaining('Notifications'),
     });
+    // Once the server syncs with a household's devices, the reminder reaches Jon's phone that way.
+    const synced = openDatabase(path.join(dataDir, 'almanac.db'));
+    synced.insert(serverSettings).values({ key: 'sync', value: { target: { kind: 'household', fileId: 'f1', name: 'Home' } } }).run();
+    synced.$client.close();
+    const reminded = await call('set_reminder', { id: vet!.id, at: `${tomorrow}T10:00` });
+    expect(reminded.remindMe).toBe(`${tomorrow}T10:00`);
+    expect(reminded.note).toBeUndefined();
     expect((await call('set_reminder', { id: vet!.id, at: null })).remindMe).toBeUndefined();
     expect((await call('set_reminder', { id: vet!.id, at: 'tomorrow at 6' })).error).toMatch(/needs a date and a time/);
 

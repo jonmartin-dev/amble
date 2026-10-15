@@ -51,6 +51,12 @@ export type Adopt = (account: { email: string; name: string | null }, localGroup
 
 const KEY = 'sync';
 
+/** Whether this copy keeps in step with a file in Drive, so the household's devices get its changes. */
+export function syncsThroughDrive(db: Db) {
+  const settings = db.select().from(serverSettings).where(eq(serverSettings.key, KEY)).get()?.value as Settings | undefined;
+  return Boolean(settings?.target);
+}
+
 export function createSyncService({ db, schema, fetchImpl = fetch, adopt }: { db: Db; schema: string; fetchImpl?: typeof fetch; adopt?: Adopt }) {
   const read = (): Settings | null => (db.select().from(serverSettings).where(eq(serverSettings.key, KEY)).get()?.value as Settings | undefined) ?? null;
   const write = (s: Settings) =>

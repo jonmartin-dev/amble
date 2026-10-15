@@ -42,6 +42,7 @@ import {
   type TaskDetail,
 } from '../domain/tasks.ts';
 import { addDays, planningDate, weekday } from '../lib/dates.ts';
+import { syncsThroughDrive } from '../sync/service.ts';
 
 const VERSION = '0.1.0';
 const NOTES_PREVIEW = 160;
@@ -400,10 +401,13 @@ export function createMcpServer({
     },
     run((a: { id: string; at: string | null }) => {
       const task = updateTask(db, actor, a.id, { remindAt: a.at === null ? null : parseReminderTime(a.at, member.timezone) });
+      // This server pushes it to the browsers they turned notifications on in. Through Drive it also
+      // reaches their phone and other devices, which show reminders themselves.
       const devices = db.select({ n: count() }).from(pushSubscriptions).where(eq(pushSubscriptions.memberId, member.id)).get()?.n ?? 0;
+      const reaches = devices > 0 || syncsThroughDrive(db);
       return {
         ...present(task),
-        ...(a.at && !devices && { note: `${firstName(member)} hasn't turned on notifications on any device yet, so it can't reach them. They can in Amble's Settings, under Notifications.` }),
+        ...(a.at && !reaches && { note: `${firstName(member)} hasn't turned on notifications on any device yet, so it can't reach them. They can in Amble's Settings, under Notifications.` }),
       };
     }),
   );
