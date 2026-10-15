@@ -429,6 +429,38 @@ export const oauthTokens = sqliteTable(
   (t) => [index('oauth_tokens_grant_idx').on(t.grantId)],
 );
 
+// Sync between devices (server/sync/). For every field of a synced row, when it last changed, as a
+// hybrid logical clock reading; null until the app stamps the change it came from. Triggers write
+// these as rows change, once sync is on.
+export const syncCells = sqliteTable(
+  'sync_cells',
+  {
+    tbl: text('tbl').notNull(),
+    // The row's primary key as a JSON array.
+    pk: text('pk').notNull(),
+    col: text('col').notNull(),
+    hlc: text('hlc'),
+  },
+  (t) => [primaryKey({ columns: [t.tbl, t.pk, t.col] }), index('sync_cells_hlc_idx').on(t.hlc)],
+);
+
+// Synced rows that were removed, and when, so the removal reaches other devices too.
+export const syncTombstones = sqliteTable(
+  'sync_tombstones',
+  {
+    tbl: text('tbl').notNull(),
+    pk: text('pk').notNull(),
+    hlc: text('hlc'),
+  },
+  (t) => [primaryKey({ columns: [t.tbl, t.pk] })],
+);
+
+// One row: whether triggers record changes right now. Off while another device's changes are merged in.
+export const syncCapture = sqliteTable('sync_capture', {
+  id: integer('id').primaryKey(),
+  on: integer('on', { mode: 'boolean' }).notNull().default(true),
+});
+
 export type Member = typeof members.$inferSelect;
 export type Group = typeof groups.$inferSelect;
 export type Task = typeof tasks.$inferSelect;
