@@ -55,6 +55,7 @@ A new list template makes a good first change: one entry in `shared/templates.ts
 ## Help wanted
 
 - **Connect a real ChatGPT account.** The ChatGPT side of the connector follows OpenAI's auth docs and is tested against ChatGPT's real client metadata document, but nobody has signed in from ChatGPT itself yet. If your plan has Developer mode (Business, Enterprise or Edu to make changes, Pro to read), follow the ChatGPT steps on Connect an assistant against your own Almanac, ask `@Almanac` to add a task, and check that Activity says "via ChatGPT". Open an issue with how it went, especially any error during sign-in or the tool scan.
+- **Sign in with ChatGPT.** OpenAI has a preview that lets people use their ChatGPT plan in other apps instead of an API key, through the Responses API (with `store: false` and streaming). It's built for local tools that sign in through a loopback address, and each app has to ask OpenAI for a client id, so nobody knows yet whether an open-source app like Almanac can use it. Finding out would help as much as building it; the AI providers are in `shared/ai.ts` and `server/ai/client.ts`. Claude subscriptions can't be used this way, since Anthropic's terms keep them to Claude's own apps, so Claude stays on API keys.
 
 ## Before you open a pull request
 
