@@ -11,6 +11,7 @@ const server = `http://localhost:${process.env.PORT ?? 8787}`;
 // VITE_ALMANAC_DEVICE=1 builds the app that runs Almanac on the device, with no server: static
 // files for any host, under ALMANAC_BASE (default "/").
 const device = process.env.VITE_ALMANAC_DEVICE === '1';
+const deviceBase = process.env.ALMANAC_BASE ?? '/';
 
 function filesIn(dir: string, prefix = ''): string[] {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
@@ -62,15 +63,24 @@ function serviceWorker(): Plugin {
   };
 }
 
+/**
+ * The server writes a <base> into the page so its relative links work on any page; a device build
+ * has no server, so it's written in here (otherwise /settings/sync asks for /settings/icon.svg).
+ */
+function baseTag(): Plugin {
+  return { name: 'almanac-base-tag', transformIndexHtml: (html) => html.replace('<head>', `<head>
+    <base href="${deviceBase}" />`) };
+}
+
 export default defineConfig({
   root: 'web',
   // .env sits beside package.json; only its VITE_ settings (the Google client for Drive sync) reach the app.
   envDir: import.meta.dirname,
   // Relative asset URLs plus a server-injected <base href> let one build run under any path prefix.
   // A device build has no server to write that in, so it's built for its path.
-  base: device ? (process.env.ALMANAC_BASE ?? '/') : './',
+  base: device ? deviceBase : './',
   publicDir: 'public',
-  plugins: [react(), tailwindcss(), Icons({ compiler: 'jsx', jsx: 'react' }), serviceWorker()],
+  plugins: [react(), tailwindcss(), Icons({ compiler: 'jsx', jsx: 'react' }), serviceWorker(), ...(device ? [baseTag()] : [])],
   resolve: {
     // drizzle's driver module names better-sqlite3, which the device's worker never uses.
     alias: process.env.VITEST ? {} : { 'better-sqlite3': path.join(import.meta.dirname, 'web/src/worker/no-native.ts') },
