@@ -25,6 +25,8 @@ export interface SyncState {
   /** Each device's latest change in here, so a device can tell whether its own changes made it in. */
   sites: Record<string, string>;
   tables: Record<string, TableState>;
+  /** Rows folded into others: [table, the one that went, the one that stayed]. */
+  aliases?: [string, string, string][];
 }
 
 export class NewerSchema extends Error {}
@@ -83,7 +85,8 @@ export function exportState(db: Db, clock: Clock, schema: string): SyncState {
       }
       tables[t.name] = { cols, rows, dead };
     }
-    return { v: 1, schema, sites, tables };
+    const aliases = client.prepare(`SELECT tbl, from_pk, to_pk FROM sync_aliases`).raw().all() as [string, string, string][];
+    return { v: 1, schema, sites, tables, aliases };
   });
 }
 
@@ -108,63 +111,104 @@ export interface MergeResult {
 
 /**
  * Takes in another copy's state. Fields and removals that are later than this copy's win; the
- * rest stay. Afterwards, references to rows that are gone are settled the way the schema says
- * (cleared, or removed with them), and the few rules that span rows are put right again.
+ * rest stay. Two rows that are really one (the same email on two people) become one, the same way
+ * on every copy. Afterwards, references to rows that are gone move to the row that took their
+ * place, or are settled the way the schema says (cleared, or removed with them), and the few rules
+ * that span rows are put right again.
  */
 export function mergeState(db: Db, clock: Clock, remote: SyncState, schema: string): MergeResult {
   if (remote.schema > schema) throw new NewerSchema(`That copy was written by a newer Almanac (${remote.schema}).`);
   // Local changes get their times first, so they can be weighed against the incoming ones.
   stamp(db, clock);
+  for (const hlc of Object.values(remote.sites)) clock.see(hlc);
   const client = db.$client;
   let changed = 0;
-  db.transaction(() => {
-    client.exec('PRAGMA defer_foreign_keys = ON');
-    setRecording(db, false);
-    try {
-      for (const t of SYNCED) {
-        const theirs = remote.tables[t.name];
-        if (!theirs) continue;
-        changed += mergeTable(client, t, theirs);
+  // References are settled by hand below, so a removal arriving here doesn't clear them first.
+  // (SQLite only changes this outside a transaction.)
+  const enforced = !client.inTransaction;
+  if (enforced) client.pragma('foreign_keys = OFF');
+  try {
+    db.transaction(() => {
+      const addAlias = client.prepare(`INSERT OR IGNORE INTO sync_aliases (tbl, from_pk, to_pk) VALUES (?, ?, ?)`);
+      for (const [tbl, from, to] of remote.aliases ?? []) addAlias.run(tbl, from, to);
+      const record = (on: boolean) => setRecording(db, on);
+      record(false);
+      try {
+        for (const t of SYNCED) {
+          const theirs = remote.tables[t.name];
+          if (!theirs) continue;
+          changed += mergeTable(client, t, theirs, record);
+        }
+      } finally {
+        record(true);
       }
-    } finally {
-      setRecording(db, true);
-    }
-    // Settling references and rules is this copy's own change, so it's recorded like one.
-    settleReferences(client);
-    reconcile(client);
-    for (const t of SYNCED) {
-      client.prepare(`DELETE FROM sync_cells WHERE tbl = ? AND pk NOT IN (SELECT ${pkExpr(t)} FROM ${quote(t.name)})`).run(t.name);
-    }
-  });
-  for (const hlc of Object.values(remote.sites)) clock.see(hlc);
+      // Whatever this copy does to settle things is its own change, so it's recorded like one.
+      followAliases(client);
+      settleReferences(client);
+      reconcile(client);
+      for (const t of SYNCED) {
+        client.prepare(`DELETE FROM sync_cells WHERE tbl = ? AND pk NOT IN (SELECT ${pkExpr(t)} FROM ${quote(t.name)})`).run(t.name);
+      }
+    });
+  } finally {
+    if (enforced) client.pragma('foreign_keys = ON');
+  }
   stamp(db, clock);
   return { changed };
 }
 
-function mergeTable(client: Client, t: SyncedTable, theirs: TableState): number {
+/** The table's unique column sets other than its primary key, like members' email. */
+function uniqueSets(client: Client, table: string): string[][] {
+  const indexes = client.prepare(`PRAGMA index_list(${quote(table)})`).all() as { name: string; unique: number; origin: string }[];
+  return indexes
+    .filter((i) => i.unique && i.origin !== 'pk')
+    .map((i) => (client.prepare(`PRAGMA index_info(${quote(i.name)})`).all() as { name: string }[]).map((c) => c.name));
+}
+
+function mergeTable(client: Client, t: SyncedTable, theirs: TableState, record: (on: boolean) => void): number {
   const cols = syncedColumns(client, t);
   const known = new Set(cols);
   const local = rowsOf(client, t, cols);
   const cells = cellsOf(client, t.name);
   const tombs = tombstonesOf(client, t.name);
   const theirDead = new Map(theirs.dead);
+  const folded = new Set((client.prepare(`SELECT from_pk FROM sync_aliases WHERE tbl = ?`).all(t.name) as { from_pk: string }[]).map((a) => a.from_pk));
+  const uniques = uniqueSets(client, t.name);
   const upsertCell = client.prepare(`INSERT INTO sync_cells (tbl, pk, col, hlc) VALUES (?, ?, ?, ?) ON CONFLICT(tbl, pk, col) DO UPDATE SET hlc = excluded.hlc`);
   const upsertTomb = client.prepare(`INSERT INTO sync_tombstones (tbl, pk, hlc) VALUES (?, ?, ?) ON CONFLICT(tbl, pk) DO UPDATE SET hlc = excluded.hlc`);
   const dropTomb = client.prepare(`DELETE FROM sync_tombstones WHERE tbl = ? AND pk = ?`);
   const dropCells = client.prepare(`DELETE FROM sync_cells WHERE tbl = ? AND pk = ?`);
   const remove = client.prepare(`DELETE FROM ${quote(t.name)} WHERE ${where(t)}`);
+  const addAlias = client.prepare(`INSERT OR REPLACE INTO sync_aliases (tbl, from_pk, to_pk) VALUES (?, ?, ?)`);
   let changed = 0;
 
   const kill = (pk: string, hlc: string) => {
     if (local.has(pk)) {
       remove.run(...(JSON.parse(pk) as Value[]));
+      local.delete(pk);
       changed++;
     }
     dropCells.run(t.name, pk);
     upsertTomb.run(t.name, pk, hlc);
   };
 
+  /** A local row other than `pk` that the incoming one would clash with on a unique field. */
+  const clashWith = (pk: string, byCol: Map<string, Value>) => {
+    for (const set of uniques) {
+      const values = set.map((c) => byCol.get(c));
+      // NULLs never clash in a unique index.
+      if (values.some((v) => v == null)) continue;
+      const row = client
+        .prepare(`SELECT ${pkExpr(t)} AS pk FROM ${quote(t.name)} WHERE ${set.map((c) => `${quote(c)} = ?`).join(' AND ')} AND ${pkExpr(t)} != ?`)
+        .get(...(values as Value[]), pk) as { pk: string } | undefined;
+      if (row) return row.pk;
+    }
+    return null;
+  };
+
   for (const [pk, values, hlcs] of theirs.rows) {
+    // Folded into another row already: it lives on as that one.
+    if (folded.has(pk)) continue;
     const mine = cells.get(pk);
     const tomb = max(tombs.get(pk), theirDead.get(pk));
     // The later of each field.
@@ -193,6 +237,18 @@ function mergeTable(client: Client, t: SyncedTable, theirs: TableState): number 
     } else {
       const present = theirs.cols.filter((c) => known.has(c));
       const byCol = new Map(theirs.cols.map((c, i) => [c, values[i] ?? null]));
+      const clash = clashWith(pk, byCol);
+      if (clash) {
+        // The same thing made twice: every copy keeps the smaller key and folds the other into it.
+        const keep = pk < clash ? pk : clash;
+        addAlias.run(t.name, keep === pk ? clash : pk, keep);
+        if (keep === clash) continue;
+        // Theirs stays, so ours goes; that removal is this copy's change, for the others to hear.
+        record(true);
+        remove.run(...(JSON.parse(clash) as Value[]));
+        record(false);
+        local.delete(clash);
+      }
       client.prepare(`INSERT INTO ${quote(t.name)} (${present.map(quote).join(', ')}) VALUES (${present.map(() => '?').join(', ')})`).run(...present.map((c) => byCol.get(c)!));
       if (tombs.has(pk)) dropTomb.run(t.name, pk);
     }
@@ -213,9 +269,39 @@ function mergeTable(client: Client, t: SyncedTable, theirs: TableState): number 
   return changed;
 }
 
+/** Foreign keys pointing at a table, as [child table, its column]. Single-column keys only. */
+function referencesTo(client: Client, parent: string) {
+  const out: [string, string][] = [];
+  const tables = client.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`).all() as { name: string }[];
+  for (const { name } of tables) {
+    for (const k of client.prepare(`PRAGMA foreign_key_list(${quote(name)})`).all() as { table: string; from: string; seq: number }[]) {
+      if (k.table === parent && k.seq === 0) out.push([name, k.from]);
+    }
+  }
+  return out;
+}
+
+/** Moves everything that points at a folded row onto the one that took its place, then removes it. */
+function followAliases(client: Client) {
+  const aliases = client.prepare(`SELECT tbl, from_pk, to_pk FROM sync_aliases`).all() as { tbl: string; from_pk: string; to_pk: string }[];
+  for (const { tbl, from_pk, to_pk } of aliases) {
+    const t = SYNCED.find((s) => s.name === tbl);
+    if (!t || t.pk.length !== 1) continue;
+    const [from] = JSON.parse(from_pk) as Value[];
+    const [to] = JSON.parse(to_pk) as Value[];
+    for (const [child, col] of referencesTo(client, tbl)) {
+      // A row that would clash where it lands (the same day, a reminder on the same task) gives way.
+      client.prepare(`UPDATE OR IGNORE ${quote(child)} SET ${quote(col)} = ? WHERE ${quote(col)} = ?`).run(to, from);
+      client.prepare(`DELETE FROM ${quote(child)} WHERE ${quote(col)} = ?`).run(from);
+    }
+    client.prepare(`DELETE FROM ${quote(tbl)} WHERE ${where(t)}`).run(from);
+  }
+}
+
 /**
- * A row can arrive pointing at one another device removed. Each reference is settled as its
- * foreign key says: cleared (ON DELETE SET NULL) or removed along with it.
+ * A row can arrive pointing at one another device removed or folded. Each reference moves to the
+ * row that took its place if there is one; otherwise it's settled as its foreign key says: cleared
+ * (ON DELETE SET NULL) or removed along with it.
  */
 function settleReferences(client: Client) {
   for (let pass = 0; pass < 10; pass++) {
@@ -225,6 +311,16 @@ function settleReferences(client: Client) {
     for (const b of broken) {
       if (!keys.has(b.table)) keys.set(b.table, client.prepare(`PRAGMA foreign_key_list(${quote(b.table)})`).all() as { id: number; from: string; on_delete: string }[]);
       const fk = keys.get(b.table)!.filter((k) => k.id === b.fkid);
+      if (fk.length === 1) {
+        const value = (client.prepare(`SELECT ${quote(fk[0]!.from)} AS v FROM ${quote(b.table)} WHERE rowid = ?`).get(b.rowid) as { v: Value } | undefined)?.v;
+        const alias = client.prepare(`SELECT to_pk FROM sync_aliases WHERE tbl = ? AND from_pk = json_array(?)`).get(b.parent, value) as { to_pk: string } | undefined;
+        if (alias) {
+          const [to] = JSON.parse(alias.to_pk) as Value[];
+          client.prepare(`UPDATE OR IGNORE ${quote(b.table)} SET ${quote(fk[0]!.from)} = ? WHERE rowid = ?`).run(to, b.rowid);
+          client.prepare(`DELETE FROM ${quote(b.table)} WHERE rowid = ? AND ${quote(fk[0]!.from)} = ?`).run(b.rowid, value);
+          continue;
+        }
+      }
       if (fk[0]?.on_delete === 'SET NULL') {
         client.prepare(`UPDATE ${quote(b.table)} SET ${fk.map((k) => `${quote(k.from)} = NULL`).join(', ')} WHERE rowid = ?`).run(b.rowid);
       } else client.prepare(`DELETE FROM ${quote(b.table)} WHERE rowid = ?`).run(b.rowid);

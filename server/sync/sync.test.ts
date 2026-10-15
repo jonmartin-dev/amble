@@ -225,6 +225,59 @@ describe('sync', () => {
     expect(b.db.select({ title: tasks.title }).from(tasks).all().map((t) => t.title).sort()).toEqual(['From A', 'From B']);
   });
 
+  it('makes one person of the same email added on two devices, keeping what was handed to either', () => {
+    const { a, b } = household();
+    const [t1] = createTasks(a.db, a.actor(), [{ title: 'Pick up the cake' }]);
+    const [t2] = createTasks(b.db, b.actor(), [{ title: 'Book the hall' }]);
+    // Offline, each adds Ali and hands Ali a task.
+    const aliA = a.db.insert(members).values({ email: 'ali@example.com', name: 'Ali', timezone: 'America/Chicago' }).returning().get();
+    a.db.update(tasks).set({ assigneeId: aliA.id }).where(eq(tasks.id, t1!.id)).run();
+    b.later(100);
+    const aliB = b.db.insert(members).values({ email: 'ali@example.com', name: 'Ali K', timezone: 'America/Chicago' }).returning().get();
+    b.db.update(tasks).set({ assigneeId: aliB.id }).where(eq(tasks.id, t2!.id)).run();
+    exchange(a, b);
+    const keep = aliA.id < aliB.id ? aliA.id : aliB.id;
+    for (const d of [a, b]) {
+      const alis = d.db.select().from(members).where(eq(members.email, 'ali@example.com')).all();
+      expect(alis.map((m) => m.id)).toEqual([keep]);
+      expect(d.db.select({ assignee: tasks.assigneeId }).from(tasks).all().map((t) => t.assignee)).toEqual([keep, keep]);
+    }
+    expect(contents(b.db)).toEqual(contents(a.db));
+  });
+
+  it('joins a server that has its own row for the same person without losing their tasks', () => {
+    // A household on devices, where Jon is one id...
+    const phone = device('phone000');
+    phone.member = phone.db.insert(members).values({ email: 'jon@example.com', name: 'Jon', timezone: 'America/Chicago', role: 'admin' }).returning().get();
+    seedStarterGroups(phone.db);
+    createTasks(phone.db, phone.actor(), [{ title: 'From the phone' }]);
+    // ...and a server that ran for months, where Jon is another.
+    const server = device('server00');
+    server.member = server.db.insert(members).values({ email: 'jon@example.com', name: 'Jon Martin', timezone: 'America/Chicago', role: 'admin' }).returning().get();
+    createTasks(server.db, server.actor(), [{ title: 'From the server' }]);
+    exchange(phone, server);
+    const jons = server.db.select().from(members).where(eq(members.email, 'jon@example.com')).all();
+    expect(jons).toHaveLength(1);
+    for (const d of [phone, server]) {
+      const made = d.db.select({ title: tasks.title, by: tasks.createdById, to: tasks.assigneeId }).from(tasks).all();
+      expect(made.map((t) => t.title).sort()).toEqual(['From the phone', 'From the server']);
+      expect(made.every((t) => t.by === jons[0]!.id && t.to === jons[0]!.id)).toBe(true);
+    }
+    expect(contents(server.db)).toEqual(contents(phone.db));
+  });
+
+  it('keeps one reminder when an older one and a new one are on the same task for the same person', () => {
+    const { a, b } = household();
+    const [t] = createTasks(a.db, a.actor(), [{ title: 'Call Mom' }]);
+    b.take(a.state());
+    // A reminder from before ids were worked out, with an id of its own.
+    a.db.insert(reminders).values({ id: crypto.randomUUID(), taskId: t!.id, memberId: a.member.id, fireAt: new Date(Date.now() + 3_600_000) }).run();
+    setReminder(b.db, b.member, t!.id, new Date(Date.now() + 7_200_000));
+    exchange(a, b);
+    expect(a.db.select().from(reminders).all()).toHaveLength(1);
+    expect(contents(b.db)).toEqual(contents(a.db));
+  });
+
   it('takes rows from before sync was on as older than any change since', () => {
     const a = device('aaaa');
     // A server that ran for a while before syncing: its rows have no times.

@@ -455,6 +455,19 @@ export const syncTombstones = sqliteTable(
   (t) => [primaryKey({ columns: [t.tbl, t.pk] })],
 );
 
+// Two rows that turned out to be the same thing (one person invited twice, say): the one that
+// went, and the one that stays. References to the first move to the second, wherever they turn up.
+export const syncAliases = sqliteTable(
+  'sync_aliases',
+  {
+    tbl: text('tbl').notNull(),
+    // Primary keys as JSON arrays, like sync_cells.
+    fromPk: text('from_pk').notNull(),
+    toPk: text('to_pk').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.tbl, t.fromPk] })],
+);
+
 // One row: whether triggers record changes right now. Off while another device's changes are merged in.
 export const syncCapture = sqliteTable('sync_capture', {
   id: integer('id').primaryKey(),
