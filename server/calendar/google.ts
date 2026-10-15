@@ -1,7 +1,7 @@
 // The small part of Google's Calendar API Almanac uses, over plain fetch: refreshing an access
 // token, listing calendars, reading events, and revoking access when someone disconnects.
-import crypto from 'node:crypto';
 import type { Config } from '../config.ts';
+import { seal, unseal } from '../lib/seal.ts';
 
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const REVOKE_URL = 'https://oauth2.googleapis.com/revoke';
@@ -107,30 +107,9 @@ export function createGoogle(config: Config, fetchImpl: typeof fetch = fetch): G
 }
 
 // ---- refresh tokens at rest -------------------------------------------------------------------
-// Sealed with AES-256-GCM under a key derived from the OAuth client secret, which lives in the
-// deployment's secrets rather than next to the database, so a copy of the database alone (a
-// backup, say) doesn't carry usable tokens.
+// Sealed under the OAuth client secret (see server/lib/seal.ts).
 
-function key(secret: string) {
-  return Buffer.from(crypto.hkdfSync('sha256', secret, 'almanac', 'calendar refresh tokens', 32));
-}
-
-export function sealToken(secret: string, token: string) {
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv('aes-256-gcm', key(secret), iv);
-  const sealed = Buffer.concat([cipher.update(token, 'utf8'), cipher.final()]);
-  return `v1:${Buffer.concat([iv, cipher.getAuthTag(), sealed]).toString('base64url')}`;
-}
+export const sealToken = (secret: string, token: string) => seal(secret, 'calendar refresh tokens', token);
 
 /** Undefined when it can't be opened (the client secret changed), which means reconnecting. */
-export function openToken(secret: string, value: string): string | undefined {
-  if (!value.startsWith('v1:')) return undefined;
-  try {
-    const raw = Buffer.from(value.slice(3), 'base64url');
-    const decipher = crypto.createDecipheriv('aes-256-gcm', key(secret), raw.subarray(0, 12));
-    decipher.setAuthTag(raw.subarray(12, 28));
-    return Buffer.concat([decipher.update(raw.subarray(28)), decipher.final()]).toString('utf8');
-  } catch {
-    return undefined;
-  }
-}
+export const openToken = (secret: string, value: string) => unseal(secret, 'calendar refresh tokens', value);

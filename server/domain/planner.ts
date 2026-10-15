@@ -1,5 +1,5 @@
 // The planning engine: deterministic scores and rules that pick what to suggest and where things
-// fit, with plain reasons. Haiku can reword the reasons (server/ai/plan.ts), but the choices stay
+// fit, with plain reasons. The model can reword the reasons (server/ai/plan.ts), but the choices stay
 // here, so they're explainable and testable.
 import { and, eq, gt, ne } from 'drizzle-orm';
 import type { Db } from '../db/index.ts';
@@ -200,7 +200,7 @@ function handedOver(db: Db, me: Member, today: string): HandedOver[] {
 }
 
 /**
- * The day's suggestions, using reasons saved earlier (Haiku's, from the morning) where a task is
+ * The day's suggestions, using reasons saved earlier (the model's, from the morning) where a task is
  * still suggested; anything new gets the built-in wording.
  */
 export function daySuggestions(db: Db, me: Member, record = dayRecord(db, me.id, planningDate(me))): Suggestion[] {

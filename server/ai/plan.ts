@@ -1,7 +1,6 @@
-// Haiku's part in planning: wording the morning's reasons, adjusting a week's plan to what someone
+// The model's part in planning: wording the morning's reasons, adjusting a week's plan to what someone
 // says about it, and suggesting how to tidy the backlog. The planner in domain/planner.ts makes
 // the choices; everything here is checked against it before anyone sees it.
-import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { and, eq, gt } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Db } from '../db/index.ts';
@@ -12,7 +11,7 @@ import { DEFAULT_ESTIMATE_MINUTES, getLoad, loadLevel, type DayLoad } from '../d
 import { dayRecord, planWeek, saveReasons, suggestForDay, type DayPick, type Suggestion, type WeekPlan } from '../domain/planner.ts';
 import { listTasks, type TaskDetail } from '../domain/tasks.ts';
 import { addDays, planningDate, weekday } from '../lib/dates.ts';
-import { AiUnavailable, recordUsage, requireAi, type Ai, type Effort } from './client.ts';
+import { AiUnavailable, ask as askModel, effortFor, requireAi, type Ai, type Effort } from './client.ts';
 
 const ORGANIZE_TASKS = 150;
 const ORGANIZE_MAX = 12;
@@ -23,27 +22,21 @@ async function ask<T extends z.ZodType>(
   db: Db,
   ai: Ai,
   me: Member | null,
-  { feature, system, content, schema, effort, timezone }: { feature: string; system: string; content: string; schema: T; effort: Effort; timezone: string },
+  { feature, system, content, schema, effort, timezone }: { feature: string; system: string; content: string; schema: T; effort: Effort | 'chosen'; timezone: string },
 ): Promise<z.output<T>> {
-  const client = requireAi(ai, db, timezone);
-  const started = performance.now();
-  let response;
-  try {
-    response = await client.messages.parse({
-      model: ai.model,
-      max_tokens: 8000,
-      output_config: { effort, format: zodOutputFormat(schema) },
-      system,
-      messages: [{ role: 'user', content }],
-    });
-  } catch (err) {
-    recordUsage(db, { memberId: me?.id ?? null, feature, model: ai.model, effort, durationMs: Math.round(performance.now() - started), ok: false });
-    throw new AiUnavailable(`Haiku didn't answer: ${err instanceof Error ? err.message : String(err)}`);
-  }
-  const ok = response.stop_reason === 'end_turn' && response.parsed_output != null;
-  recordUsage(db, { memberId: me?.id ?? null, feature, model: ai.model, effort, usage: response.usage, durationMs: Math.round(performance.now() - started), ok });
-  if (!ok) throw new AiUnavailable(`Haiku stopped early (${response.stop_reason}).`);
-  return response.parsed_output as z.output<T>;
+  const setup = requireAi(ai, db, timezone);
+  const { output } = await askModel(db, ai, {
+    feature,
+    memberId: me?.id ?? null,
+    timezone,
+    system,
+    content,
+    schema,
+    // "chosen" is the admin's setting in Settings, AI, for the calls someone waits on.
+    effort: effort === 'chosen' ? (setup.effort === 'default' ? null : setup.effort) : effortFor(setup, effort),
+    maxTokens: 8000,
+  });
+  return output;
 }
 
 const clock = (iso: string, timeZone: string) =>
@@ -80,7 +73,7 @@ const Reasons = z.object({
   reasons: z.array(z.object({ task: z.string().describe('The task ref, like t1'), reason: z.string() })),
 });
 
-/** Haiku rewords the planner's reasons for today's suggestions; any it skips keep the built-in ones. */
+/** The model rewords the planner's reasons for today's suggestions; any it skips keep the built-in ones. */
 export async function wordReasons(db: Db, ai: Ai, me: Member, suggestions: Suggestion[], timezone: string) {
   const today = planningDate(me);
   const days = getLoad(db, me, me, today, addDays(today, 6));
@@ -119,7 +112,7 @@ const clockDate = (iso: string, timeZone: string) => Temporal.Instant.from(iso).
 
 /**
  * Writes today's suggestions and their reasons ahead of the first open, once per person per day,
- * with Haiku's wording when it's available.
+ * with the model's wording when it's available.
  */
 export function createBriefings(db: Db, ai: Ai, timezone: string) {
   return {
@@ -175,7 +168,7 @@ export interface PlannedWeek extends WeekPlan {
 
 /**
  * The planner's week, then, when someone has said something about it ("keep Saturday free") or
- * Haiku is on, Haiku's adjustments. Deadlines still hold: a task never lands after it's due.
+ * the model is set up, its adjustments. Deadlines still hold: a task never lands after it's due.
  */
 export async function planMyWeek(db: Db, ai: Ai, me: Member, { note, timezone }: { note?: string; timezone: string }): Promise<PlannedWeek> {
   const base = planWeek(db, me);
@@ -184,7 +177,7 @@ export async function planMyWeek(db: Db, ai: Ai, me: Member, { note, timezone }:
   const end = addDays(today, 6);
   const before = getLoad(db, me, me, today, end);
   const events = listEvents(db, me, today, end);
-  // Haiku sees the planner's picks and a few more backlog tasks it could swap in.
+  // The model sees the planner's picks and a few more backlog tasks it could swap in.
   const picked = new Set(base.picks.map((p) => p.task.id));
   const spare = listTasks(db, me, { status: 'open', unplanned: true, assignee: { memberId: me.id, includeShared: true } })
     .filter((t) => !picked.has(t.id))
@@ -212,7 +205,7 @@ export async function planMyWeek(db: Db, ai: Ai, me: Member, { note, timezone }:
   try {
     out = await ask(db, ai, me, {
       feature: 'plan_week',
-      effort: 'medium',
+      effort: 'chosen',
       timezone,
       schema: PlanOut,
       system: `You help plan someone's week in Almanac. The planner already placed tasks on the days with the most room. Keep its plan unless what they said, or something clear in the calendar, gives a reason to change it. Follow what they said exactly ("keep Saturday free" means nothing goes on Saturday). Never put a task after its due date, never fill a day past its task minutes when another day has room, and leave a task out (day "") rather than overload the week. Give every planned task a reason of at most 12 words, and add a one-sentence note only if it helps. ${VOICE}`,
@@ -235,7 +228,7 @@ export async function planMyWeek(db: Db, ai: Ai, me: Member, { note, timezone }:
     seen.add(task.id);
     picks.push({ task, date, weekday: weekday(date), fits: true, reason: item.reason.trim() || 'Fits here.' });
   }
-  // Tasks the planner had to place (left over, or due this week) stay in, on its day, if Haiku dropped them.
+  // Tasks the planner had to place (left over, or due this week) stay in, on its day, if the model dropped them.
   for (const p of base.picks) {
     const must = !!p.task.plannedDate || (!!p.task.dueDate && p.task.dueDate <= end);
     if (must && !seen.has(p.task.id)) picks.push(p);
@@ -287,7 +280,7 @@ export async function organizeBacklog(db: Db, ai: Ai, me: Member, timezone: stri
   ].join('\n');
   const out = await ask(db, ai, me, {
     feature: 'organize',
-    effort: 'medium',
+    effort: 'chosen',
     timezone,
     schema: OrganizeOut,
     system: `You suggest a few ways to tidy a household's open tasks in Almanac. Only suggest what clearly helps:

@@ -216,7 +216,7 @@ export interface NewTask {
   timeOfDay?: TimeOfDay | null;
   mustDo?: boolean;
   estimateMinutes?: number | null;
-  /** Who sized it: the person (the default) or Haiku. */
+  /** Who sized it: the person (the default) or the model. */
   estimateSource?: 'user' | 'ai';
   subtasks?: NewSubtask[];
   links?: NewLink[];

@@ -1,17 +1,16 @@
 // Sizes for tasks that arrive without one: added from the plain form, by Claude, or offline. A
-// background job sends them to Haiku in batches, with the household's own estimates as examples,
+// background job sends them to the model in batches, with the household's own estimates as examples,
 // and fills in the gaps. Anything someone sizes themselves in the meantime is left alone.
 import { and, desc, eq, inArray, isNull, lt } from 'drizzle-orm';
-import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { z } from 'zod';
 import type { Db } from '../db/index.ts';
 import { groups, subtasks, tasks } from '../db/schema.ts';
-import { AiUnavailable, recordUsage, requireAi, type Ai } from './client.ts';
+import { AiUnavailable, ask, effortFor, requireAi, type Ai } from './client.ts';
 import { ownEstimates, roundEstimate } from './smartAdd.ts';
 
 const BATCH = 40;
 const EXAMPLES = 30;
-// Give someone a moment to size a task themselves before Haiku does.
+// Give someone a moment to size a task themselves before the model does.
 const SETTLE_MS = 30_000;
 const MAX_TRIES = 2;
 
@@ -29,7 +28,7 @@ const SYSTEM = `You estimate how long household tasks take: minutes of actually 
 Match this household's own estimates when similar tasks are listed; they know their pace. Otherwise: quick calls, messages and small admin 5-15; small chores 15-30; errands 30-60; bigger jobs 60-240. A task's steps say how big it is. Round to 5 minutes above 10.`;
 
 export function createEstimator(db: Db, ai: Ai, timezone: string) {
-  // Tasks Haiku skipped or that failed, so a bad one isn't sent forever.
+  // Tasks the model skipped or that failed, so a bad one isn't sent forever.
   const tries = new Map<string, number>();
 
   /** Sizes up to one batch of unsized open tasks. Returns how many got an estimate. */
@@ -47,9 +46,9 @@ export function createEstimator(db: Db, ai: Ai, timezone: string) {
       .slice(0, BATCH);
     if (pending.length === 0) return 0;
 
-    let client;
+    let setup;
     try {
-      client = requireAi(ai, db, timezone);
+      setup = requireAi(ai, db, timezone);
     } catch (err) {
       if (err instanceof AiUnavailable) return 0;
       throw err;
@@ -75,27 +74,28 @@ export function createEstimator(db: Db, ai: Ai, timezone: string) {
       `Tasks to estimate:\n${lines.join('\n')}`,
     ].join('\n\n');
 
-    const started = performance.now();
-    let response;
+    let output;
     try {
-      response = await client.messages.parse({
-        model: ai.model,
-        max_tokens: 4000,
-        output_config: { effort: 'low', format: zodOutputFormat(Output) },
+      ({ output } = await ask(db, ai, {
+        feature: 'estimate',
+        memberId: null,
+        timezone,
         system: SYSTEM,
-        messages: [{ role: 'user', content }],
-      });
+        content,
+        schema: Output,
+        effort: effortFor(setup, 'low'),
+        maxTokens: 4000,
+      }));
     } catch (err) {
-      recordUsage(db, { memberId: null, feature: 'estimate', model: ai.model, effort: 'low', durationMs: Math.round(performance.now() - started), ok: false });
-      throw err;
+      // No answer, or one that doesn't fit: these tasks get another go next time, up to MAX_TRIES.
+      if (!(err instanceof AiUnavailable)) throw err;
+      console.warn('Estimates:', err.message);
+      return 0;
     }
-    const ok = response.stop_reason === 'end_turn' && response.parsed_output != null;
-    recordUsage(db, { memberId: null, feature: 'estimate', model: ai.model, effort: 'low', usage: response.usage, durationMs: Math.round(performance.now() - started), ok });
-    if (!ok) return 0;
 
     let filled = 0;
     db.transaction(() => {
-      for (const e of response.parsed_output!.estimates) {
+      for (const e of output.estimates) {
         const id = refs.get(e.task);
         const minutes = roundEstimate(e.minutes);
         if (!id || !minutes) continue;

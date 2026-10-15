@@ -20,7 +20,9 @@ services:
       PORT: "8080"
       ALMANAC_DATA_DIR: /data
       OIDC_CLIENT_SECRET_FILE: /run/secrets/oidc_client_secret
-      # Optional: smart add's Anthropic key. Leave the file out to run without AI.
+      # Optional: the AI provider's key (or an Anthropic key in the older file). Leave both out to run
+      # without AI, or set the model up in the app instead.
+      ALMANAC_AI_API_KEY_FILE: /run/secrets/ai_api_key
       ANTHROPIC_API_KEY_FILE: /run/secrets/anthropic_api_key
       ALMANAC_DEV_LOGIN: "0"
     volumes:

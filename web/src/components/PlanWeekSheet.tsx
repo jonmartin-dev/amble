@@ -33,7 +33,7 @@ export function PlanWeekSheet({ open, onClose, today }: { open: boolean; onClose
     // Only when the sheet opens or closes.
   }, [open]);
 
-  // Without Haiku there's nothing to say to it, so go straight to the plan.
+  // Without the model there's nothing to say to it, so go straight to the plan.
   useEffect(() => {
     if (open && ai && !ai.available && online && plan.isIdle) plan.mutate('');
   }, [open, ai, online, plan]);

@@ -47,7 +47,7 @@ export function Household() {
 
   return (
     <>
-      <SubpageHeader title="Household" />
+      <SubpageHeader title="People" />
       <p className="px-1 text-on-surface-variant">Everyone here shares groups and lists, and can hand tasks to each other.</p>
 
       <ul className="mt-5 flex flex-col gap-2">

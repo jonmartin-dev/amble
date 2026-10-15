@@ -49,7 +49,7 @@ await check("the day's first open shows the briefing, and Start my day goes to T
   if (p.url().endsWith('/briefing')) throw new Error('the briefing came up a second time');
 });
 
-// Plain quick add first; smart add (which calls Haiku) gets its own step below.
+// Plain quick add first; smart add (which calls the AI model) gets its own step below.
 await page.request.patch(`${base}/api/me`, { data: { smartAdd: false } });
 await page.reload();
 
@@ -373,13 +373,13 @@ await check('a packing list starts from its template and resets for the next tri
 
 await check('smart add reads what was typed and saves it after review', async (p) => {
   const ai = (await (await p.request.get(`${base}/api/ai`)).json()) as { available: boolean };
-  if (!ai.available) return console.log('   (skipped: no Anthropic key on this server)');
+  if (!ai.available) return console.log('   (skipped: no AI model on this server)');
   await p.request.patch(`${base}/api/me`, { data: { smartAdd: true } });
   await p.goto(`${base}/`);
   await p.getByRole('button', { name: 'Add a task' }).click();
   await p.getByLabel('What to add').fill('water the ferns every sunday');
   await p.keyboard.press('Enter');
-  // Haiku usually answers in a few seconds, sometimes more.
+  // The model usually answers in a few seconds, sometimes more.
   await p.getByText("Here's what I got").first().waitFor({ timeout: 20000 });
   await p.getByRole('button', { name: /^Add (all )?\d+$/ }).click();
   await p.getByRole('dialog', { name: 'Add' }).waitFor({ state: 'detached', timeout: 8000 });

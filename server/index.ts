@@ -17,7 +17,7 @@ import { createReminderSender } from './notify/reminders.ts';
 const db = openDatabase();
 seedStarterGroups(db);
 
-const ai = createAi(config);
+const ai = createAi(config, db);
 const calendar = createCalendarSync({ db, config, google: createGoogle(config) });
 const push = createPush(db, config);
 const files = createFileStore(config.dataDir);

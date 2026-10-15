@@ -25,7 +25,7 @@ export const members = sqliteTable('members', {
   // Minutes of task time per ISO weekday ("1" is Monday); missing days use the default.
   capacity: text('capacity', { mode: 'json' }).$type<Partial<Record<string, number>>>(),
   showStreaks: integer('show_streaks', { mode: 'boolean' }).notNull().default(true),
-  // Quick add sends what's typed to Haiku for review, when the server has an Anthropic key.
+  // Quick add sends what's typed to the AI model for review, when one is set up.
   smartAdd: integer('smart_add', { mode: 'boolean' }).notNull().default(true),
   createdAt: createdAt(),
   lastLoginAt: integer('last_login_at', { mode: 'timestamp_ms' }),
@@ -88,7 +88,7 @@ export const tasks = sqliteTable(
     mustDo: integer('must_do', { mode: 'boolean' }).notNull().default(false),
     estimateMinutes: integer('estimate_minutes'),
     estimateSource: text('estimate_source', { enum: ['ai', 'user', 'learned'] }),
-    // Haiku's guess, kept after someone changes the estimate, so Stats can say how good the guesses are.
+    // The model's guess, kept after someone changes the estimate, so Stats can say how good the guesses are.
     aiEstimateMinutes: integer('ai_estimate_minutes'),
     status: text('status', { enum: ['open', 'done', 'archived'] }).notNull().default('open'),
     completedAt: integer('completed_at', { mode: 'timestamp_ms' }),
@@ -171,7 +171,7 @@ export const listItems = sqliteTable(
   (t) => [index('list_items_group_idx').on(t.groupId, t.checkedAt)],
 );
 
-// Every Haiku call, for the monthly cap and the usage readout in Settings.
+// Every AI call, for the monthly cap and the usage readout in Settings.
 export const aiUsage = sqliteTable(
   'ai_usage',
   {
@@ -369,7 +369,7 @@ export const dayRecords = sqliteTable(
     date: text('date').notNull(),
     briefingSeenAt: integer('briefing_seen_at', { mode: 'timestamp_ms' }),
     suggestions: text('suggestions', { mode: 'json' }).$type<StoredSuggestion[]>(),
-    // Who wrote the reasons: the built-in wording, or Haiku.
+    // Who wrote the reasons: the built-in wording, or the model.
     reasonsBy: text('reasons_by', { enum: ['template', 'ai'] }),
     // Tasks they said "Later" to today.
     dismissed: text('dismissed', { mode: 'json' }).$type<string[]>().notNull().default(sql`'[]'`),

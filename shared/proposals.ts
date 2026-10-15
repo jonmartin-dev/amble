@@ -15,7 +15,7 @@ export interface ProposedTask {
   timeOfDay: TimeOfDay | null;
   mustDo: boolean;
   estimateMinutes: number | null;
-  /** "ai" while the estimate is Haiku's; the app switches it to "user" when someone changes it. */
+  /** "ai" while the estimate is the model's; the app switches it to "user" when someone changes it. */
   estimateSource: 'ai' | 'user';
   subtasks: string[];
   links: string[];

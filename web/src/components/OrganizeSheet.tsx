@@ -61,7 +61,7 @@ function Card({ s, state, onAccept, onSkip }: { s: OrganizeSuggestion; state: 'o
   );
 }
 
-/** Haiku looks over the backlog and suggests moving, merging or splitting tasks; each one waits for a yes. */
+/** The model looks over the backlog and suggests moving, merging or splitting tasks; each one waits for a yes. */
 export function OrganizeSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const qc = useQueryClient();
   const snack = useSnackbar();

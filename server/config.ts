@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { AI_PROVIDERS, aiProvider, type AiEffort, type AiProviderId } from '../shared/ai.ts';
 
 /** Reads NAME, or the contents of the file named by NAME_FILE (Docker secrets style). */
 function secret(name: string, { optional = false } = {}): string {
@@ -15,9 +16,26 @@ function list(value: string | undefined): string[] {
     .filter(Boolean);
 }
 
-function aiEffort(value: string | undefined): 'low' | 'medium' | 'high' {
-  return value === 'low' || value === 'high' ? value : 'medium';
+function aiEffort(value: string | undefined): AiEffort | undefined {
+  return value === 'default' || value === 'low' || value === 'medium' || value === 'high' ? value : undefined;
 }
+
+function aiProviderId(value: string | undefined): AiProviderId {
+  const id = (value ?? '').trim().toLowerCase();
+  if (!id) return 'anthropic';
+  if (!aiProvider(id)) throw new Error(`ALMANAC_AI_PROVIDER must be one of ${AI_PROVIDERS.map((p) => p.id).join(', ')}`);
+  return id as AiProviderId;
+}
+
+/** "0.1,0.5": US dollars per million tokens in and out, for a model Almanac doesn't know. */
+function aiPrices(value: string | undefined): [number, number] | undefined {
+  if (!value) return undefined;
+  const [input, output] = value.split(',').map((n) => Number(n.trim()));
+  if (!Number.isFinite(input) || !Number.isFinite(output)) throw new Error('ALMANAC_AI_PRICES must look like 0.1,0.5');
+  return [input!, output!];
+}
+
+const aiProviderSetting = aiProviderId(process.env.ALMANAC_AI_PROVIDER);
 
 const production = process.env.NODE_ENV === 'production';
 const port = Number(process.env.PORT ?? 8787);
@@ -68,12 +86,19 @@ export const config = {
   // Hosts of the apps that may connect to the Claude connector: their client metadata URLs and
   // web redirect URIs must be on one of these. Loopback redirects (Claude Code) are always allowed.
   oauthClientHosts: list(process.env.ALMANAC_OAUTH_CLIENT_HOSTS ?? 'claude.ai,claude.com'),
-  // Smart add and the other Haiku features. Without a key they're off and quick add works as typed.
+  // Smart add, estimates and the planner's wording. An admin can also pick a model in Settings, AI,
+  // which wins over these. Without either they're off and quick add works as typed.
   ai: {
-    apiKey: secret('ANTHROPIC_API_KEY', { optional: true }),
-    model: process.env.ALMANAC_AI_MODEL ?? 'claude-haiku-5-5',
+    provider: aiProviderSetting,
+    apiKey:
+      secret('ALMANAC_AI_API_KEY', { optional: true }) || (aiProviderSetting === 'anthropic' ? secret('ANTHROPIC_API_KEY', { optional: true }) : ''),
+    // Empty for the provider's suggested model.
+    model: process.env.ALMANAC_AI_MODEL ?? '',
+    // Empty for the provider's own address; needed for "custom".
+    baseUrl: process.env.ALMANAC_AI_BASE_URL ?? '',
     effort: aiEffort(process.env.ALMANAC_AI_EFFORT),
     monthlyCapUsd: Number(process.env.ALMANAC_AI_MONTHLY_CAP_USD ?? 10),
+    prices: aiPrices(process.env.ALMANAC_AI_PRICES),
   },
 };
 

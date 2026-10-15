@@ -238,7 +238,7 @@ describe('phase 5 API', () => {
   it('falls back without an AI key, and applies accepted proposals', async () => {
     const api = as(jon);
     expect((await api.get('/ai')).json).toMatchObject({ available: false, smartAdd: false, monthSpendUsd: 0 });
-    expect((await api.post('/smart-add', { text: 'call mom' })).json.fallback).toMatch(/No Anthropic API key/);
+    expect((await api.post('/smart-add', { text: 'call mom' })).json.fallback).toMatch(/No AI model is set up/);
     const groceries = (await api.get('/groups')).json.groups.find((g: { kind: string }) => g.kind === 'list');
     const applied = await api.post('/smart-add/apply', {
       proposals: [
@@ -266,5 +266,41 @@ describe('phase 5 API', () => {
     expect(applied.json).toMatchObject({ added: 1, listed: 1 });
     expect((await api.post('/smart-add/apply', { proposals: [] })).status).toBe(400);
     expect((await api.patch('/me', { smartAdd: false })).json.member.smartAdd).toBe(false);
+  });
+});
+
+describe('AI settings API', () => {
+  it('lets only an admin pick a model, tries it first, and never sends the key back', async () => {
+    const keys: string[] = [];
+    const fetchImpl = (async (_url: string, init: RequestInit) => {
+      const auth = (init.headers as Record<string, string>).authorization ?? '';
+      keys.push(auth);
+      if (auth !== 'Bearer sk-right-5678') return new Response(JSON.stringify({ error: { message: 'Incorrect API key provided' } }), { status: 401 });
+      return new Response(JSON.stringify({ choices: [{ finish_reason: 'stop', message: { content: '{"minutes":10}' } }], usage: { prompt_tokens: 50, completion_tokens: 5 } }));
+    }) as unknown as typeof fetch;
+    const aiConfig = { ...testConfig, oidc: { ...testConfig.oidc, clientSecret: 'client-secret' } };
+    app = createApp({ db, config: aiConfig, oidc: createOidc(aiConfig), ai: createAi(aiConfig, db, fetchImpl) });
+    const alex = db.insert(members).values({ email: 'alex@example.com', name: 'Alex Martin', timezone: 'America/Chicago' }).returning().get();
+    const luna = { provider: 'openai', model: 'gpt-6-luna', effort: 'medium', monthlyCapUsd: 10 };
+
+    expect((await as(alex).put('/ai', { ...luna, apiKey: 'sk-right-5678' })).status).toBe(403);
+    expect((await as(jon).put('/ai', luna)).json.error).toMatch(/Add an API key from OpenAI/);
+    expect((await as(jon).put('/ai', { ...luna, apiKey: 'sk-wrong' })).json).toMatchObject({ ok: false, error: '401: Incorrect API key provided' });
+    expect((await as(jon).get('/ai')).json.available).toBe(false);
+
+    expect((await as(jon).put('/ai', { ...luna, apiKey: 'sk-right-5678' })).json.ok).toBe(true);
+    const shown = (await as(jon).get('/ai')).json;
+    expect(shown).toMatchObject({ available: true, provider: 'openai', modelName: 'GPT-6 Luna', source: 'settings', settings: { keyEnding: '5678', prices: [0.1, 0.5] } });
+    expect(JSON.stringify(shown)).not.toContain('sk-right');
+    expect((await as(alex).get('/ai')).json).toMatchObject({ available: true, modelName: 'GPT-6 Luna', settings: null });
+    expect((await as(alex).get('/session')).json.auth.ai).toEqual({ provider: 'openai', name: 'OpenAI' });
+
+    // Changing only the effort keeps the saved key.
+    expect((await as(jon).put('/ai', { ...luna, effort: 'low' })).json.ok).toBe(true);
+    expect(keys.at(-1)).toBe('Bearer sk-right-5678');
+    expect((await as(jon).put('/ai', { provider: 'custom', model: 'llama', effort: 'default', monthlyCapUsd: 10, baseUrl: 'localhost' })).json.error).toMatch(/address/);
+
+    expect((await as(jon).del('/ai')).status).toBe(204);
+    expect((await as(jon).get('/ai')).json.available).toBe(false);
   });
 });

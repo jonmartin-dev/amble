@@ -7,7 +7,7 @@ import { Hono, type Context } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { csrf } from 'hono/csrf';
 import { secureHeaders } from 'hono/secure-headers';
-import { createAi, type Ai } from './ai/client.ts';
+import { aiProviderFor, createAi, type Ai } from './ai/client.ts';
 import { createGoogle } from './calendar/google.ts';
 import { ConnectError, createCalendarSync, type CalendarSync } from './calendar/sync.ts';
 import { createFileStore, type FileStore } from './domain/files.ts';
@@ -39,7 +39,7 @@ export function createApp({
   config,
   oidc,
   fetchImpl,
-  ai = createAi(config),
+  ai = createAi(config, db),
   calendar = createCalendarSync({ db, config, google: createGoogle(config) }),
   push = createPush(db, config),
   files = createFileStore(config.dataDir),
@@ -47,7 +47,7 @@ export function createApp({
   db: Db;
   config: Config;
   oidc: Oidc;
-  /** Haiku for smart add; tests pass their own. */
+  /** The AI model for smart add and planning help; tests pass their own. */
   ai?: Ai;
   /** Google Calendar sync; tests pass one talking to a fake Google. */
   calendar?: CalendarSync;
@@ -188,6 +188,8 @@ export function createApp({
         provider: config.oidc.providerName,
         oidc: oidc.enabled,
         privacyContact: config.privacyContact,
+        // Who AI features send things to, for the privacy page.
+        ai: aiProviderFor(ai),
         devEmails: config.devLogin ? allowedEmails(db, config) : [],
       },
     }),

@@ -5,10 +5,11 @@ import { Readable } from 'node:stream';
 import { count, eq, isNull } from 'drizzle-orm';
 import type { Context, Hono } from 'hono';
 import { z } from 'zod';
+import { AI_PROVIDERS, aiModel, aiProvider, type AiProviderId } from '../shared/ai.ts';
 import type { AddHints, Proposal } from '../shared/proposals.ts';
 import { applyOrganize, applyProposals } from './ai/apply.ts';
 import { organizeBacklog, planMyWeek, type OrganizeSuggestion } from './ai/plan.ts';
-import { AiUnavailable, monthSpendUsd, type Ai } from './ai/client.ts';
+import { AiUnavailable, checkSetup, fromEnvironment, modelName, monthSpendUsd, savedKeyState, type Ai } from './ai/client.ts';
 import { smartAdd } from './ai/smartAdd.ts';
 import type { CalendarSync } from './calendar/sync.ts';
 import { inviteMember } from './auth/members.ts';
@@ -114,6 +115,15 @@ const taskPatch = z.object({
 
 /** A reminder time from the app as a Date; null clears it and undefined leaves it alone. */
 const when = (value: string | null | undefined) => (value == null ? value : new Date(value));
+
+/** "localhost:11434" from "http://localhost:11434/v1". */
+function hostOf(url: string) {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
 
 // The smaller copy of a photo the app makes when adding it.
 const PREVIEW_TYPES = ['image/webp', 'image/jpeg', 'image/png'];
@@ -708,14 +718,19 @@ export function registerApi(
     return c.json(await planMyWeek(db, ai, me(c), { note, timezone: config.timezone }));
   });
 
-  // Tidy-up suggestions for the backlog, or { unavailable } when Haiku can't help right now.
+  // Tidy-up suggestions for the backlog, or { unavailable } when the model can't help right now.
   app.post('/api/organize', async (c) => {
     try {
       return c.json({ suggestions: await organizeBacklog(db, ai, me(c), config.timezone) });
     } catch (err) {
       if (!(err instanceof AiUnavailable)) throw err;
       console.warn('Organize backlog unavailable:', err.message);
-      return c.json({ unavailable: ai.available ? "Haiku couldn't look at the backlog just now. Try again in a bit." : 'Organizing the backlog needs an Anthropic API key on the server.' });
+      const setup = ai.setup();
+      return c.json({
+        unavailable: setup
+          ? `${modelName(setup)} couldn't look at the backlog just now. Try again in a bit.`
+          : 'Tidying up needs an AI model. An admin can set one up in Settings, AI.',
+      });
     }
   });
 
@@ -733,18 +748,91 @@ export function registerApi(
 
   // ---- smart add ----------------------------------------------------------------------------
 
-  app.get('/api/ai', (c) =>
-    c.json({
-      available: ai.available,
-      smartAdd: ai.available && me(c).smartAdd,
-      model: ai.model,
-      effort: ai.effort,
+  app.get('/api/ai', (c) => {
+    const setup = ai.setup();
+    const admin = me(c).role === 'admin';
+    return c.json({
+      available: setup != null,
+      smartAdd: setup != null && me(c).smartAdd,
+      provider: setup?.provider ?? null,
+      // A service the admin typed in goes by its address.
+      providerName: !setup ? null : setup.provider === 'custom' ? hostOf(setup.baseUrl) : (aiProvider(setup.provider)?.name ?? setup.provider),
+      model: setup?.model ?? null,
+      modelName: setup ? modelName(setup) : null,
+      effort: setup?.effort ?? null,
+      source: setup?.source ?? null,
+      // Whether the server's environment sets one too, which Remove in Settings goes back to.
+      environment: fromEnvironment(config) != null,
+      priced: setup?.prices != null,
       monthSpendUsd: Math.round(monthSpendUsd(db, config.timezone) * 100) / 100,
-      monthlyCapUsd: ai.monthlyCapUsd,
-    }),
-  );
+      monthlyCapUsd: setup?.monthlyCapUsd ?? config.ai.monthlyCapUsd,
+      // What the admin needs to change it. The key itself never leaves the server.
+      settings:
+        admin && setup
+          ? {
+              provider: setup.provider,
+              model: setup.model,
+              baseUrl: setup.baseUrl,
+              effort: setup.effort,
+              monthlyCapUsd: setup.monthlyCapUsd,
+              prices: setup.prices,
+              keyEnding: setup.apiKey ? setup.apiKey.slice(-4) : null,
+            }
+          : null,
+      keyUnreadable: admin && !setup && savedKeyState(db, config) === 'unreadable',
+    });
+  });
 
-  // Proposals to review, or { fallback } when Haiku can't help and the app should add it as typed.
+  // An admin picks the model. It's tried first, unless they say to save it anyway.
+  app.put('/api/ai', async (c) => {
+    if (me(c).role !== 'admin') return c.json({ error: 'Only an admin can change the AI model.' }, 403);
+    const input = await body(
+      c,
+      z.object({
+        provider: z.enum(AI_PROVIDERS.map((p) => p.id) as [AiProviderId, ...AiProviderId[]]),
+        model: z.string().trim().min(1).max(200),
+        baseUrl: z.string().trim().max(500).default(''),
+        apiKey: z.string().trim().max(500).default(''),
+        effort: z.enum(['default', 'low', 'medium', 'high']),
+        monthlyCapUsd: z.number().min(0).max(10_000),
+        prices: z.tuple([z.number().min(0).max(1000), z.number().min(0).max(1000)]).nullable().default(null),
+        check: z.boolean().default(true),
+      }),
+    );
+    const preset = aiProvider(input.provider)!;
+    const baseUrl = input.provider === 'custom' ? input.baseUrl.replace(/\/+$/, '') : preset.baseUrl;
+    if (input.provider === 'custom' && !/^https?:\/\/[^\s/]+/i.test(baseUrl)) throw new DomainError('Add the address of its API, like http://localhost:11434/v1.');
+    const current = ai.setup();
+    // Keep the key already in use when it's for the same provider and none was typed.
+    const apiKey = input.apiKey || (current?.provider === input.provider ? current.apiKey : '');
+    if (!apiKey && input.provider !== 'custom') throw new DomainError(`Add an API key from ${preset.name}.`);
+    const settings = {
+      provider: input.provider,
+      model: input.model,
+      baseUrl,
+      apiKey,
+      effort: input.effort,
+      monthlyCapUsd: input.monthlyCapUsd,
+      prices: aiModel(input.provider, input.model)?.price ?? input.prices,
+    };
+    let ms: number | null = null;
+    if (input.check) {
+      const result = await checkSetup(ai, { ...settings, source: 'settings' });
+      if (!result.ok) return c.json({ ok: false, error: result.error });
+      ms = result.ms;
+    }
+    ai.save(settings);
+    return c.json({ ok: true, ms });
+  });
+
+  // Back to whatever the server's environment sets, which may be nothing.
+  app.delete('/api/ai', (c) => {
+    if (me(c).role !== 'admin') return c.json({ error: 'Only an admin can change the AI model.' }, 403);
+    ai.save(null);
+    return c.body(null, 204);
+  });
+
+  // Proposals to review, or { fallback } when the model can't help and the app should add it as typed.
   app.post('/api/smart-add', async (c) => {
     const input = await body(c, z.object({ text: z.string().trim().min(1).max(4000), hints: addHints.optional() }));
     if (!me(c).smartAdd) return c.json({ fallback: 'Smart add is off in your settings.' });

@@ -31,13 +31,13 @@ node scripts/demo.ts ../almanac-demo sam@example.com
 ALMANAC_DATA_DIR=../almanac-demo pnpm dev
 ```
 
-Smart add, estimates and the planner's wording need `ANTHROPIC_API_KEY`. Without one, quick add takes text as typed and everything else still works.
+Smart add, estimates and the planner's wording need an AI model: set one up in Settings, AI, or in `.env` (see `.env.example`). Any provider works, including a local model through Ollama with no key. Without one, quick add takes text as typed and everything else still works. New AI features go through `ask()` in `server/ai/client.ts`, which meters every call and works with every provider; don't call a provider's SDK directly.
 
 ## Layout
 
 | Folder | What's in it |
 |---|---|
-| `server/` | The Hono server: the API (`api.ts`), sign-in (`auth/`), the Claude connector (`connector.ts`, `oauth/`, `mcp/`), Google Calendar (`calendar/`), web push (`notify/`), Haiku features (`ai/`), the scheduler (`jobs.ts`) and the database (`db/`) |
+| `server/` | The Hono server: the API (`api.ts`), sign-in (`auth/`), the Claude connector (`connector.ts`, `oauth/`, `mcp/`), Google Calendar (`calendar/`), web push (`notify/`), AI features and their providers (`ai/`), the scheduler (`jobs.ts`) and the database (`db/`) |
 | `server/domain/` | The rules for tasks, lists, repeats, load and planning, shared by the API and the connector |
 | `shared/` | Code the server and the app both use: list templates, repeat rules, smart add proposals |
 | `web/src/` | The React app: `pages/`, `components/`, `lib/` (queries, the offline outbox, theming, motion) and the service worker (`sw.ts`) |
@@ -62,7 +62,7 @@ Both must pass. For changes people can see, also run the app on a demo household
 - `node scripts/offline.ts <email>` checks offline use end to end. It needs a production build; the comment at the top of the script says how to run it.
 - `node scripts/readme-shots.ts` retakes the screenshots in the README, if the screens they show changed.
 
-`scripts/eval-smart-add.ts` scores smart add against real household phrasing. It calls Haiku, so it costs a little; run it when you change smart add's prompt or schema.
+`scripts/eval-smart-add.ts` scores smart add against real household phrasing. It calls the model the environment sets, so it costs a little; run it when you change smart add's prompt or schema.
 
 ## Database changes
 

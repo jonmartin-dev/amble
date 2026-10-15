@@ -1,6 +1,6 @@
 // Quick add from the + button. What's typed comes first, in large type; under it one row of chips
 // sets the day, group, person and so on, and a chip's choices open in that same row. With smart
-// add on, what's typed goes to Haiku and comes back as proposals to review; otherwise each line is
+// add on, what's typed goes to the model and comes back as proposals to review; otherwise each line is
 // added as typed.
 import { useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'motion/react';
@@ -79,7 +79,7 @@ function OptionChip({ on, icon, onClick, children, label }: { on?: boolean; icon
   );
 }
 
-/** M3 Expressive loading shape: a soft blob that morphs and turns while Haiku reads. */
+/** M3 Expressive loading shape: a soft blob that morphs and turns while the model reads. */
 function MorphingShape() {
   return (
     <motion.span
@@ -97,7 +97,7 @@ function MorphingShape() {
 
 /**
  * Send: a quiet circle until there's something to send, then a filled rounded square (an M3
- * Expressive shape change). While Haiku reads, a shape turns inside it.
+ * Expressive shape change). While the model reads, a shape turns inside it.
  */
 function SendButton({ ready, thinking, smart }: { ready: boolean; thinking: boolean; smart: boolean }) {
   const active = ready || thinking;
@@ -185,7 +185,7 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
   // Shift+Enter on a keyboard starts a new line; any other line break is the send key.
   const newLine = useRef(false);
   const today = todayIso();
-  // Smart add needs Haiku, so offline everything goes in as typed.
+  // Smart add needs the model, so offline everything goes in as typed.
   const smart = (ai?.smartAdd ?? false) && online;
   const smartOffline = (ai?.smartAdd ?? false) && !online;
   const members = household?.members ?? [];
@@ -443,7 +443,7 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
             thinking ? 'text-transparent' : ''
           }`}
         />
-        {/* While Haiku reads, a light sweeps across what they typed. */}
+        {/* While the model reads, a light sweeps across what they typed. */}
         {thinking && (
           <motion.p
             aria-hidden

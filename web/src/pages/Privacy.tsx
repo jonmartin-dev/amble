@@ -1,9 +1,19 @@
 import { appUrl } from '../lib/api.ts';
 import { useSession } from '../lib/queries.ts';
 
+// What each provider says it does with what's sent through its API. Others link to their own terms.
+const AI_TRAINING: Record<string, string> = {
+  anthropic: 'Anthropic does not use API data to train its models.',
+  openai: 'OpenAI does not use API data to train its models unless the account owner opts in.',
+  gemini:
+    "On Gemini's paid tier Google does not use what's sent to improve its products; on the free tier it may, and people may review it.",
+  openrouter: 'OpenRouter passes it on to the company behind the model, under that company’s terms.',
+};
+
 export function Privacy() {
   const auth = useSession().data?.auth;
   const provider = auth?.provider ?? 'Google';
+  const aiName = auth?.ai?.provider === 'custom' ? 'the service the household admin chose' : (auth?.ai?.name ?? '');
   return (
     <main className="mx-auto max-w-xl px-6 py-12 leading-relaxed">
       <a href={appUrl('/')} className="text-sm font-medium text-primary">
@@ -38,12 +48,20 @@ export function Privacy() {
           adds, edits or deletes events. Disconnecting a calendar in Settings deletes the copy and tells Google to end Almanac's access.
         </p>
         <h2>AI features</h2>
-        <p>
-          When the server has an Anthropic API key, task titles and related details are sent to Anthropic's API to turn what you type
-          into tasks, estimate how long tasks take, word the morning's suggestions, plan your week and suggest tidying the backlog. For
-          the morning suggestions and planning your week, the titles and times of your own calendar events that day or week are sent too.
-          Anthropic does not use API data to train its models.
-        </p>
+        {auth?.ai ? (
+          <p>
+            This copy uses an AI model from {aiName}. Task titles and related details are sent to {aiName}'s API to turn what you type
+            into tasks, estimate how long tasks take, word the morning's suggestions, plan your week and suggest tidying the backlog. For
+            the morning suggestions and planning your week, the titles and times of your own calendar events that day or week are sent
+            too. {AI_TRAINING[auth.ai.provider] ?? `${aiName}'s own terms say what it keeps and whether it learns from it.`}
+          </p>
+        ) : (
+          <p>
+            This copy has no AI model set up, so nothing is sent to an AI service. If the household admin sets one up, task titles and
+            related details go to that provider to turn what you type into tasks, estimate how long tasks take and help with planning,
+            and this page will name it.
+          </p>
+        )}
         <h2>Claude connector</h2>
         <p>
           If you connect Claude to Almanac, Claude can read and change your tasks, lists and plans when you ask it to, acting as you,

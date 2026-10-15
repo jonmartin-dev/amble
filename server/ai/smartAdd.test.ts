@@ -221,7 +221,7 @@ describe('AI budget', () => {
     expect(() => requireAi(createAi({ ...config, ai: { ...config.ai, apiKey: '' } }), db, 'America/Chicago')).toThrow(AiUnavailable);
     const ai = createAi({ ...config, ai: { ...config.ai, apiKey: 'test-key', monthlyCapUsd: 0.01 } });
     expect(requireAi(ai, db, 'America/Chicago')).toBeTruthy();
-    recordUsage(db, { memberId: jon.id, feature: 'smart_add', model: 'claude-haiku-5-5', effort: 'medium', usage: { input_tokens: 60_000, output_tokens: 10_000 }, durationMs: 1, ok: true });
+    recordUsage(db, { memberId: jon.id, feature: 'smart_add', model: 'claude-haiku-5-5', effort: 'medium', prices: [0.1, 0.5], usage: { input: 60_000, output: 10_000, cached: 0 }, durationMs: 1, ok: true });
     expect(monthSpendUsd(db, 'America/Chicago')).toBeCloseTo(0.011, 5);
     expect(() => requireAi(ai, db, 'America/Chicago')).toThrow(/budget/);
   });

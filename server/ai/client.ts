@@ -1,40 +1,337 @@
-// The household's Haiku calls: one client, every call metered, and a monthly cap so a self-hoster
-// is never surprised by the bill.
+// The household's AI calls: one model, from whichever provider the admin set up, every call
+// metered, and a monthly cap so a self-hoster is never surprised by the bill. Anthropic is spoken
+// to through its own SDK; everyone else through the OpenAI-style chat completions API that most
+// providers offer (OpenAI, Gemini, Z.ai, OpenRouter, Ollama and the rest).
 import Anthropic from '@anthropic-ai/sdk';
-import { and, gte, sql } from 'drizzle-orm';
+import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
+import { and, eq, gte, sql } from 'drizzle-orm';
+import { z } from 'zod';
+import { aiModel, aiModelName, aiProvider, type AiEffort, type AiProviderId } from '../../shared/ai.ts';
 import type { Config } from '../config.ts';
 import type { Db } from '../db/index.ts';
-import { aiUsage } from '../db/schema.ts';
-
-// Haiku 5.5 per million tokens, for prompts of 100K tokens or fewer (Almanac's are far smaller).
-const PRICES: Record<string, { input: number; output: number }> = {
-  'claude-haiku-5-5': { input: 0.1, output: 0.5 },
-};
+import { aiUsage, serverSettings } from '../db/schema.ts';
+import { seal, unseal } from '../lib/seal.ts';
 
 export type Effort = 'low' | 'medium' | 'high';
 
 /** Why an AI feature can't run right now; the app falls back to doing things as typed. */
 export class AiUnavailable extends Error {}
 
-export interface Ai {
+/** A model and how to reach it. */
+export interface AiSetup {
+  provider: AiProviderId;
   model: string;
-  effort: Effort;
+  /** Where its OpenAI-style API lives (unused for Anthropic). */
+  baseUrl: string;
+  apiKey: string;
+  /** Smart add's effort. "default" sends none on any call and leaves it to the model. */
+  effort: AiEffort;
   monthlyCapUsd: number;
-  available: boolean;
-  client: Anthropic | null;
+  /** US dollars per million tokens, in and out, when Almanac or the admin knows them. */
+  prices: [number, number] | null;
+  /** Saved in Settings, or read from the server's environment. */
+  source: 'settings' | 'environment';
 }
 
-export function createAi(config: Config): Ai {
-  const { apiKey, model, effort, monthlyCapUsd } = config.ai;
+export interface AiUsage {
+  input: number;
+  output: number;
+  /** Input tokens the provider had cached, which cost a fraction. */
+  cached: number;
+}
+
+export interface AiRequest<T extends z.ZodType> {
+  system: string;
+  content: string;
+  schema: T;
+  /** Null sends no effort at all. */
+  effort: Effort | null;
+  maxTokens: number;
+}
+
+export interface AiAnswer<T> {
+  /** Null when it stopped early or answered with something that isn't the JSON asked for. */
+  output: T | null;
+  problem: string | null;
+  usage: AiUsage;
+}
+
+export interface Ai {
+  /** What's set up: from Settings, else from the environment, else nothing. */
+  setup(): AiSetup | null;
+  readonly available: boolean;
+  /** One structured call. Throws when the provider can't be reached or refuses the request. */
+  complete<T extends z.ZodType>(setup: AiSetup, req: AiRequest<T>): Promise<AiAnswer<z.output<T>>>;
+  /** Keeps a model set up in the app, or with null goes back to the environment's. */
+  save(settings: AiSettings | null): void;
+}
+
+/** What the admin sets in Settings, AI. */
+export interface AiSettings {
+  provider: AiProviderId;
+  model: string;
+  baseUrl: string;
+  /** Left empty to keep the key already saved for this provider. */
+  apiKey: string;
+  effort: AiEffort;
+  monthlyCapUsd: number;
+  prices: [number, number] | null;
+}
+
+interface Stored extends Omit<AiSettings, 'apiKey'> {
+  key: string;
+}
+
+const KEY_PURPOSE = 'ai api key';
+
+/** The setup the environment describes: ALMANAC_AI_* (or ANTHROPIC_API_KEY on its own). */
+export function fromEnvironment(config: Config): AiSetup | null {
+  const { provider, apiKey, model, baseUrl, effort, monthlyCapUsd, prices } = config.ai;
+  const known = aiProvider(provider);
+  if (!known) return null;
+  const url = baseUrl || known.baseUrl;
+  // A model on your own machine (Ollama, LM Studio) needs no key.
+  if (!apiKey && !(provider === 'custom' && url)) return null;
+  const chosen = model || known.models[0]?.id;
+  if (!chosen || (provider !== 'anthropic' && !url)) return null;
+  const preset = aiModel(provider, chosen);
   return {
-    model,
-    effort,
+    provider,
+    model: chosen,
+    baseUrl: url,
+    apiKey,
+    effort: effort ?? preset?.effort ?? 'default',
     monthlyCapUsd,
-    available: Boolean(apiKey),
-    // Smart add waits on this call, so fail fast and fall back rather than hang.
-    client: apiKey ? new Anthropic({ apiKey, timeout: 45_000, maxRetries: 1 }) : null,
+    prices: prices ?? preset?.price ?? null,
+    source: 'environment',
   };
 }
+
+export function createAi(config: Config, db?: Db, fetchImpl: typeof fetch = fetch): Ai {
+  const secret = config.oidc.clientSecret;
+  let cached: { setup: AiSetup | null } | null = null;
+
+  const read = (): AiSetup | null => {
+    const row = db?.select().from(serverSettings).where(eq(serverSettings.key, 'ai')).get();
+    if (!row) return fromEnvironment(config);
+    const saved = row.value as Stored;
+    const apiKey = saved.key ? unseal(secret, KEY_PURPOSE, saved.key) : '';
+    // A key sealed under an old client secret can't be read; it needs entering again.
+    if (apiKey === undefined) return null;
+    return { ...saved, apiKey, source: 'settings' };
+  };
+
+  const ai: Ai = {
+    setup() {
+      cached ??= { setup: read() };
+      return cached.setup;
+    },
+    get available() {
+      return ai.setup() != null;
+    },
+    complete(setup, req) {
+      return setup.provider === 'anthropic' ? anthropicCall(setup, req) : chatCall(setup, req, fetchImpl);
+    },
+    save(settings) {
+      if (!db) throw new Error('No database to keep AI settings in.');
+      cached = null;
+      if (!settings) {
+        db.delete(serverSettings).where(eq(serverSettings.key, 'ai')).run();
+        return;
+      }
+      const { apiKey, ...rest } = settings;
+      const before = db.select().from(serverSettings).where(eq(serverSettings.key, 'ai')).get()?.value as Stored | undefined;
+      const key = apiKey ? seal(secret, KEY_PURPOSE, apiKey) : before?.provider === settings.provider ? before.key : '';
+      const value: Stored = { ...rest, key };
+      db.insert(serverSettings).values({ key: 'ai', value }).onConflictDoUpdate({ target: serverSettings.key, set: { value } }).run();
+    },
+  };
+  return ai;
+}
+
+/** Whether a saved setup still has a key the server can open (for Settings to say so). */
+export function savedKeyState(db: Db, config: Config): 'none' | 'saved' | 'unreadable' {
+  const saved = db.select().from(serverSettings).where(eq(serverSettings.key, 'ai')).get()?.value as Stored | undefined;
+  if (!saved?.key) return 'none';
+  return unseal(config.oidc.clientSecret, KEY_PURPOSE, saved.key) === undefined ? 'unreadable' : 'saved';
+}
+
+/** What to call the model in messages: "Claude Haiku 5.5", or the id of one Almanac doesn't know. */
+export function modelName(setup: Pick<AiSetup, 'provider' | 'model'>) {
+  return aiModelName(setup.provider, setup.model);
+}
+
+/** The effort to send for a call that would like `wanted`: none when the setup leaves it to the model. */
+export function effortFor(setup: AiSetup, wanted: Effort): Effort | null {
+  return setup.effort === 'default' ? null : wanted;
+}
+
+// ---- Anthropic ---------------------------------------------------------------------------------
+
+const anthropicClients = new Map<string, Anthropic>();
+
+async function anthropicCall<T extends z.ZodType>(setup: AiSetup, req: AiRequest<T>): Promise<AiAnswer<z.output<T>>> {
+  let client = anthropicClients.get(setup.apiKey);
+  if (!client) {
+    // Smart add waits on this call, so fail fast and fall back rather than hang.
+    client = new Anthropic({ apiKey: setup.apiKey, timeout: 45_000, maxRetries: 1 });
+    anthropicClients.set(setup.apiKey, client);
+  }
+  const response = await client.messages.parse({
+    model: setup.model,
+    max_tokens: req.maxTokens,
+    output_config: { ...(req.effort && { effort: req.effort }), format: zodOutputFormat(req.schema) },
+    system: req.system,
+    messages: [{ role: 'user', content: req.content }],
+  });
+  const u = response.usage;
+  const usage = { input: u.input_tokens + (u.cache_creation_input_tokens ?? 0), output: u.output_tokens, cached: u.cache_read_input_tokens ?? 0 };
+  const ok = response.stop_reason === 'end_turn' && response.parsed_output != null;
+  return { output: ok ? (response.parsed_output as z.output<T>) : null, problem: ok ? null : `stopped early (${response.stop_reason})`, usage };
+}
+
+// ---- OpenAI-style chat completions -------------------------------------------------------------
+
+interface Quirks {
+  /** Held to a schema, asked for any JSON object, or just told in the prompt. */
+  json: 'schema' | 'object' | 'prompt';
+  effort: boolean;
+  maxTokens: 'max_completion_tokens' | 'max_tokens';
+}
+
+// What each address and model turned out to accept, learned from the errors it gave, so only the
+// first call after a start pays for finding out.
+const quirks = new Map<string, Quirks>();
+
+/** The change to make after a request was refused, or null when the refusal isn't about its shape. */
+function adjust(q: Quirks, error: string): Partial<Quirks> | null {
+  if (q.effort && /reasoning/i.test(error)) return { effort: false };
+  if (q.maxTokens === 'max_completion_tokens' && /max_completion_tokens/i.test(error)) return { maxTokens: 'max_tokens' };
+  if (q.json === 'schema' && /response_format|json_schema|schema|strict/i.test(error)) return { json: 'object' };
+  if (q.json === 'object' && /response_format|json_object|json/i.test(error)) return { json: 'prompt' };
+  return null;
+}
+
+/**
+ * The schema as a plain JSON Schema that strict modes accept: every field required, nothing extra,
+ * one of a set as anyOf, and constants as one-value enums.
+ */
+export function strictSchema(schema: z.ZodType): Record<string, unknown> {
+  const tidy = (node: unknown): unknown => {
+    if (Array.isArray(node)) return node.map(tidy);
+    if (!node || typeof node !== 'object') return node;
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(node)) {
+      if (k === '$schema') continue;
+      if ((k === 'minimum' || k === 'maximum') && typeof v === 'number' && Math.abs(v) >= Number.MAX_SAFE_INTEGER) continue;
+      if (k === 'oneOf') out.anyOf = tidy(v);
+      else if (k === 'const') out.enum = [v];
+      else out[k] = tidy(v);
+    }
+    if (out.type === 'object' && out.properties && typeof out.properties === 'object') {
+      out.additionalProperties = false;
+      out.required = Object.keys(out.properties);
+    }
+    return out;
+  };
+  return tidy(z.toJSONSchema(schema, { io: 'output', unrepresentable: 'any' })) as Record<string, unknown>;
+}
+
+/** The JSON in an answer, without the code fences or thinking some models wrap around it. */
+export function jsonIn(text: string) {
+  let s = text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+  const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(s);
+  if (fenced) s = fenced[1]!.trim();
+  if (!s.startsWith('{')) {
+    const start = s.indexOf('{');
+    const end = s.lastIndexOf('}');
+    if (start >= 0 && end > start) s = s.slice(start, end + 1);
+  }
+  return s;
+}
+
+/** The message in an API's error body, whatever shape it comes in. */
+function errorMessage(body: string) {
+  try {
+    const data = JSON.parse(body);
+    const first = Array.isArray(data) ? data[0] : data;
+    const err = first?.error ?? first;
+    const message = typeof err === 'string' ? err : (err?.message ?? first?.message);
+    if (typeof message === 'string' && message) return message.slice(0, 300);
+  } catch {
+    // Not JSON.
+  }
+  return body.replace(/\s+/g, ' ').trim().slice(0, 300) || 'no details';
+}
+
+async function chatCall<T extends z.ZodType>(setup: AiSetup, req: AiRequest<T>, fetchImpl: typeof fetch): Promise<AiAnswer<z.output<T>>> {
+  const id = `${setup.baseUrl}|${setup.model}`;
+  const q: Quirks = { ...(quirks.get(id) ?? { json: aiProvider(setup.provider)?.json ?? 'schema', effort: true, maxTokens: 'max_completion_tokens' }) };
+  const schema = strictSchema(req.schema);
+  const url = `${setup.baseUrl.replace(/\/+$/, '')}/chat/completions`;
+
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const system =
+      q.json === 'schema'
+        ? req.system
+        : `${req.system}\n\nAnswer with one JSON object and nothing else, matching this JSON Schema:\n${JSON.stringify(schema)}`;
+    const body = {
+      model: setup.model,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: req.content },
+      ],
+      [q.maxTokens]: req.maxTokens,
+      ...(q.effort && req.effort && { reasoning_effort: req.effort }),
+      ...(q.json === 'schema' && { response_format: { type: 'json_schema', json_schema: { name: 'answer', strict: true, schema } } }),
+      ...(q.json === 'object' && { response_format: { type: 'json_object' } }),
+      // Only route to a host that honours the JSON format, rather than one that ignores it.
+      ...(setup.provider === 'openrouter' && { provider: { require_parameters: true } }),
+    };
+    const res = await fetchImpl(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...(setup.apiKey && { authorization: `Bearer ${setup.apiKey}` }) },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(45_000),
+    });
+    if (!res.ok) {
+      const message = errorMessage(await res.text());
+      const fix = res.status === 400 || res.status === 422 ? adjust(q, message) : null;
+      if (!fix) throw new Error(`${res.status}: ${message}`);
+      Object.assign(q, fix);
+      quirks.set(id, { ...q });
+      continue;
+    }
+    quirks.set(id, { ...q });
+    const data = (await res.json()) as {
+      choices?: { finish_reason?: string; message?: { content?: string | { type?: string; text?: string }[] | null; refusal?: string | null } }[];
+      usage?: { prompt_tokens?: number; completion_tokens?: number; prompt_tokens_details?: { cached_tokens?: number } };
+    };
+    const cached = data.usage?.prompt_tokens_details?.cached_tokens ?? 0;
+    const usage = { input: Math.max(0, (data.usage?.prompt_tokens ?? 0) - cached), output: data.usage?.completion_tokens ?? 0, cached };
+    const choice = data.choices?.[0];
+    const finish = choice?.finish_reason;
+    if (finish === 'length' || finish === 'content_filter') return { output: null, problem: `stopped early (${finish})`, usage };
+    if (choice?.message?.refusal) return { output: null, problem: `declined: ${choice.message.refusal.slice(0, 200)}`, usage };
+    const raw = choice?.message?.content;
+    const text = typeof raw === 'string' ? raw : Array.isArray(raw) ? raw.map((p) => p.text ?? '').join('') : '';
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(jsonIn(text));
+    } catch {
+      return { output: null, problem: 'answered with something other than JSON', usage };
+    }
+    const checked = req.schema.safeParse(parsed);
+    if (!checked.success) {
+      const where = checked.error.issues[0]?.path.join('.') || 'the answer';
+      return { output: null, problem: `answered with JSON that doesn't fit (${where}: ${checked.error.issues[0]?.message})`, usage };
+    }
+    return { output: checked.data as z.output<T>, problem: null, usage };
+  }
+  throw new Error("refused every way Almanac knows to ask for JSON");
+}
+
+// ---- metering ----------------------------------------------------------------------------------
 
 /** The start of this calendar month in the household's timezone. */
 function monthStart(timezone: string) {
@@ -51,15 +348,16 @@ export function monthSpendUsd(db: Db, timezone: string) {
   return (row?.micros ?? 0) / 1_000_000;
 }
 
-export function costMicros(model: string, usage: { input_tokens: number; output_tokens: number; cache_read_input_tokens?: number | null; cache_creation_input_tokens?: number | null }) {
-  const price = PRICES[model] ?? PRICES['claude-haiku-5-5']!;
-  const input = usage.input_tokens + (usage.cache_creation_input_tokens ?? 0) * 1.25 + (usage.cache_read_input_tokens ?? 0) * 0.1;
-  return Math.round(input * price.input + usage.output_tokens * price.output);
+/** Millionths of a dollar; cached input at a tenth, roughly what providers charge. */
+export function costMicros(prices: [number, number] | null, usage: AiUsage) {
+  if (!prices) return 0;
+  const [input, output] = prices;
+  return Math.round(usage.input * input + usage.cached * input * 0.1 + usage.output * output);
 }
 
 export function recordUsage(
   db: Db,
-  entry: { memberId: string | null; feature: string; model: string; effort: string; usage?: Parameters<typeof costMicros>[1]; durationMs: number; ok: boolean },
+  entry: { memberId: string | null; feature: string; model: string; effort: string; prices: [number, number] | null; usage?: AiUsage; durationMs: number; ok: boolean },
 ) {
   db.insert(aiUsage)
     .values({
@@ -67,20 +365,75 @@ export function recordUsage(
       feature: entry.feature,
       model: entry.model,
       effort: entry.effort,
-      inputTokens: entry.usage?.input_tokens ?? 0,
-      outputTokens: entry.usage?.output_tokens ?? 0,
-      costMicros: entry.usage ? costMicros(entry.model, entry.usage) : 0,
+      inputTokens: (entry.usage?.input ?? 0) + (entry.usage?.cached ?? 0),
+      outputTokens: entry.usage?.output ?? 0,
+      costMicros: entry.usage ? costMicros(entry.prices, entry.usage) : 0,
       durationMs: entry.durationMs,
       ok: entry.ok,
     })
     .run();
 }
 
-/** Throws AiUnavailable when there's no key or this month's spending has reached the cap. */
-export function requireAi(ai: Ai, db: Db, timezone: string): Anthropic {
-  if (!ai.client) throw new AiUnavailable('No Anthropic API key is set on the server.');
-  if (monthSpendUsd(db, timezone) >= ai.monthlyCapUsd) {
-    throw new AiUnavailable(`This month's AI budget ($${ai.monthlyCapUsd}) is used up.`);
+/** Throws AiUnavailable when no model is set up or this month's spending has reached the cap. */
+export function requireAi(ai: Ai, db: Db, timezone: string): AiSetup {
+  const setup = ai.setup();
+  if (!setup) throw new AiUnavailable('No AI model is set up on the server.');
+  if (monthSpendUsd(db, timezone) >= setup.monthlyCapUsd) {
+    throw new AiUnavailable(`This month's AI budget ($${setup.monthlyCapUsd}) is used up.`);
   }
-  return ai.client;
+  return setup;
+}
+
+/**
+ * One metered call for a feature: checks the budget, records what it cost, and throws
+ * AiUnavailable when there's no usable answer, so the feature can fall back.
+ */
+export async function ask<T extends z.ZodType>(
+  db: Db,
+  ai: Ai,
+  req: AiRequest<T> & { feature: string; memberId: string | null; timezone: string },
+): Promise<{ output: z.output<T>; usage: AiUsage; ms: number; setup: AiSetup }> {
+  const setup = requireAi(ai, db, req.timezone);
+  const name = modelName(setup);
+  const entry = { memberId: req.memberId, feature: req.feature, model: setup.model, effort: req.effort ?? 'default', prices: setup.prices };
+  const started = performance.now();
+  let answer: AiAnswer<z.output<T>>;
+  try {
+    answer = await ai.complete(setup, req);
+  } catch (err) {
+    recordUsage(db, { ...entry, durationMs: Math.round(performance.now() - started), ok: false });
+    throw new AiUnavailable(`${name} didn't answer: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  const ms = Math.round(performance.now() - started);
+  recordUsage(db, { ...entry, usage: answer.usage, durationMs: ms, ok: answer.output != null });
+  if (answer.output == null) throw new AiUnavailable(`${name} ${answer.problem ?? 'gave no answer'}.`);
+  return { output: answer.output, usage: answer.usage, ms, setup };
+}
+
+// ---- checking a setup --------------------------------------------------------------------------
+
+const Check = z.object({ minutes: z.number().int().describe('How many minutes it takes') });
+
+/** One tiny call, to see whether a setup works before it's saved. Costs a fraction of a cent. */
+export async function checkSetup(ai: Ai, setup: AiSetup): Promise<{ ok: true; ms: number } | { ok: false; error: string }> {
+  const started = performance.now();
+  try {
+    const answer = await ai.complete(setup, {
+      system: 'You estimate how long household tasks take.',
+      content: 'How long does it take to call the dentist to book a cleaning?',
+      schema: Check,
+      effort: effortFor(setup, 'low'),
+      maxTokens: 2000,
+    });
+    if (answer.output == null) return { ok: false, error: `It ${answer.problem ?? 'gave no answer'}.` };
+    return { ok: true, ms: Math.round(performance.now() - started) };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/** Who the AI features send things to, for the privacy page: { provider, name }, or null. */
+export function aiProviderFor(ai: Ai) {
+  const setup = ai.setup();
+  return setup ? { provider: setup.provider, name: aiProvider(setup.provider)?.name ?? setup.provider } : null;
 }

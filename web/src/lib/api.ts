@@ -1,3 +1,4 @@
+import type { AiEffort, AiProviderId } from '../../../shared/ai.ts';
 import type { Proposal } from '../../../shared/proposals.ts';
 import type { Repeat } from '../../../shared/repeat.ts';
 import type { ThemePrefs } from './theme.ts';
@@ -60,7 +61,7 @@ export interface Member {
 
 export interface Session {
   member: Member | null;
-  auth: { provider: string; oidc: boolean; devEmails: string[]; privacyContact: string };
+  auth: { provider: string; oidc: boolean; devEmails: string[]; privacyContact: string; ai: { provider: AiProviderId; name: string } | null };
 }
 
 export interface Group {
@@ -98,7 +99,7 @@ export interface Task {
   mustDo: boolean;
   estimateMinutes: number | null;
   estimateSource: 'ai' | 'user' | 'learned' | null;
-  /** Haiku's guess, kept after someone changes it. */
+  /** The model's guess, kept after someone changes it. */
   aiEstimateMinutes?: number | null;
   status: 'open' | 'done' | 'archived';
   completedAt: string | null;
@@ -276,10 +277,29 @@ export interface AiStatus {
   available: boolean;
   /** Available and switched on for this person. */
   smartAdd: boolean;
-  model: string;
-  effort: string;
+  provider: AiProviderId | null;
+  providerName: string | null;
+  model: string | null;
+  modelName: string | null;
+  effort: AiEffort | null;
+  source: 'settings' | 'environment' | null;
+  /** The server's environment sets a model too. */
+  environment: boolean;
+  /** Spending is counted, so the cap applies. */
+  priced: boolean;
   monthSpendUsd: number;
   monthlyCapUsd: number;
+  /** For the admin: what's set, without the key. */
+  settings: {
+    provider: AiProviderId;
+    model: string;
+    baseUrl: string;
+    effort: AiEffort;
+    monthlyCapUsd: number;
+    prices: [number, number] | null;
+    keyEnding: string | null;
+  } | null;
+  keyUnreadable: boolean;
 }
 
 export type SmartAddResponse =

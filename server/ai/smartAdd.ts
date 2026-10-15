@@ -1,7 +1,6 @@
-// Smart add: Haiku reads what someone typed into quick add, with the household's context, and
+// Smart add: the model reads what someone typed into quick add, with the household's context, and
 // proposes tasks, list items and changes. The person reviews them; nothing is saved here.
 import { and, desc, eq, isNotNull, isNull } from 'drizzle-orm';
-import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { z } from 'zod';
 import type { AddHints, Proposal, ProposedTask, TaskChanges } from '../../shared/proposals.ts';
 import { listSections, listTemplate } from '../../shared/templates.ts';
@@ -13,7 +12,7 @@ import { parseReminderTime } from '../domain/reminders.ts';
 import { cleanRepeat } from '../domain/repeat.ts';
 import { listTasks } from '../domain/tasks.ts';
 import { addDays, planningDate, weekday } from '../lib/dates.ts';
-import { AiUnavailable, recordUsage, requireAi, type Ai, type Effort } from './client.ts';
+import { ask, requireAi, type Ai, type Effort } from './client.ts';
 
 const OPEN_TASKS_SHOWN = 150;
 const EXAMPLES_PER_GROUP = 6;
@@ -21,7 +20,7 @@ const HISTORY_PER_LIST = 40;
 const SIZE_EXAMPLES = 20;
 const LOAD_DAYS = 14;
 
-// ---- what Haiku answers with ----------------------------------------------------------------
+// ---- what the model answers with ------------------------------------------------------------
 // Refs like g2 or t14 stand for the household's groups and tasks; the server maps them back.
 // Every field is required, with "" or 0 for "not set": the API limits how many fields a schema
 // can leave optional or nullable.
@@ -152,7 +151,7 @@ export function ownEstimates(db: Db, limit: number) {
   return [...new Map(sized.map((s) => [s.title.toLowerCase(), s])).values()].slice(0, limit);
 }
 
-/** The household as Haiku needs it, with short refs in place of ids. */
+/** The household as the model needs it, with short refs in place of ids. */
 export function buildContext(db: Db, me: Member, hints: AddHints = {}) {
   const today = planningDate(me);
   const refs: Refs = { members: new Map(), groups: new Map(), lists: new Map(), tasks: new Map(), items: new Map() };
@@ -284,7 +283,7 @@ export function buildContext(db: Db, me: Member, hints: AddHints = {}) {
   return { text: out.join('\n'), refs, today };
 }
 
-// ---- turning Haiku's answer into proposals --------------------------------------------------
+// ---- turning the model's answer into proposals ----------------------------------------------
 
 // Every field comes back, with null for "not set" (the API limits how many can be optional).
 type Maybe<T> = T | null | undefined;
@@ -300,7 +299,7 @@ const steps = (list: Maybe<string[]>) =>
     .filter((s): s is string => !!s)
     .slice(0, 50);
 
-/** A reminder time Haiku gave, as an instant, if it's a real time still to come. */
+/** A reminder time the model gave, as an instant, if it's a real time still to come. */
 function reminderAt(value: Maybe<string>, timeZone: string): string | null {
   if (!value || value === 'none') return null;
   try {
@@ -419,31 +418,21 @@ export async function smartAdd(
   me: Member,
   input: { text: string; hints?: AddHints; effort?: Effort; timezone: string },
 ): Promise<SmartAddResult> {
-  const client = requireAi(ai, db, input.timezone);
+  const setup = requireAi(ai, db, input.timezone);
   const { text: context, refs, today } = buildContext(db, me, input.hints);
-  const effort = input.effort ?? ai.effort;
-  const started = performance.now();
-  let response;
-  try {
-    response = await client.messages.parse({
-      model: ai.model,
-      max_tokens: 16_000,
-      output_config: { effort, format: zodOutputFormat(Output) },
-      system: SYSTEM,
-      messages: [{ role: 'user', content: `${context}\n\nWhat they typed:\n"""\n${input.text.trim()}\n"""` }],
-    });
-  } catch (err) {
-    recordUsage(db, { memberId: me.id, feature: 'smart_add', model: ai.model, effort, durationMs: Math.round(performance.now() - started), ok: false });
-    throw new AiUnavailable(`Haiku didn't answer: ${err instanceof Error ? err.message : String(err)}`);
-  }
-  const ms = Math.round(performance.now() - started);
-  const ok = response.stop_reason === 'end_turn' && response.parsed_output != null;
-  recordUsage(db, { memberId: me.id, feature: 'smart_add', model: ai.model, effort, usage: response.usage, durationMs: ms, ok });
-  if (!ok) throw new AiUnavailable(`Haiku stopped early (${response.stop_reason}).`);
-  const output = response.parsed_output!;
+  const { output, usage, ms } = await ask(db, ai, {
+    feature: 'smart_add',
+    memberId: me.id,
+    timezone: input.timezone,
+    system: SYSTEM,
+    content: `${context}\n\nWhat they typed:\n"""\n${input.text.trim()}\n"""`,
+    schema: Output,
+    effort: input.effort ?? (setup.effort === 'default' ? null : setup.effort),
+    maxTokens: 16_000,
+  });
   return {
     proposals: toProposals(output, refs, me, today),
     unclear: clean(output.unclear),
-    usage: { inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens, ms },
+    usage: { inputTokens: usage.input + usage.cached, outputTokens: usage.output, ms },
   };
 }

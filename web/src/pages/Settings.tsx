@@ -1,11 +1,12 @@
 import { useQueryClient } from '@tanstack/react-query';
 import Sparkle from '~icons/material-symbols/auto-awesome-outline-rounded';
 import Folder from '~icons/material-symbols/folder-outline-rounded';
-import Bolt from '~icons/material-symbols/bolt-outline-rounded';
 import CalendarMonth from '~icons/material-symbols/calendar-month-outline-rounded';
+import Forum from '~icons/material-symbols/forum-outline-rounded';
 import Group from '~icons/material-symbols/group-outline-rounded';
 import History from '~icons/material-symbols/history-rounded';
 import Logout from '~icons/material-symbols/logout-rounded';
+import Neurology from '~icons/material-symbols/neurology-outline-rounded';
 import Bell from '~icons/material-symbols/notifications-outline-rounded';
 import Palette from '~icons/material-symbols/palette-outline-rounded';
 import Policy from '~icons/material-symbols/policy-outline-rounded';
@@ -61,18 +62,6 @@ export function Settings() {
           { icon: <Timer className="size-6" />, title: 'Daily capacity', subtitle: capacitySummary(me), to: '/settings/capacity' },
           { icon: <CalendarMonth className="size-6" />, title: 'Calendars', subtitle: calendarSummary, to: '/settings/calendars' },
           { icon: <Bell className="size-6" />, title: 'Notifications', subtitle: notificationSummary(push.state), to: '/settings/notifications' },
-          ai?.available
-            ? {
-                icon: <Sparkle className="size-6" />,
-                title: 'Smart add',
-                subtitle: 'Haiku turns what you type into tasks and list items for you to check',
-                trailing: <Switch checked={smartOn} onChange={(v) => saveMe({ smartAdd: v }, `Turn smart add ${v ? 'on' : 'off'}`)} label="Smart add" />,
-              }
-            : {
-                icon: <Sparkle className="size-6" />,
-                title: 'Smart add',
-                subtitle: 'Off: the server has no Anthropic API key',
-              },
           {
             icon: <Trophy className="size-6" />,
             title: 'Streaks and records',
@@ -87,7 +76,7 @@ export function Settings() {
         rows={[
           {
             icon: <Group className="size-6" />,
-            title: 'Household',
+            title: 'People',
             subtitle: household ? `${household.members.length} ${household.members.length === 1 ? 'person' : 'people'}` : undefined,
             to: '/household',
           },
@@ -97,17 +86,35 @@ export function Settings() {
             subtitle: groups ? `${taskGroups} ${taskGroups === 1 ? 'group' : 'groups'}, ${lists} ${lists === 1 ? 'list' : 'lists'}` : undefined,
             to: '/settings/groups',
           },
-          { icon: <Sparkle className="size-6" />, title: 'Connect Claude', subtitle: 'Plan from any Claude chat', to: '/connections' },
           { icon: <History className="size-6" />, title: 'Activity', subtitle: 'What changed, and who changed it', to: '/activity' },
+        ]}
+      />
+
+      <SectionTitle>AI</SectionTitle>
+      <ListGroup
+        rows={[
+          {
+            icon: <Neurology className="size-6" />,
+            title: 'AI model',
+            subtitle: !ai
+              ? undefined
+              : ai.available
+                ? `${ai.modelName}${ai.priced ? `, $${ai.monthSpendUsd.toFixed(2)} of $${ai.monthlyCapUsd} this month` : ''}`
+                : 'None yet, so quick add takes text as typed',
+            to: '/settings/ai',
+          },
+          // Smart add is each person's own choice, once there's a model to do it.
           ...(ai?.available
             ? [
                 {
-                  icon: <Bolt className="size-6" />,
-                  title: 'AI this month',
-                  subtitle: `$${ai.monthSpendUsd.toFixed(2)} of the $${ai.monthlyCapUsd} cap. Smart add, estimates and planning help pause past it until next month.`,
+                  icon: <Sparkle className="size-6" />,
+                  title: 'Smart add',
+                  subtitle: 'Turns what you type into tasks and list items for you to check',
+                  trailing: <Switch checked={smartOn} onChange={(v) => saveMe({ smartAdd: v }, `Turn smart add ${v ? 'on' : 'off'}`)} label="Smart add" />,
                 },
               ]
             : []),
+          { icon: <Forum className="size-6" />, title: 'Connect Claude', subtitle: 'Plan from any Claude chat', to: '/connections' },
         ]}
       />
 

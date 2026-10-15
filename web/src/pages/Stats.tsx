@@ -165,7 +165,7 @@ function Tile({ value, label, detail }: { value: ReactNode; label: string; detai
   );
 }
 
-/** How Haiku's size guesses held up: each month's guesses, and how many people kept as they were. */
+/** How the model's size guesses held up: each month's guesses, and how many people kept as they were. */
 function Estimates({ e }: { e: StatsData['estimates'] }) {
   const max = Math.max(1, ...e.months.map((m) => m.made));
   const changed = e.made - e.kept;
