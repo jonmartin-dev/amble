@@ -19,7 +19,7 @@ Since the household moved into Drive, the server is just another copy that syncs
 | Calendar load | Reading Google Calendar needs a client secret and a refresh token, which only the server has | No calendar in the day's load (see [Calendar](#calendar)) |
 | One AI key for the household, with a monthly cap | The server holds the key | Each device sets up its own |
 | Files shared between people | Files uploaded through the server's page are stored on the server | Files stay on the device that added them, as they already do with Drive |
-| No hourly tap to keep syncing | The server keeps a Drive refresh token; a browser can't renew its token without a tap | A browser asks for a tap about once an hour (the Android app renews on its own) |
+| Drive access that renews quietly in a browser | A refresh token takes Google's client secret, which a static page can't hold | Today a browser asks for a tap about once an hour (the Android app renews on its own). See [Keeping a browser signed in to Drive](#keeping-a-browser-signed-in-to-drive): this has to be fixed before the web app is the only one |
 | A household with no Google at all | Sign-in with any OpenID provider, data on the server | Everything syncs through Google Drive |
 
 The connector stands out. The others either have a device-side substitute or affect only people using a browser on a computer.
@@ -33,20 +33,28 @@ The connector stands out. The others either have a device-side substitute or aff
 Extras the server could add later, for people who run one:
 
 - **Push for browsers.** A browser subscribes with the server's VAPID key and registers once after signing in to the server (same origin, so the session cookie just works). The server already knows every reminder's time through sync.
-- **Drive tokens without the tap.** For people who signed in to the server with Google, the server can hand their browser a fresh Drive token, since it holds a refresh token.
 - **Sync without Google.** A state-file endpoint on the server, shaped like the Drive calls in `server/sync/drive.ts` (`server/sync/fake-drive.ts` shows how little that is), would let devices sync to the server instead of Drive. This is what keeps households that avoid Google working; see [Households without Google](#households-without-google).
 
 ## What a browser user gains and loses
 
 Gains: one app that works the same on a phone and a computer, works offline, needs no account or server, and keeps the data on the device and in their own Drive.
 
-Losses, against the server's page today: a tap about once an hour to keep syncing, reminders only while Amble is open, no calendar load until devices read calendars, no shared files, and no household-wide AI key. Each loss comes back for people who also run a server, through the extras above.
+Losses, against the server's page today: reminders only while Amble is open, no calendar load until devices read calendars, no shared files, and no household-wide AI key. Each loss comes back for people who also run a server, through the extras above.
+
+## Keeping a browser signed in to Drive
+
+Today the web app gets Drive access through Google's redirect sign-in (`response_type=token` in `web/src/lib/google.ts`). The token lasts an hour and comes with no refresh token, so when it runs out the app shows "Sync paused" and waits for a tap. That's not acceptable for an app meant to sit open on a computer, so it gets fixed in two steps, before the web app replaces the server's page.
+
+1. **Renew without asking (no server).** When the token runs out, send the page back through the same sign-in with `prompt=none` and `login_hint` set to the person's address. Google's documentation describes `prompt=none` as "Don't display any authentication or consent screens": while the person is signed in to Google and has already allowed Amble, it comes straight back with a new token. The bounce reloads the page, so it happens when Amble opens and when the tab is in the background, never under someone's hands. Only a signed-out browser or a revoked grant falls back to the Continue button.
+2. **Renew in place (a tiny token endpoint).** Google's recommended flow for single-page apps is the authorization code flow with PKCE, which gives a refresh token. For a "Web application" client, Google's token endpoint wants the client secret for that, including on every refresh. So a small endpoint holds the secret and adds it to the two calls, sign-in and refresh, and nothing else. It stores nothing; the browser keeps its own refresh token. For people with an Amble server it's a route on the server. For the public web app it's a free Cloudflare Worker (or a Pages Function) beside the static files. Sync then keeps going in the background with no reloads at all.
+
+The first step is a day's work and fixes most of it. The second retires the implicit flow, which Google describes as considered insecure for single-page apps.
 
 ## Calendar
 
 Calendar events don't sync through the household file (each copy reads its own calendars), so today calendar load reaches only people on the server's page. Two ways to bring it to every device:
 
-- **Each device reads its own calendar.** The Android app can ask for `calendar.readonly` through Android's Google sign-in and renew it silently; a browser would need the hourly tap too. `calendar.readonly` is a sensitive scope, so Amble's own Google project would need Google's verification before the public could use it.
+- **Each device reads its own calendar.** The Android app can ask for `calendar.readonly` through Android's Google sign-in and renew it silently; a browser renews it the same way as Drive access ([above](#keeping-a-browser-signed-in-to-drive)). `calendar.readonly` is a sensitive scope, so Amble's own Google project would need Google's verification before the public could use it.
 - **The server shares busy minutes, not events.** The server already reads calendars. It could write each person's busy minutes per day into a synced table: no titles, so the household file stays as private as it is. This works only for households with a server.
 
 Settle this before the server's page goes, since it's the last feature computers would visibly lose.
@@ -86,18 +94,20 @@ Today a household can run entirely on a self-hosted server with another sign-in 
 
 ## Risks
 
-- **The hourly tap** is the main cost on computers. Changes keep saving on the device while sync waits, but someone who leaves a tab open all day will see "Sync paused".
+- **Quiet renewal depends on Google's session.** Someone signed out of Google in that browser, or who removed Amble's access, still gets the Continue button. That's the right outcome, and rare.
+- **The token endpoint holds a secret.** It should answer only Amble's own origins, send nothing but Google's two token calls, and log nothing.
 - **iPhones** get the web app only. Safari can clear a site's storage after 7 days without a visit unless it was added to the home screen, and reminders show only while Amble is open. The real answer is an iOS build of the Capacitor app, which needs a Mac and an Apple developer account.
 - **The connector's reminder note is wrong today.** When an assistant sets a reminder, `set_reminder` in `server/mcp/server.ts` warns that the person "hasn't turned on notifications on any device yet" if the server has no push registration for them. Someone who uses only the Android app does get the reminder, since it syncs to the phone. Fix it first; it stands on its own.
 - **One more move for installed web apps.** The device build's service worker replaces the server build's at the same address, and the app starts empty until the person joins the household again.
 
 ## Recommendation and order of work
 
-Do it, in this order, with the second step as the point to decide:
+Do it, in this order, with the week in step 3 as the point to decide:
 
 1. Fix the connector's reminder note.
-2. Host the device build beside the server's page (at `/amble/app/`, say) and use it on a computer for a week. If the hourly tap is too much, build the token extra before going further.
-3. Settle calendar: devices read their own, or the server shares busy minutes.
-4. Decide on households without Google.
-5. Point the app's address at the device build, turn the server's remaining pages into plain pages, and delete the server's app code.
-6. Update the docs.
+2. Make a browser renew Drive access on its own: the `prompt=none` bounce first, then the token endpoint.
+3. Host the device build beside the server's page (at `/amble/app/`, say) and use it on a computer for a week.
+4. Settle calendar: devices read their own, or the server shares busy minutes.
+5. Decide on households without Google.
+6. Point the app's address at the device build, turn the server's remaining pages into plain pages, and delete the server's app code.
+7. Update the docs.
