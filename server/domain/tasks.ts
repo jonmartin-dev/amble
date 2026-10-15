@@ -5,6 +5,7 @@ import { webLink } from '../../shared/links.ts';
 import { repeatOn } from '../../shared/repeat.ts';
 import { activity, groups, members, series, subtasks, taskLinks, tasks, type Member, type Task } from '../db/schema.ts';
 import { addDays, dateOf, daysBetween, planningDate, planningDayStart } from '../lib/dates.ts';
+import { uuidFrom } from '../lib/ids.ts';
 import { attachmentsFor, copyAttachments, type FileView } from './files.ts';
 import { DomainError, logActivity, type Actor } from './household.ts';
 import { carryReminders, remindersFor, setReminder, shiftReminders, type ReminderView } from './reminders.ts';
@@ -516,9 +517,14 @@ function spawnNext(db: Db, actor: Actor, task: TaskDetail) {
   const date = nextDate(s.rule, s.anchor, seriesDate(task, s.rule), actorToday(actor), s.pausedUntil);
   if (!date) return null;
   const now = new Date();
+  // Named after the task it follows, so two devices finishing it offline make the same next one.
+  // If that one is still around (archived, then this finished again), a new one gets its own id.
+  const named = uuidFrom(`next:${task.id}`);
+  const nextId = db.select({ id: tasks.id }).from(tasks).where(eq(tasks.id, named)).get() ? crypto.randomUUID() : named;
   const next = db
     .insert(tasks)
     .values({
+      id: nextId,
       title: task.title,
       notes: task.notes,
       groupId: task.groupId,
@@ -541,9 +547,11 @@ function spawnNext(db: Db, actor: Actor, task: TaskDetail) {
   addSubtasks(
     db,
     next.id,
-    task.subtasks.map((st) => st.title),
+    task.subtasks.map((st, i) => ({ id: uuidFrom(`${nextId}:step:${i}`), title: st.title })),
   );
-  for (const link of task.links) db.insert(taskLinks).values({ taskId: next.id, url: link.url, title: link.title }).run();
+  task.links.forEach((link, i) =>
+    db.insert(taskLinks).values({ id: uuidFrom(`${nextId}:link:${i}`), taskId: next.id, url: link.url, title: link.title }).run(),
+  );
   const current = seriesDate(task, s.rule);
   carryReminders(db, task.id, next.id, current ? daysBetween(current, date) : 0);
   copyAttachments(db, task.id, next.id);

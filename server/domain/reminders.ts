@@ -5,6 +5,7 @@ import { and, asc, eq, inArray, isNull, lte } from 'drizzle-orm';
 import type { Db } from '../db/index.ts';
 import { members, reminders, tasks, type Member } from '../db/schema.ts';
 import { DomainError } from './household.ts';
+import { reminderId } from '../lib/ids.ts';
 
 export interface ReminderView {
   id: string;
@@ -42,7 +43,7 @@ export function setReminder(db: Db, member: Member, taskId: string, at: Date | n
   if (!late && at.getTime() < now - GRACE_MS) throw new DomainError('That time has already passed. Pick a later one.');
   if (at.getTime() > now + MAX_AHEAD_MS) throw new DomainError('A reminder can be at most two years ahead.');
   db.insert(reminders)
-    .values({ taskId, memberId: member.id, fireAt: at })
+    .values({ id: reminderId(taskId, member.id), taskId, memberId: member.id, fireAt: at })
     .onConflictDoUpdate({ target: [reminders.taskId, reminders.memberId], set: { fireAt: at, sentAt: null, outcome: null } })
     .run();
 }
@@ -112,7 +113,7 @@ export function carryReminders(db: Db, fromTaskId: string, toTaskId: string, day
   for (const { reminder, timezone } of withZones(db, fromTaskId)) {
     const at = laterBy(reminder.fireAt, days, timezone);
     if (at.getTime() <= now) continue;
-    db.insert(reminders).values({ taskId: toTaskId, memberId: reminder.memberId, fireAt: at }).onConflictDoNothing().run();
+    db.insert(reminders).values({ id: reminderId(toTaskId, reminder.memberId), taskId: toTaskId, memberId: reminder.memberId, fireAt: at }).onConflictDoNothing().run();
   }
 }
 

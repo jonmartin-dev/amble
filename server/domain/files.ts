@@ -5,6 +5,7 @@
 import { and, asc, eq, inArray, isNotNull, isNull, lt } from 'drizzle-orm';
 import type { Db } from '../db/index.ts';
 import { attachments, type Attachment } from '../db/schema.ts';
+import { uuidFrom } from '../lib/ids.ts';
 import { DomainError, logActivity, type Actor } from './household.ts';
 
 export interface FileView {
@@ -165,7 +166,9 @@ export function copyAttachments(db: Db, fromTaskId: string, toTaskId: string) {
     .from(attachments)
     .where(and(eq(attachments.taskId, fromTaskId), isNull(attachments.removedAt)))
     .all();
-  for (const { id: _id, taskId: _task, createdAt: _at, ...rest } of rows) db.insert(attachments).values({ ...rest, taskId: toTaskId }).run();
+  for (const { id, taskId: _task, createdAt: _at, ...rest } of rows) {
+    db.insert(attachments).values({ ...rest, id: uuidFrom(`${toTaskId}:file:${id}`), taskId: toTaskId }).onConflictDoNothing().run();
+  }
 }
 
 /**
