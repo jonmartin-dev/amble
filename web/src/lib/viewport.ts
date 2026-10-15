@@ -62,6 +62,14 @@ function typingIn(): HTMLElement | null {
   return text ? el : null;
 }
 
+/**
+ * Whether someone is typing with the on-screen keyboard up (or it went down only a moment ago).
+ * A tap or Back then only puts the keyboard away, as in Android apps.
+ */
+export function typingWithKeyboard() {
+  return !!typingIn() && (keyboardUp || keyboardShowing() || Date.now() - keyboardDownAt < 500);
+}
+
 if (typeof window !== 'undefined' && window.visualViewport) {
   window.visualViewport.addEventListener('resize', () => {
     const up = keyboardShowing();
@@ -78,7 +86,7 @@ if (typeof window !== 'undefined' && window.visualViewport) {
         return;
       }
       const field = typingIn();
-      if (!field || !(keyboardUp || keyboardShowing() || Date.now() - keyboardDownAt < 500)) return;
+      if (!field || !typingWithKeyboard()) return;
       e.stopImmediatePropagation();
       field.blur();
       keyboardUp = false;

@@ -8,7 +8,7 @@ import Close from '~icons/material-symbols/close-rounded';
 import type { DayLoad } from '../lib/api.ts';
 import { EXPANDED, isDetail, useInPane, useMedia } from '../lib/layout.ts';
 import { expressive } from '../lib/motion.ts';
-import { useBackToClose, useScrollLock, useVisualViewport } from '../lib/viewport.ts';
+import { typingWithKeyboard, useBackToClose, useScrollLock, useVisualViewport } from '../lib/viewport.ts';
 
 /**
  * Header for a page reached from somewhere else: back arrow and title. The arrow goes back the way
@@ -232,6 +232,9 @@ export function Sheet({
   const onDragEnd = (_: unknown, info: PanInfo) => {
     if (info.offset.y > 120 || info.velocity.y > 600) onClose();
   };
+  // A tap beside the sheet while typing only puts the keyboard away, as Back does, and the sheet
+  // stays with what's typed. Asked as the tap starts: by the time it lands the box has let go.
+  const typing = useRef(false);
   const keyboardUp = view.keyboard > 0;
   const maxHeight = Math.max(240, view.height - (keyboardUp ? 8 : view.height * 0.1));
   const natural = useNaturalHeight(open);
@@ -246,7 +249,12 @@ export function Sheet({
             animate={{ opacity: 1 }}
             // Stop catching touches the moment it starts closing, not when the fade ends.
             exit={{ opacity: 0, pointerEvents: 'none' }}
-            onClick={onClose}
+            onPointerDown={() => (typing.current = typingWithKeyboard())}
+            onClick={() => {
+              if (!typing.current) return onClose();
+              typing.current = false;
+              if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+            }}
           />
           {/* Rides up with the keyboard, centered on the page beside the rail. */}
           <div
