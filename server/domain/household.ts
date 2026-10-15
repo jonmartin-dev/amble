@@ -6,10 +6,13 @@ import { activity, groups, listItems, members, tasks, type Group, type Member } 
 /** A mistake in what was asked for, worded so the person (or Claude) can fix it and retry. */
 export class DomainError extends Error {}
 
+/** The assistant behind a change made through the connector. `assistant` is one Almanac can't name. */
+export type Assistant = 'claude' | 'chatgpt' | 'assistant';
+
 /** Who is making a change, and from where. Every change lands in Activity with this. */
 export interface Actor {
   member: Member;
-  via: 'app' | 'claude';
+  via: 'app' | Assistant;
   /**
    * When the change was made, for one the app queued offline and is sending later. Activity and
    * completion times use it, and fields someone changed after it are left as they are.

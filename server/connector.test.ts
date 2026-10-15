@@ -1,5 +1,5 @@
-// The remote connector end to end: discovery, Claude's metadata-document sign-in, dynamic
-// registration, consent, tokens and refresh rotation, then real MCP calls over HTTP.
+// The remote connector end to end: discovery, Claude's and ChatGPT's metadata-document sign-in,
+// dynamic registration, consent, tokens and refresh rotation, then real MCP calls over HTTP.
 import { createHash, randomBytes } from 'node:crypto';
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { eq } from 'drizzle-orm';
@@ -9,14 +9,21 @@ import { createSession } from './auth/sessions.ts';
 import { createOidc } from './auth/oidc.ts';
 import { config, type Config } from './config.ts';
 import { openDatabase, type Db } from './db/index.ts';
-import { activity, members, oauthGrants, oauthTokens, type Member } from './db/schema.ts';
+import { activity, members, oauthGrants, oauthTokens, type Member, type OAuthClient } from './db/schema.ts';
 import { seedStarterGroups } from './db/seed.ts';
+import { assistantFor } from './oauth/clients.ts';
 
 const ORIGIN = 'https://almanac.test';
 const ISSUER = `${ORIGIN}/almanac`;
 const MCP_URL = `${ISSUER}/mcp`;
 const CLAUDE = 'https://claude.ai/oauth/mcp-oauth-client-metadata';
 const CLAUDE_CALLBACK = 'https://claude.ai/api/mcp/auth_callback';
+// ChatGPT uses these for servers that return iss (RFC 9207), as Almanac does...
+const CHATGPT = 'https://chatgpt.com/oauth/client.json';
+const CHATGPT_CALLBACK = 'https://chatgpt.com/connector_platform_oauth_redirect';
+// ...and these, with a per-connection callback id, for servers that don't.
+const CHATGPT_PER_CALLBACK = 'https://chatgpt.com/oauth/cb_7f3a/client.json';
+const CHATGPT_PER_CALLBACK_REDIRECT = 'https://chatgpt.com/connector/oauth/cb_7f3a';
 
 const testConfig: Config = {
   ...config,
@@ -28,7 +35,7 @@ const testConfig: Config = {
   adminEmails: ['jon@example.com'],
   allowedEmails: ['jon@example.com', 'alex@example.com'],
   devLogin: false,
-  oauthClientHosts: ['claude.ai', 'claude.com'],
+  oauthClientHosts: ['claude.ai', 'claude.com', 'chatgpt.com'],
   oidc: { ...config.oidc, clientId: '', clientSecret: '' },
 };
 
@@ -41,8 +48,32 @@ const claudeDocument = {
   response_types: ['code'],
   token_endpoint_auth_method: 'none',
 };
-const fetchImpl = (async (url: string | URL | Request) =>
-  String(url) === CLAUDE ? Response.json(claudeDocument) : new Response('not found', { status: 404 })) as typeof fetch;
+// ChatGPT's document as chatgpt.com served it on 2026-10-14: it prefers private_key_jwt, and
+// lists none among the methods it can use.
+const chatgptDocument = {
+  client_id: CHATGPT,
+  client_uri: 'https://chatgpt.com/',
+  redirect_uris: [CHATGPT_CALLBACK],
+  token_endpoint_auth_method: 'private_key_jwt',
+  token_endpoint_auth_methods_supported: ['none', 'private_key_jwt'],
+  grant_types: ['authorization_code', 'refresh_token'],
+  response_types: ['code'],
+  client_name: 'ChatGPT',
+  logo_uri: 'https://persistent.oaistatic.com/sonic/misc/openai-logo.png',
+  token_endpoint_auth_signing_alg: 'RS256',
+  jwks_uri: 'https://chatgpt.com/oauth/jwks.json',
+};
+const SIGNED_ONLY = 'https://chatgpt.com/oauth/signed-only/client.json';
+const documents: Record<string, object> = {
+  [CLAUDE]: claudeDocument,
+  [CHATGPT]: chatgptDocument,
+  [CHATGPT_PER_CALLBACK]: { ...chatgptDocument, client_id: CHATGPT_PER_CALLBACK, redirect_uris: [CHATGPT_PER_CALLBACK_REDIRECT] },
+  [SIGNED_ONLY]: { ...chatgptDocument, client_id: SIGNED_ONLY, token_endpoint_auth_methods_supported: ['private_key_jwt'] },
+};
+const fetchImpl = (async (url: string | URL | Request) => {
+  const doc = documents[String(url)];
+  return doc ? Response.json(doc) : new Response('not found', { status: 404 });
+}) as typeof fetch;
 
 let db: Db;
 let jon: Member;
@@ -63,8 +94,8 @@ function pkce() {
   return { verifier, challenge: createHash('sha256').update(verifier).digest('base64url') };
 }
 
-/** Runs authorize, consent and token exchange the way Claude and the member's browser would. */
-async function connect({ clientId = CLAUDE, redirectUri = CLAUDE_CALLBACK, approve = true } = {}) {
+/** Runs authorize and consent the way an assistant and the member's browser would. */
+async function connect({ clientId = CLAUDE, redirectUri = CLAUDE_CALLBACK, approve = true, resource = MCP_URL } = {}) {
   const { verifier, challenge } = pkce();
   const query = new URLSearchParams({
     response_type: 'code',
@@ -74,7 +105,7 @@ async function connect({ clientId = CLAUDE, redirectUri = CLAUDE_CALLBACK, appro
     code_challenge: challenge,
     code_challenge_method: 'S256',
     scope: 'almanac',
-    resource: MCP_URL,
+    resource,
   });
   const authorize = await signedIn(`/oauth/authorize?${query}`);
   expect(authorize.status).toBe(302);
@@ -82,10 +113,10 @@ async function connect({ clientId = CLAUDE, redirectUri = CLAUDE_CALLBACK, appro
   const consent = await (await signedIn(`/api/oauth/requests/${requestId}`)).json();
   const decided = await signedIn(`/api/oauth/requests/${requestId}`, { method: 'POST', body: JSON.stringify({ approve }) });
   const redirect = new URL((await decided.json()).redirect);
-  return { consent, redirect, verifier, clientId, redirectUri };
+  return { consent, redirect, verifier, clientId, redirectUri, resource };
 }
 
-async function tokens(flow: Awaited<ReturnType<typeof connect>>) {
+async function tokens(flow: Awaited<ReturnType<typeof connect>>, extra: Record<string, string> = {}) {
   const res = await request(
     '/oauth/token',
     form({
@@ -94,14 +125,15 @@ async function tokens(flow: Awaited<ReturnType<typeof connect>>) {
       client_id: flow.clientId,
       redirect_uri: flow.redirectUri,
       code_verifier: flow.verifier,
-      resource: MCP_URL,
+      resource: flow.resource,
+      ...extra,
     }),
   );
   return { status: res.status, body: await res.json() };
 }
 
 async function mcpClient(accessToken: string) {
-  const client = new Client({ name: 'claude-test', version: '1.0.0' });
+  const client = new Client({ name: 'assistant-test', version: '1.0.0' });
   await client.connect(
     new StreamableHTTPClientTransport(new URL(MCP_URL), {
       fetch: async (url, init) => app.request(String(url), init),
@@ -237,6 +269,125 @@ describe('connecting Claude', () => {
     db.delete(members).where(eq(members.id, jon.id)).run();
     const res = await request('/mcp', { method: 'POST', headers: { authorization: `Bearer ${issued.access_token}`, 'content-type': 'application/json' }, body: '{}' });
     expect(res.status).toBe(401);
+  });
+});
+
+/** Adds a task through the connector with the token, and returns what Activity logged. */
+async function addTaskAs(accessToken: string) {
+  const client = await mcpClient(accessToken);
+  await client.callTool({ name: 'add_tasks', arguments: { tasks: [{ title: 'Book the vet' }] } });
+  await client.close();
+  return db.select().from(activity).all();
+}
+
+describe('connecting ChatGPT', () => {
+  it('signs in with its metadata document, even though it prefers private_key_jwt', async () => {
+    const flow = await connect({ clientId: CHATGPT, redirectUri: CHATGPT_CALLBACK });
+    expect(flow.consent).toEqual({ clientName: 'ChatGPT', clientHost: 'chatgpt.com', redirectHost: 'chatgpt.com', loopback: false });
+    expect(flow.redirect.origin + flow.redirect.pathname).toBe(CHATGPT_CALLBACK);
+    expect(flow.redirect.searchParams.get('state')).toBe('xyz');
+    // ChatGPT compares iss with the metadata's issuer character for character.
+    expect(flow.redirect.searchParams.get('iss')).toBe(ISSUER);
+
+    const { status, body } = await tokens(flow);
+    expect(status).toBe(200);
+    expect(body).toMatchObject({ token_type: 'Bearer', scope: 'almanac' });
+    expect(body.refresh_token).toMatch(/^alm_rt_/);
+    expect(await addTaskAs(body.access_token)).toMatchObject([{ action: 'task.created', via: 'chatgpt', memberId: jon.id }]);
+    const listed = await (await signedIn('/api/connections')).json();
+    expect(listed.connections).toMatchObject([{ clientName: 'ChatGPT' }]);
+
+    const refreshed = await request(
+      '/oauth/token',
+      form({ grant_type: 'refresh_token', refresh_token: body.refresh_token, client_id: CHATGPT, resource: MCP_URL }),
+    );
+    expect(refreshed.status).toBe(200);
+  });
+
+  it('takes the callback-specific document and redirect too', async () => {
+    const flow = await connect({ clientId: CHATGPT_PER_CALLBACK, redirectUri: CHATGPT_PER_CALLBACK_REDIRECT });
+    expect(flow.redirect.origin + flow.redirect.pathname).toBe(CHATGPT_PER_CALLBACK_REDIRECT);
+    const { status, body } = await tokens(flow);
+    expect(status).toBe(200);
+    expect(await addTaskAs(body.access_token)).toMatchObject([{ via: 'chatgpt' }]);
+  });
+
+  it('registers dynamically when the connector is set up that way', async () => {
+    const reg = await request('/oauth/register', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        client_name: 'ChatGPT',
+        redirect_uris: [CHATGPT_CALLBACK],
+        grant_types: ['authorization_code', 'refresh_token'],
+        response_types: ['code'],
+        token_endpoint_auth_method: 'none',
+      }),
+    });
+    expect(reg.status).toBe(201);
+    const registered = await reg.json();
+    expect(registered).toMatchObject({ redirect_uris: [CHATGPT_CALLBACK], token_endpoint_auth_method: 'none' });
+
+    const flow = await connect({ clientId: registered.client_id, redirectUri: CHATGPT_CALLBACK });
+    expect(flow.consent).toMatchObject({ clientName: 'ChatGPT', clientHost: 'chatgpt.com', loopback: false });
+    const { status, body } = await tokens(flow);
+    expect(status).toBe(200);
+    expect(await addTaskAs(body.access_token)).toMatchObject([{ via: 'chatgpt' }]);
+  });
+
+  it('matches the resource with or without a trailing slash, on both requests', async () => {
+    const flow = await connect({ clientId: CHATGPT, redirectUri: CHATGPT_CALLBACK, resource: `${MCP_URL}/` });
+    expect((await tokens(flow)).status).toBe(200);
+  });
+
+  it('refuses a signed client assertion, since only public clients are offered', async () => {
+    const flow = await connect({ clientId: CHATGPT, redirectUri: CHATGPT_CALLBACK });
+    const res = await tokens(flow, {
+      client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+      client_assertion: 'eyJhbGciOiJSUzI1NiJ9.e30.c2ln',
+    });
+    expect(res).toMatchObject({ status: 401, body: { error: 'invalid_client' } });
+  });
+
+  it('refuses a metadata document that can only sign its requests', async () => {
+    const { challenge } = pkce();
+    const query = new URLSearchParams({
+      response_type: 'code',
+      client_id: SIGNED_ONLY,
+      redirect_uri: CHATGPT_CALLBACK,
+      code_challenge: challenge,
+      code_challenge_method: 'S256',
+    });
+    expect((await signedIn(`/oauth/authorize?${query}`)).status).toBe(400);
+  });
+
+  it.skipIf(process.env.ALMANAC_OAUTH_CLIENT_HOSTS)('is allowed by default, alongside Claude', () => {
+    expect(config.oauthClientHosts).toEqual(['claude.ai', 'claude.com', 'chatgpt.com']);
+  });
+});
+
+describe('which assistant made a change', () => {
+  const client = (c: Partial<OAuthClient>): OAuthClient => ({
+    id: 'alm_x',
+    kind: 'registered',
+    name: null,
+    redirectUris: [],
+    fetchedAt: null,
+    createdAt: new Date(),
+    ...c,
+  });
+
+  it('goes by the host it signs in from', () => {
+    expect(assistantFor(client({ kind: 'metadata', id: CLAUDE }))).toBe('claude');
+    expect(assistantFor(client({ kind: 'metadata', id: CHATGPT }))).toBe('chatgpt');
+    expect(assistantFor(client({ redirectUris: [CHATGPT_PER_CALLBACK_REDIRECT] }))).toBe('chatgpt');
+    // A web app's name doesn't count; only where its codes go does.
+    expect(assistantFor(client({ name: 'Claude', redirectUris: ['https://other.example/cb'] }))).toBe('assistant');
+  });
+
+  it('goes by the name for local tools, and otherwise says an assistant', () => {
+    expect(assistantFor(client({ name: 'Claude Code (almanac)', redirectUris: ['http://localhost/callback'] }))).toBe('claude');
+    expect(assistantFor(client({ name: 'Local tool', redirectUris: ['http://127.0.0.1/callback'] }))).toBe('assistant');
   });
 });
 

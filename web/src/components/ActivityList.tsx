@@ -13,6 +13,13 @@ interface Context {
   inTask?: boolean;
 }
 
+// Changes made through the connector say which assistant made them.
+const viaAssistant: Partial<Record<ActivityEntry['via'], string>> = {
+  claude: 'via Claude',
+  chatgpt: 'via ChatGPT',
+  assistant: 'via an assistant',
+};
+
 // What a single-field edit says; anything else is just "edited".
 const editPhrases: Record<string, [string, string?]> = {
   title: ['renamed'],
@@ -153,10 +160,10 @@ export function ActivityRow({ entry, ctx, showTime = true }: { entry: ActivityEn
         <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-on-surface-variant">
           {showTime ? timeLabel(day) : day.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
           {entry.count > 1 && <span>{entry.count} changes</span>}
-          {entry.via === 'claude' && (
+          {viaAssistant[entry.via] && (
             <span className="flex items-center gap-1 text-primary">
               <Sparkle className="size-3.5" aria-hidden />
-              via Claude
+              {viaAssistant[entry.via]}
             </span>
           )}
         </p>

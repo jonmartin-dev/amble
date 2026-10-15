@@ -83,9 +83,10 @@ export const config = {
   // Files on tasks are kept under <data dir>/files, each at most this big.
   maxFileBytes: Math.round(Number(process.env.ALMANAC_MAX_FILE_MB ?? 25) * 1024 * 1024),
   devLogin: !production && process.env.ALMANAC_DEV_LOGIN === '1',
-  // Hosts of the apps that may connect to the Claude connector: their client metadata URLs and
-  // web redirect URIs must be on one of these. Loopback redirects (Claude Code) are always allowed.
-  oauthClientHosts: list(process.env.ALMANAC_OAUTH_CLIENT_HOSTS ?? 'claude.ai,claude.com'),
+  // Hosts of the assistants that may connect to the connector (Claude and ChatGPT by default):
+  // their client metadata URLs and web redirect URIs must be on one of these. Loopback redirects
+  // (Claude Code and other local tools) are always allowed.
+  oauthClientHosts: list(process.env.ALMANAC_OAUTH_CLIENT_HOSTS ?? 'claude.ai,claude.com,chatgpt.com'),
   // Smart add, estimates and the planner's wording. An admin can also pick a model in Settings, AI,
   // which wins over these. Without either they're off and quick add works as typed.
   ai: {

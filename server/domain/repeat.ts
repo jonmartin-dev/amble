@@ -127,7 +127,7 @@ export function nextDate(rule: Repeat, anchor: string, current: string | null, d
   return firstOccurrence(rule, anchor, plain(after).add({ days: 1 }).toString(), pausedUntil);
 }
 
-/** A repeat rule as the API and the Claude connector accept it. */
+/** A repeat rule as the API and the connector accept it. */
 export const repeatSchema = z.object({
   mode: z.enum(['schedule', 'after']).describe('"schedule" follows the calendar; "after" comes back a set time after the last one was done'),
   every: z.number().int().min(1).max(365).describe('Every this many units, e.g. 2 for every other week'),

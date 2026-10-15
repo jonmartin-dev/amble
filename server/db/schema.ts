@@ -134,7 +134,9 @@ export const activity = sqliteTable(
   {
     id: id(),
     memberId: text('member_id').references(() => members.id, { onDelete: 'set null' }),
-    via: text('via', { enum: ['app', 'claude', 'system'] }).notNull().default('app'),
+    // Where the change came from: the app, an assistant through the connector (one Almanac can
+    // name, or `assistant`), or Almanac itself.
+    via: text('via', { enum: ['app', 'claude', 'chatgpt', 'assistant', 'system'] }).notNull().default('app'),
     action: text('action').notNull(),
     taskId: text('task_id'),
     detail: text('detail', { mode: 'json' }),
@@ -345,7 +347,7 @@ export const attachments = sqliteTable(
     mime: text('mime').notNull(),
     size: integer('size').notNull(),
     sha256: text('sha256').notNull(),
-    // A smaller copy of a photo, made by the app when it was added: for the task page and Claude.
+    // A smaller copy of a photo, made by the app when it was added: for the task page and assistants.
     previewSha256: text('preview_sha256'),
     // Removed files can be brought back for a week, then they're deleted for good.
     removedAt: integer('removed_at', { mode: 'timestamp_ms' }),
@@ -378,9 +380,9 @@ export const dayRecords = sqliteTable(
   (t) => [primaryKey({ columns: [t.memberId, t.date] })],
 );
 
-// Apps allowed to act for a member through the remote Claude connector (OAuth 2.1).
-// `metadata` clients are identified by a Client ID Metadata Document URL, which is how Claude
-// connects; `registered` ones came through dynamic client registration.
+// Apps allowed to act for a member through the remote connector (OAuth 2.1).
+// `metadata` clients are identified by a Client ID Metadata Document URL, which is how Claude and
+// ChatGPT connect; `registered` ones came through dynamic client registration.
 export const oauthClients = sqliteTable('oauth_clients', {
   id: text('id').primaryKey(),
   kind: text('kind', { enum: ['metadata', 'registered'] }).notNull(),

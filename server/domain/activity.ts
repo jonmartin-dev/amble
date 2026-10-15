@@ -2,14 +2,14 @@ import { and, desc, eq, isNotNull, isNull, lt, ne, or, sql, type SQL } from 'dri
 import { alias } from 'drizzle-orm/sqlite-core';
 import type { Db } from '../db/index.ts';
 import { activity, groups, members, tasks, type Member } from '../db/schema.ts';
-import { DomainError } from './household.ts';
+import { DomainError, type Assistant } from './household.ts';
 
 export interface ActivityEntry {
   id: string;
   at: Date;
   memberId: string | null;
   memberName: string | null;
-  via: 'app' | 'claude' | 'system';
+  via: 'app' | Assistant | 'system';
   action: string;
   taskId: string | null;
   taskTitle: string | null;

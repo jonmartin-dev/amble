@@ -320,7 +320,8 @@ export interface ActivityEntry {
   at: string;
   memberId: string | null;
   memberName: string | null;
-  via: 'app' | 'claude' | 'system';
+  /** `assistant` is one connected through the connector that Almanac can't name. */
+  via: 'app' | 'claude' | 'chatgpt' | 'assistant' | 'system';
   action: string;
   taskId: string | null;
   taskTitle: string | null;

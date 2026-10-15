@@ -178,7 +178,7 @@ export function createApp({
     return c.body(null, 204);
   });
 
-  // OAuth, discovery and /mcp for the Claude connector. Its signed-in API goes in below the guard.
+  // OAuth, discovery and /mcp for the assistant connector. Its signed-in API goes in below the guard.
   const registerConnectorApi = registerConnector(app, { db, config, fetchImpl });
 
   app.get('/api/session', (c) =>

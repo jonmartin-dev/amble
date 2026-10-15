@@ -22,7 +22,7 @@ export function Activity() {
   return (
     <>
       <SubpageHeader title="Activity" back="/" />
-      <p className="px-1 text-on-surface-variant">What changed in the household, and who changed it. Claude's changes say so.</p>
+      <p className="px-1 text-on-surface-variant">What changed in the household, and who changed it. Changes made through an assistant say which one.</p>
 
       {feed.data && entries.length === 0 && (
         <p className="mt-6 rounded-3xl bg-surface-low p-5 text-on-surface-variant">Nothing yet. Changes show up here as people add and finish things.</p>

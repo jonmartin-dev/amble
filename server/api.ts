@@ -296,7 +296,7 @@ export function registerApi(
     if (me(c).role !== 'admin') return c.json({ error: 'Only an admin can remove people.' }, 403);
     if (!target) return c.json({ error: 'Not found.' }, 404);
     if (target.id === me(c).id || target.role === 'admin') throw new DomainError("Admins can't be removed here.");
-    // Their sessions and Claude connections go with them; their tasks stay, unassigned.
+    // Their sessions and assistant connections go with them; their tasks stay, unassigned.
     db.delete(members).where(eq(members.id, target.id)).run();
     return c.body(null, 204);
   });

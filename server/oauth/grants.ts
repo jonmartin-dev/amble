@@ -3,8 +3,8 @@ import { and, desc, eq, isNotNull, lt, or } from 'drizzle-orm';
 import type { Config } from '../config.ts';
 import { isAllowed } from '../auth/members.ts';
 import type { Db } from '../db/index.ts';
-import { members, oauthGrants, oauthTokens, type Member, type OAuthClient } from '../db/schema.ts';
-import { OAuthFailure } from './clients.ts';
+import { members, oauthClients, oauthGrants, oauthTokens, type Member, type OAuthClient } from '../db/schema.ts';
+import { clientHost, OAuthFailure, sameResource } from './clients.ts';
 
 export const SCOPE = 'almanac';
 export const ACCESS_TTL_MS = 60 * 60 * 1000;
@@ -117,7 +117,7 @@ export function createGrantStore(db: Db, config: Config) {
       codes.set(hash(code), {
         memberId,
         clientId: request.client.id,
-        clientName: request.client.name ?? 'Claude',
+        clientName: request.client.name ?? clientHost(request.client),
         redirectUri: request.redirectUri,
         codeChallenge: request.codeChallenge,
         scope: request.scope,
@@ -142,7 +142,7 @@ export function createGrantStore(db: Db, config: Config) {
       if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
         throw new OAuthFailure('invalid_grant', 'code_verifier does not match.');
       }
-      if (params.resource && params.resource !== code.resource) throw new OAuthFailure('invalid_target', 'Unknown resource.');
+      if (params.resource && !sameResource(params.resource, code.resource)) throw new OAuthFailure('invalid_target', 'Unknown resource.');
       memberFor(code.memberId);
       const grant = db
         .insert(oauthGrants)
@@ -184,9 +184,10 @@ export function createGrantStore(db: Db, config: Config) {
     verify(token: string) {
       const now = Date.now();
       const row = db
-        .select({ token: oauthTokens, grant: oauthGrants, member: members })
+        .select({ token: oauthTokens, grant: oauthGrants, client: oauthClients, member: members })
         .from(oauthTokens)
         .innerJoin(oauthGrants, eq(oauthTokens.grantId, oauthGrants.id))
+        .innerJoin(oauthClients, eq(oauthGrants.clientId, oauthClients.id))
         .innerJoin(members, eq(oauthGrants.memberId, members.id))
         .where(and(eq(oauthTokens.tokenHash, hash(token)), eq(oauthTokens.kind, 'access')))
         .get();
@@ -194,7 +195,7 @@ export function createGrantStore(db: Db, config: Config) {
       if (!row.grant.lastUsedAt || now - row.grant.lastUsedAt.getTime() > LAST_USED_EVERY_MS) {
         db.update(oauthGrants).set({ lastUsedAt: new Date(now) }).where(eq(oauthGrants.id, row.grant.id)).run();
       }
-      return { member: row.member, grant: row.grant, expiresAt: row.token.expiresAt };
+      return { member: row.member, grant: row.grant, client: row.client, expiresAt: row.token.expiresAt };
     },
 
     /** RFC 7009: a refresh token ends the whole connection, an access token just itself. */

@@ -3,6 +3,7 @@ import { and, count, eq, gte, isNull, lt, sql } from 'drizzle-orm';
 import type { Config } from '../config.ts';
 import type { Db } from '../db/index.ts';
 import { oauthClients, oauthGrants, type OAuthClient } from '../db/schema.ts';
+import type { Assistant } from '../domain/household.ts';
 
 /** An OAuth error to send back as `{ error, error_description }`. */
 export class OAuthFailure extends Error {
@@ -58,6 +59,16 @@ export function redirectMatches(registered: string[], requested: string) {
   });
 }
 
+/** Same resource if scheme, host and path match, ignoring case in the host and a trailing slash. */
+export function sameResource(a: string, b: string) {
+  if (!URL.canParse(a) || !URL.canParse(b)) return false;
+  const norm = (s: string) => {
+    const u = new URL(s);
+    return `${u.protocol}//${u.host}${u.pathname.replace(/\/+$/, '')}`;
+  };
+  return norm(a) === norm(b);
+}
+
 /** The host a person should see as the app asking for access. */
 export function clientHost(client: OAuthClient) {
   if (client.kind === 'metadata') return new URL(client.id).hostname;
@@ -65,11 +76,42 @@ export function clientHost(client: OAuthClient) {
   return first ? (parse(first)?.host ?? 'unknown') : 'unknown';
 }
 
+/**
+ * Which assistant a client is, so Activity can say "via ChatGPT". The host it signs in from
+ * decides. Local tools only have a loopback redirect, so for them the name they gave is all there is.
+ */
+export function assistantFor(client: OAuthClient): Assistant {
+  const hosts =
+    client.kind === 'metadata'
+      ? [new URL(client.id).hostname]
+      : client.redirectUris.flatMap((u) => (isLoopback(u) ? [] : [parse(u)?.hostname ?? '']));
+  const on = (domain: string) => hosts.some((h) => h === domain || h.endsWith(`.${domain}`));
+  if (on('claude.ai') || on('claude.com')) return 'claude';
+  if (on('chatgpt.com')) return 'chatgpt';
+  if (hosts.length === 0 && client.name) {
+    if (/\bclaude\b/i.test(client.name)) return 'claude';
+    if (/\bchatgpt\b/i.test(client.name)) return 'chatgpt';
+  }
+  return 'assistant';
+}
+
 interface MetadataDocument {
   client_id?: unknown;
   client_name?: unknown;
   redirect_uris?: unknown;
   token_endpoint_auth_method?: unknown;
+  token_endpoint_auth_methods_supported?: unknown;
+}
+
+/**
+ * Whether the client can sign in as a public client (PKCE, no secret), the only kind this server
+ * takes. ChatGPT's document prefers private_key_jwt but lists none among the methods it can use,
+ * and picks one this server advertises.
+ */
+function canBePublic(doc: MetadataDocument) {
+  const methods = doc.token_endpoint_auth_methods_supported;
+  if (Array.isArray(methods)) return methods.includes('none');
+  return (doc.token_endpoint_auth_method ?? 'none') === 'none';
 }
 
 /**
@@ -79,7 +121,7 @@ interface MetadataDocument {
 export async function resolveClient(db: Db, config: Config, clientId: string, fetchImpl: typeof fetch = fetch) {
   if (!clientId.startsWith('https://')) {
     const client = db.select().from(oauthClients).where(eq(oauthClients.id, clientId)).get();
-    if (!client) throw new OAuthFailure('invalid_client', 'Unknown client. Connect again from Claude.', 401);
+    if (!client) throw new OAuthFailure('invalid_client', 'Unknown client. Remove Almanac from the assistant and add it again.', 401);
     return client;
   }
 
@@ -108,8 +150,7 @@ export async function resolveClient(db: Db, config: Config, clientId: string, fe
   }
 
   const redirects = Array.isArray(doc.redirect_uris) ? doc.redirect_uris.filter((u): u is string => typeof u === 'string') : [];
-  const authMethod = doc.token_endpoint_auth_method ?? 'none';
-  if (doc.client_id !== clientId || redirects.length === 0 || authMethod !== 'none') {
+  if (doc.client_id !== clientId || redirects.length === 0 || !canBePublic(doc)) {
     throw new OAuthFailure('invalid_client', "The app's client information isn't valid.", 401);
   }
   const values = {

@@ -1,7 +1,8 @@
-// The remote Claude connector: Almanac as its own OAuth 2.1 authorization server, plus the MCP
-// endpoint those tokens unlock. Claude (claude.ai, the desktop and mobile apps, Claude Code) finds
-// everything from the 401 on /mcp, identifies itself with a Client ID Metadata Document, and sends
-// the member through Almanac's normal sign-in and a one-tap consent page.
+// The remote connector: Almanac as its own OAuth 2.1 authorization server, plus the MCP endpoint
+// those tokens unlock. Claude (claude.ai, the desktop and mobile apps, Claude Code) and ChatGPT
+// find everything from the 401 on /mcp, identify themselves with a Client ID Metadata Document
+// (or dynamic registration), and send the member through Almanac's normal sign-in and a one-tap
+// consent page.
 import { createMcpHandler, OAuthError, OAuthErrorCode, requireBearerAuth, type AuthInfo } from '@modelcontextprotocol/server';
 import { eq } from 'drizzle-orm';
 import type { Context, Hono } from 'hono';
@@ -10,20 +11,22 @@ import { z } from 'zod';
 import type { Config } from './config.ts';
 import type { Db } from './db/index.ts';
 import { members } from './db/schema.ts';
+import type { Assistant } from './domain/household.ts';
 import type { Env } from './env.ts';
 import { createMcpServer } from './mcp/server.ts';
-import { clientHost, isLoopback, OAuthFailure, redirectMatches, registerClient, resolveClient } from './oauth/clients.ts';
+import {
+  assistantFor,
+  clientHost,
+  isLoopback,
+  OAuthFailure,
+  redirectMatches,
+  registerClient,
+  resolveClient,
+  sameResource,
+} from './oauth/clients.ts';
 import { createGrantStore, SCOPE } from './oauth/grants.ts';
 
-/** Same resource if scheme, host and path match, ignoring case in the host and a trailing slash. */
-function sameResource(a: string, b: string) {
-  if (!URL.canParse(a) || !URL.canParse(b)) return false;
-  const norm = (s: string) => {
-    const u = new URL(s);
-    return `${u.protocol}//${u.host}${u.pathname.replace(/\/+$/, '')}`;
-  };
-  return norm(a) === norm(b);
-}
+const EXPIRED = 'This request has expired. Start connecting again from the assistant.';
 
 function oauthError(c: Context<Env>, err: unknown) {
   if (err instanceof OAuthFailure) {
@@ -166,6 +169,11 @@ export function registerConnector(app: Hono<Env>, { db, config, fetchImpl = fetc
     try {
       const body = await readBody(c);
       const clientId = body.client_id ?? basicClientId(c.req.header('authorization'));
+      // Only public clients are advertised, so a signed client assertion (ChatGPT's preferred
+      // private_key_jwt) means the client picked a method this server never offered.
+      if (body.client_assertion || body.client_assertion_type) {
+        throw new OAuthFailure('invalid_client', 'This server only accepts public clients (token_endpoint_auth_method none).', 401);
+      }
       if (body.grant_type === 'authorization_code') {
         if (!clientId) throw new OAuthFailure('invalid_client', 'client_id is required.', 401);
         return c.json(
@@ -206,7 +214,7 @@ export function registerConnector(app: Hono<Env>, { db, config, fetchImpl = fetc
           scopes: found.grant.scope.split(' '),
           expiresAt: Math.floor(found.expiresAt.getTime() / 1000),
           resource: new URL(found.grant.resource),
-          extra: { memberId: found.member.id },
+          extra: { memberId: found.member.id, via: assistantFor(found.client) },
         };
       },
     },
@@ -220,7 +228,7 @@ export function registerConnector(app: Hono<Env>, { db, config, fetchImpl = fetc
       const memberId = authInfo?.extra?.memberId;
       const member = typeof memberId === 'string' ? db.select().from(members).where(eq(members.id, memberId)).get() : undefined;
       if (!member) throw new Error('Connector request without a member');
-      return createMcpServer({ db, member });
+      return createMcpServer({ db, member, via: (authInfo?.extra?.via as Assistant | undefined) ?? 'assistant' });
     },
     { onerror: (err) => console.warn('MCP:', err.message) },
   );
@@ -237,7 +245,7 @@ export function registerConnector(app: Hono<Env>, { db, config, fetchImpl = fetc
     api.get('/api/oauth/requests/:id', (c) => {
       const me = c.get('member')!;
       const request = store.getRequest(c.req.param('id'), me.id);
-      if (!request) return c.json({ error: 'This request has expired. Start connecting again from Claude.' }, 404);
+      if (!request) return c.json({ error: EXPIRED }, 404);
       return c.json({
         clientName: request.client.name ?? clientHost(request.client),
         clientHost: clientHost(request.client),
@@ -251,7 +259,7 @@ export function registerConnector(app: Hono<Env>, { db, config, fetchImpl = fetc
       const parsed = z.object({ approve: z.boolean() }).safeParse(await c.req.json().catch(() => null));
       if (!parsed.success) return c.json({ error: 'Choose Allow or Cancel.' }, 400);
       const decided = store.decide(c.req.param('id'), me.id, parsed.data.approve);
-      if (!decided) return c.json({ error: 'This request has expired. Start connecting again from Claude.' }, 404);
+      if (!decided) return c.json({ error: EXPIRED }, 404);
       const url = new URL(decided.request.redirectUri);
       if (decided.code) url.searchParams.set('code', decided.code);
       else url.searchParams.set('error', 'access_denied');

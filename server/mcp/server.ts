@@ -19,6 +19,7 @@ import {
   resolveMember,
   visibleGroups,
   type Actor,
+  type Assistant,
 } from '../domain/household.ts';
 import { addListItems, checkListItems, getListItems, openTrip, planTrip } from '../domain/lists.ts';
 import { listEvents, type EventView } from '../domain/events.ts';
@@ -43,14 +44,28 @@ import { addDays, planningDate, weekday } from '../lib/dates.ts';
 
 const VERSION = '0.1.0';
 const NOTES_PREVIEW = 160;
-// Claude can look at a photo up to this big (the app's smaller copy, usually), or read a text file.
+// The assistant can look at a photo up to this big (the app's smaller copy, usually), or read a text file.
 const IMAGE_MAX_BYTES = 4 * 1024 * 1024;
 const TEXT_MAX_BYTES = 200 * 1024;
 const READABLE_IMAGES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 
-/** Builds the Almanac MCP server acting as one member. Changes are logged "via Claude". */
-export function createMcpServer({ db, member, files = createFileStore(config.dataDir) }: { db: Db; member: Member; files?: FileStore }) {
-  const actor: Actor = { member, via: 'claude' };
+/**
+ * Builds the Almanac MCP server acting as one member. Changes are logged as made via the
+ * assistant on the other end: Claude for the local stdio connector, whichever app connected for
+ * the remote one.
+ */
+export function createMcpServer({
+  db,
+  member,
+  via = 'claude',
+  files = createFileStore(config.dataDir),
+}: {
+  db: Db;
+  member: Member;
+  via?: Assistant;
+  files?: FileStore;
+}) {
+  const actor: Actor = { member, via };
   const today = () => planningDate(member);
 
   const server = new McpServer(
