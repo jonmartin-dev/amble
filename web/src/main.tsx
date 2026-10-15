@@ -142,6 +142,9 @@ function Offline() {
 // keeps its state (a search, the week being looked at) while its effects stop. Memoized, so the
 // shell re-rendering on each navigation doesn't render every kept page again.
 const TABS: Record<string, ComponentType> = { '/': memo(Today), '/backlog': memo(Backlog), '/calendar': memo(Calendar), '/stats': memo(Stats) };
+// Settings, the pages that open from it, and Activity: each has its own back arrow, so the phone's
+// toolbar steps aside there.
+const SUBPAGES = ['/settings', '/appearance', '/connections', '/household', '/activity'];
 
 function Root() {
   const qc = useQueryClient();
@@ -216,6 +219,7 @@ function Root() {
   const onList = pathname.startsWith('/list/');
   const onAdd = () => (onList ? window.dispatchEvent(new Event(ADD_TO_LIST)) : setAdding(true));
   const addLabel = onList ? 'Add to this list' : 'Add a task';
+  const subpage = SUBPAGES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 
   return (
     <div className="min-h-dvh" style={{ paddingLeft: 'var(--rail)' }}>
@@ -226,7 +230,7 @@ function Root() {
             split
               ? // Its own scroll, so picking one task after another doesn't move the list.
                 'sticky top-0 h-dvh w-[min(26rem,44%)] shrink-0 overflow-y-auto overscroll-contain px-4 pb-10 [scrollbar-width:thin]'
-              : 'mx-auto max-w-xl px-4 pb-36 medium:max-w-2xl medium:px-6 medium:pb-12'
+              : `mx-auto max-w-xl px-4 medium:max-w-2xl medium:px-6 medium:pb-12 ${subpage ? 'pb-12' : 'pb-36'}`
           }
           style={{ paddingTop: 'max(1.5rem, env(safe-area-inset-top))' }}
         >
@@ -262,7 +266,7 @@ function Root() {
         )}
       </div>
       <StatusPill />
-      <FloatingToolbar onAdd={onAdd} label={addLabel} />
+      <FloatingToolbar onAdd={onAdd} label={addLabel} away={subpage} />
       <AddSheet open={adding} onClose={() => setAdding(false)} plannedByDefault={pathname === '/'} />
     </div>
   );

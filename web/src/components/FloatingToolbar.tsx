@@ -22,7 +22,8 @@ export const NAV_ITEMS = [
 // Each button is 48px wide with 4px between them.
 const STEP = 52;
 
-export function FloatingToolbar({ onAdd, label }: { onAdd: () => void; label: string }) {
+/** `away`: slid down out of sight, on pages with their own back arrow. */
+export function FloatingToolbar({ onAdd, label, away = false }: { onAdd: () => void; label: string; away?: boolean }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const isActive = (to: string) => (to === '/' ? pathname === '/' : pathname.startsWith(to));
   const active = NAV_ITEMS.findIndex(({ to }) => isActive(to));
@@ -32,8 +33,9 @@ export function FloatingToolbar({ onAdd, label }: { onAdd: () => void; label: st
 
   return (
     <div
-      className="fixed inset-x-0 z-10 flex justify-center gap-3 px-4 medium:hidden"
+      className={`toolbar fixed inset-x-0 z-10 flex justify-center gap-3 px-4 medium:hidden ${away ? 'toolbar-away' : ''}`}
       style={{ bottom: 'max(1.25rem, env(safe-area-inset-bottom))' }}
+      inert={away}
     >
       <nav aria-label="Main" className="relative flex items-center gap-1 rounded-full bg-surface-highest p-2 shadow-lg">
         {/* One pill that slides between tabs. A CSS transition keeps it on the GPU, so it glides
