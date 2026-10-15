@@ -2,7 +2,7 @@ import {
   argbFromHex,
   Blend,
   type DynamicColor,
-  type DynamicScheme,
+  DynamicScheme,
   Hct,
   hexFromArgb,
   MaterialDynamicColors as C,
@@ -12,6 +12,7 @@ import {
   SchemeTonalSpot,
   SchemeVibrant,
   TonalPalette,
+  Variant,
 } from '@material/material-color-utilities';
 
 export type ThemeMode = 'system' | 'light' | 'dark';
@@ -23,9 +24,80 @@ export interface ThemePrefs {
   seed: string;
   style: ThemeStyle;
   contrast: ThemeContrast;
+  /** The phone's own colors, where it has them (Android 12 and later); `seed` everywhere else. */
+  phone: boolean;
 }
 
-export const defaultTheme: ThemePrefs = { mode: 'system', seed: '#2e6a57', style: 'tonal', contrast: 0 };
+export const defaultTheme: ThemePrefs = { mode: 'system', seed: '#2e6a57', style: 'tonal', contrast: 0, phone: true };
+
+/** Saved prefs filled out; someone who picked a color before phone colors existed keeps it. */
+export function withDefaults(saved: Partial<ThemePrefs> | null | undefined): ThemePrefs {
+  return saved ? { ...defaultTheme, phone: false, ...saved } : defaultTheme;
+}
+
+/**
+ * The palettes Android 12 and later make from the wallpaper (Material You), each a few tones of
+ * one hue, as hex: primary, secondary and tertiary accents, then the two neutrals.
+ */
+export interface PhoneColors {
+  accent1: string[];
+  accent2: string[];
+  accent3: string[];
+  neutral1: string[];
+  neutral2: string[];
+}
+
+const PHONE_KEY = 'amble-phone-colors';
+
+function savedPhoneColors(): PhoneColors | null {
+  try {
+    return JSON.parse(localStorage.getItem(PHONE_KEY) ?? 'null') as PhoneColors | null;
+  } catch {
+    return null;
+  }
+}
+
+// Kept from last time, so the app opens in them before the phone answers.
+let phoneColors = savedPhoneColors();
+
+/** Whether this device has colors of its own to offer. */
+export const hasPhoneColors = () => phoneColors !== null;
+
+/** The phone's current palettes, or null where there are none; true if they changed. */
+export function setPhoneColors(colors: PhoneColors | null): boolean {
+  if (JSON.stringify(colors) === JSON.stringify(phoneColors)) return false;
+  phoneColors = colors;
+  try {
+    if (colors) localStorage.setItem(PHONE_KEY, JSON.stringify(colors));
+    else localStorage.removeItem(PHONE_KEY);
+  } catch {
+    // Only costs a moment in the chosen color at the next start.
+  }
+  return true;
+}
+
+/** Android makes each palette from a hue and a chroma; the tone with the most chroma shows them best. */
+function paletteOf(tones: string[]) {
+  const key = tones.map((t) => Hct.fromInt(argbFromHex(t))).reduce((a, b) => (b.chroma > a.chroma ? b : a));
+  return TonalPalette.fromHueAndChroma(key.hue, key.chroma);
+}
+
+function phoneScheme(colors: PhoneColors, dark: boolean, contrast: number): DynamicScheme {
+  const primary = paletteOf(colors.accent1);
+  return new DynamicScheme({
+    sourceColorHct: primary.keyColor,
+    variant: Variant.TONAL_SPOT,
+    contrastLevel: contrast,
+    isDark: dark,
+    specVersion: '2025',
+    platform: 'phone',
+    primaryPalette: primary,
+    secondaryPalette: paletteOf(colors.accent2),
+    tertiaryPalette: paletteOf(colors.accent3),
+    neutralPalette: paletteOf(colors.neutral1),
+    neutralVariantPalette: paletteOf(colors.neutral2),
+  });
+}
 
 export const seeds = [
   { name: 'Grove', hex: '#2e6a57' },
@@ -55,6 +127,7 @@ const schemeClasses = {
 };
 
 export function buildScheme(prefs: ThemePrefs, dark: boolean): DynamicScheme {
+  if (prefs.phone && phoneColors) return phoneScheme(phoneColors, dark, prefs.contrast);
   const Scheme = schemeClasses[prefs.style] ?? SchemeTonalSpot;
   return new Scheme(Hct.fromInt(argbFromHex(prefs.seed)), dark, prefs.contrast, '2025', 'phone');
 }
@@ -106,7 +179,7 @@ function customTones(source: number, seed: number, dark: boolean) {
 
 export function themeVariables(prefs: ThemePrefs, dark: boolean): Record<string, string> {
   const scheme = buildScheme(prefs, dark);
-  const seed = argbFromHex(prefs.seed);
+  const seed = scheme.sourceColorArgb;
   const vars: Record<string, string> = {};
   for (const [name, color] of Object.entries(roles)) vars[`--md-${name}`] = hexFromArgb(scheme.getArgb(color));
   const warm = customTones(argbFromHex(WARM), seed, dark);
@@ -133,7 +206,7 @@ const STORAGE_KEY = 'almanac-theme';
 export function loadLocalTheme(): ThemePrefs {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return { ...defaultTheme, ...(JSON.parse(raw) as Partial<ThemePrefs>) };
+    if (raw) return withDefaults(JSON.parse(raw) as Partial<ThemePrefs>);
   } catch {
     // Private mode or corrupt value: fall back to the default theme.
   }
@@ -172,9 +245,9 @@ export function applyTheme(prefs: ThemePrefs) {
   }
 }
 
-/** Primary, secondary and tertiary of a seed, for the Android-style swatch preview. */
-export function swatchColors(seed: string, style: ThemeStyle, dark: boolean) {
-  const scheme = buildScheme({ ...defaultTheme, seed, style }, dark);
+/** Primary, secondary and tertiary of a seed (or the phone's colors), for the Android-style swatch preview. */
+export function swatchColors(seed: string | 'phone', style: ThemeStyle, dark: boolean) {
+  const scheme = seed === 'phone' && phoneColors ? phoneScheme(phoneColors, dark, 0) : buildScheme({ ...defaultTheme, phone: false, seed, style }, dark);
   return {
     primary: hexFromArgb(scheme.getArgb(C.primary)),
     secondary: hexFromArgb(scheme.getArgb(C.secondaryContainer)),

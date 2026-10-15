@@ -256,6 +256,7 @@ export function registerApi(
     seed: z.string().regex(/^#[0-9a-f]{6}$/i),
     style: z.enum(['tonal', 'expressive', 'vibrant', 'fidelity', 'neutral']),
     contrast: z.union([z.literal(0), z.literal(0.5), z.literal(1)]),
+    phone: z.boolean().optional(),
   });
 
   // ---- you ----------------------------------------------------------------------------------

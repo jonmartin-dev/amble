@@ -7,7 +7,7 @@ import DarkMode from '~icons/material-symbols/dark-mode-outline-rounded';
 import LightMode from '~icons/material-symbols/light-mode-outline-rounded';
 import { ButtonGroup, SubpageHeader } from '../components/ui.tsx';
 import { expressive } from '../lib/motion.ts';
-import { seeds, styles, swatchColors, type ThemeContrast, type ThemeMode, type ThemePrefs } from '../lib/theme.ts';
+import { hasPhoneColors, seeds, styles, swatchColors, type ThemeContrast, type ThemeMode, type ThemePrefs } from '../lib/theme.ts';
 import { useTheme } from '../lib/useTheme.ts';
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -20,7 +20,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 }
 
 /** Android-style wallpaper swatch: primary on top, secondary and tertiary below. */
-function Swatch({ hex, selected, prefs, onPick, label }: { hex: string; selected: boolean; prefs: ThemePrefs; onPick: () => void; label: string }) {
+function Swatch({ hex, selected, prefs, onPick, label }: { hex: string | 'phone'; selected: boolean; prefs: ThemePrefs; onPick: () => void; label: string }) {
   const dark = document.documentElement.dataset.mode === 'dark' || (prefs.mode === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
   const c = useMemo(() => swatchColors(hex, prefs.style, dark), [hex, prefs.style, dark]);
   return (
@@ -55,7 +55,11 @@ function Swatch({ hex, selected, prefs, onPick, label }: { hex: string; selected
 
 export function Appearance() {
   const { prefs, update } = useTheme();
-  const custom = !seeds.some((s) => s.hex === prefs.seed);
+  // The phone's own colors, on Android 12 and later; a browser has none to offer.
+  const phone = hasPhoneColors();
+  const fromPhone = phone && prefs.phone;
+  const custom = !fromPhone && !seeds.some((s) => s.hex === prefs.seed);
+  const seedName = seeds.find((s) => s.hex === prefs.seed)?.name;
 
   return (
     <>
@@ -92,8 +96,16 @@ export function Appearance() {
 
       <Section title="Color">
         <div role="radiogroup" aria-label="Color" className="grid grid-cols-5 gap-3">
+          {phone && <Swatch hex="phone" label="Your phone's colors" prefs={prefs} selected={fromPhone} onPick={() => update({ phone: true })} />}
           {seeds.map((s) => (
-            <Swatch key={s.hex} hex={s.hex} label={s.name} prefs={prefs} selected={prefs.seed === s.hex} onPick={() => update({ seed: s.hex })} />
+            <Swatch
+              key={s.hex}
+              hex={s.hex}
+              label={s.name}
+              prefs={prefs}
+              selected={!fromPhone && prefs.seed === s.hex}
+              onPick={() => update({ seed: s.hex, phone: false })}
+            />
           ))}
           <label
             className={`relative grid aspect-square cursor-pointer place-items-center overflow-hidden bg-surface-high text-on-surface-variant ${custom ? 'rounded-[20px] outline-2 outline-primary' : 'rounded-full'}`}
@@ -104,39 +116,45 @@ export function Appearance() {
             <input
               type="color"
               value={prefs.seed}
-              onChange={(e) => update({ seed: e.target.value })}
+              onChange={(e) => update({ seed: e.target.value, phone: false })}
               className="absolute inset-0 cursor-pointer opacity-0"
             />
           </label>
         </div>
-        <p className="mt-2 px-1 text-sm text-on-surface-variant">{seeds.find((s) => s.hex === prefs.seed)?.name ?? 'Your color'}</p>
+        <p className="mt-2 px-1 text-sm text-on-surface-variant">
+          {fromPhone
+            ? `Your phone's colors, which follow its wallpaper and style. Devices without them use ${seedName ?? 'your color'}.`
+            : (seedName ?? 'Your color')}
+        </p>
       </Section>
 
-      <Section title="Style">
-        <div role="radiogroup" aria-label="Style" className="flex flex-col gap-1">
-          {styles.map((s, i) => {
-            const on = prefs.style === s.id;
-            return (
-              <button
-                key={s.id}
-                type="button"
-                role="radio"
-                aria-checked={on}
-                onClick={() => update({ style: s.id })}
-                className={`flex items-center gap-4 px-4 py-3 text-left transition-colors ${on ? 'bg-secondary-container text-on-secondary-container' : 'bg-surface-low'} ${
-                  i === 0 ? 'rounded-t-3xl rounded-b-md' : i === styles.length - 1 ? 'rounded-t-md rounded-b-3xl' : 'rounded-md'
-                }`}
-              >
-                <span className="flex-1">
-                  <span className="block font-medium">{s.name}</span>
-                  <span className={`block text-sm ${on ? '' : 'text-on-surface-variant'}`}>{s.hint}</span>
-                </span>
-                {on && <Check className="size-6" aria-hidden />}
-              </button>
-            );
-          })}
-        </div>
-      </Section>
+      {!fromPhone && (
+        <Section title="Style">
+          <div role="radiogroup" aria-label="Style" className="flex flex-col gap-1">
+            {styles.map((s, i) => {
+              const on = prefs.style === s.id;
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  onClick={() => update({ style: s.id })}
+                  className={`flex items-center gap-4 px-4 py-3 text-left transition-colors ${on ? 'bg-secondary-container text-on-secondary-container' : 'bg-surface-low'} ${
+                    i === 0 ? 'rounded-t-3xl rounded-b-md' : i === styles.length - 1 ? 'rounded-t-md rounded-b-3xl' : 'rounded-md'
+                  }`}
+                >
+                  <span className="flex-1">
+                    <span className="block font-medium">{s.name}</span>
+                    <span className={`block text-sm ${on ? '' : 'text-on-surface-variant'}`}>{s.hint}</span>
+                  </span>
+                  {on && <Check className="size-6" aria-hidden />}
+                </button>
+              );
+            })}
+          </div>
+        </Section>
+      )}
 
       <Section title="Contrast">
         <ButtonGroup<ThemeContrast>

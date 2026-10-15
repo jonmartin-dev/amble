@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSaveMe } from './mutations.ts';
 import { useMe } from './queries.ts';
-import { applyTheme, defaultTheme, loadLocalTheme, type ThemePrefs } from './theme.ts';
+import { applyTheme, loadLocalTheme, withDefaults, type ThemePrefs } from './theme.ts';
 
 /** Current theme with a setter that applies instantly and saves to the member (debounced, and offline too). */
 export function useTheme() {
   const me = useMe();
   const saveMe = useSaveMe();
-  const [prefs, setPrefs] = useState<ThemePrefs>(() => ({ ...defaultTheme, ...(me?.theme ?? loadLocalTheme()) }));
+  const [prefs, setPrefs] = useState<ThemePrefs>(() => (me?.theme ? withDefaults(me.theme) : loadLocalTheme()));
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const update = useCallback(
@@ -34,7 +34,7 @@ export function useSyncMemberTheme() {
   useEffect(() => {
     if (!me?.theme) return;
     const local = loadLocalTheme();
-    const remote = { ...defaultTheme, ...me.theme };
+    const remote = withDefaults(me.theme);
     if (JSON.stringify(local) !== JSON.stringify(remote)) applyTheme(remote);
   }, [me?.theme]);
 }

@@ -8,7 +8,7 @@ import { Capacitor, registerPlugin } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { loadRatio, loadWord } from '../components/ui.tsx';
 import { api, type Task, type Today, type UpcomingReminder } from './api.ts';
-import { loadLocalTheme, themeVariables } from './theme.ts';
+import { applyTheme, loadLocalTheme, setPhoneColors, themeVariables, type PhoneColors } from './theme.ts';
 
 /** Running inside the Android app. */
 export const native = Capacitor.isNativePlatform();
@@ -31,6 +31,13 @@ interface ReminderCheckPlugin {
   shown(): Promise<{ reminders: Record<string, number> }>;
 }
 const ReminderCheck = registerPlugin<ReminderCheckPlugin>('ReminderCheck');
+
+const SystemColors = registerPlugin<{ palettes(): Promise<{ palettes: PhoneColors | null }> }>('SystemColors');
+
+/** Reads the phone's Material You colors again (they change with the wallpaper); true if they did. */
+async function refreshPhoneColors() {
+  return setPhoneColors((await SystemColors.palettes()).palettes);
+}
 
 /** Android wants a 32-bit number for each notification. */
 function notificationId(reminderId: string) {
@@ -331,6 +338,14 @@ export async function pinTodayWidget() {
  */
 export function startPhone({ open, changed, resumed }: { open: (path: string) => void; changed: () => void; resumed: () => void }) {
   if (!native) return () => {};
+  // The theme and the widget follow the phone's colors when someone picked them.
+  const recolor = () =>
+    void refreshPhoneColors().then((changed) => {
+      if (!changed) return;
+      applyTheme(loadLocalTheme());
+      void updateTodayWidget().catch(() => {});
+    }, () => {});
+  recolor();
   const listeners = [
     LocalNotifications.addListener('localNotificationActionPerformed', ({ actionId, notification }) => {
       const { reminderId, taskId } = (notification.extra ?? {}) as { reminderId?: string; taskId?: string };
@@ -340,7 +355,10 @@ export function startPhone({ open, changed, resumed }: { open: (path: string) =>
       else open(`/task/${taskId}`);
     }),
     // Back in front, maybe on a new day: the widget catches up.
-    App.addListener('resume', resumed),
+    App.addListener('resume', () => {
+      recolor();
+      resumed();
+    }),
     App.addListener('appUrlOpen', ({ url }) => followLink(url, open, changed)),
     App.addListener('backButton', ({ canGoBack }) => {
       if (canGoBack) history.back();

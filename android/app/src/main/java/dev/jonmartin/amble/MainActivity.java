@@ -11,6 +11,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(GoogleDrivePlugin.class);
         registerPlugin(TodayWidgetPlugin.class);
         registerPlugin(ReminderCheckPlugin.class);
+        registerPlugin(SystemColorsPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }
