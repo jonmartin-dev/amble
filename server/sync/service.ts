@@ -91,6 +91,8 @@ export function createSyncService({ db, schema, fetchImpl = fetch, adopt }: { db
   async function round(drive: Drive, target: SyncTarget) {
     const file = await drive.meta(target.fileId);
     if (file.trashed) throw new SyncSetupError(`"${file.name}" is in the trash in Google Drive. Take it out, or stop syncing and start again.`);
+    // Someone renamed the file in Drive: the Sync page says what it's called now.
+    if (file.name && file.name !== target.name) save({ target: { ...target, name: file.name } });
     let merged = 0;
     let remoteSites = settings?.sites ?? {};
     if (file.md5Checksum !== settings?.md5) {

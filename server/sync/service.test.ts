@@ -146,6 +146,18 @@ describe('sync through Google Drive', () => {
     expect((await b.call('GET', '/sync')).json.waiting).toBe(false);
   });
 
+  it('picks up a new name someone gave the file in Drive', async () => {
+    const drive = createFakeDrive();
+    const sam = drive.user('sam@example.com', 'Sam');
+    const a = device(drive, sam);
+    await a.call('POST', '/device/start', { name: 'Sam' });
+    await a.connect({ mode: 'personal' });
+    const [file] = drive.files();
+    drive.rename(file!.id, 'Our place');
+    await a.run();
+    expect((await a.call('GET', '/sync')).json.target).toMatchObject({ name: 'Our place' });
+  });
+
   it('says when Google wants a fresh sign-in, and stops cleanly', async () => {
     const drive = createFakeDrive();
     const sam = drive.user('sam@example.com', 'Sam');

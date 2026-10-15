@@ -149,6 +149,11 @@ export function createFakeDrive() {
       files.get(fileId)?.opened.add(email);
     },
     files: () => [...files.values()].map((f) => ({ id: f.id, name: f.name, owner: f.owner, appData: f.appData, size: f.bytes.length })),
+    /** Someone renaming the file in Drive. */
+    rename(fileId: string, name: string) {
+      const f = files.get(fileId);
+      if (f) f.name = name;
+    },
   };
 }
 
