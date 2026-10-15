@@ -6,8 +6,13 @@
     <string name="widget_preview_load">Light</string>
     <string name="widget_preview_1">Water the plants</string>
     <string name="widget_preview_2">Call the dentist</string>
+    <string name="widget_clear_title">A clear day</string>
+    <string name="widget_clear_text">Nothing&#8217;s planned. That&#8217;s allowed.</string>
+    <string name="widget_stale_text">Open Amble to see today.</string>
     <dimen name="widget_radius">24dp</dimen>
     <dimen name="widget_inner_radius">12dp</dimen>
+    <!-- Where rows in a group meet, as in Material 3 Expressive's lists. -->
+    <dimen name="widget_joined_radius">4dp</dimen>
     <!-- Amble's default theme (Grove), until the app hands over its own colors. -->
     <color name="widget_surface">#F4FBF7</color>
     <color name="widget_row">#E3EAE6</color>
@@ -21,8 +26,7 @@
     <style name="WidgetPreviewRow">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">44dp</item>
-        <item name="android:layout_marginTop">6dp</item>
-        <item name="android:background">@drawable/widget_preview_row</item>
+        <item name="android:layout_marginTop">2dp</item>
         <item name="android:gravity">center_vertical</item>
         <item name="android:paddingStart">16dp</item>
         <item name="android:textColor">@color/widget_on_surface</item>

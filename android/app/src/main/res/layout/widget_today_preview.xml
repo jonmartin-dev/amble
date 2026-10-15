@@ -35,7 +35,14 @@
             android:textColor="@color/widget_on_secondary_container"
             android:textSize="12sp" />
 
-        <TextView style="@style/WidgetPreviewRow" android:text="@string/widget_preview_1" />
-        <TextView style="@style/WidgetPreviewRow" android:text="@string/widget_preview_2" />
+        <TextView
+            style="@style/WidgetPreviewRow"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/widget_preview_row_first"
+            android:text="@string/widget_preview_1" />
+        <TextView
+            style="@style/WidgetPreviewRow"
+            android:background="@drawable/widget_preview_row_last"
+            android:text="@string/widget_preview_2" />
     </LinearLayout>
 </FrameLayout>

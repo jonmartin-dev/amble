@@ -140,5 +140,58 @@
             android:textColor="@color/widget_on_surface_variant"
             android:textSize="14sp"
             android:visibility="gone" />
+
+        <!-- A day with nothing on it, centered in the space left. The art drops out on a short widget. -->
+        <LinearLayout
+            android:id="@+id/widget_empty"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_marginEnd="4dp"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:paddingBottom="6dp"
+            android:visibility="gone">
+
+            <FrameLayout
+                android:id="@+id/widget_empty_art"
+                android:layout_width="52dp"
+                android:layout_height="52dp"
+                android:layout_marginBottom="10dp">
+
+                <ImageView
+                    android:id="@+id/widget_empty_shape"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:importantForAccessibility="no"
+                    android:src="@drawable/widget_cookie" />
+
+                <ImageView
+                    android:id="@+id/widget_empty_icon"
+                    android:layout_width="26dp"
+                    android:layout_height="26dp"
+                    android:layout_gravity="center"
+                    android:importantForAccessibility="no"
+                    android:src="@drawable/widget_sun" />
+            </FrameLayout>
+
+            <TextView
+                android:id="@+id/widget_empty_title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="sans-serif-medium"
+                android:text="@string/widget_clear_title"
+                android:textColor="@color/widget_on_surface"
+                android:textSize="16sp" />
+
+            <TextView
+                android:id="@+id/widget_empty_text"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:gravity="center"
+                android:text="@string/widget_clear_text"
+                android:textColor="@color/widget_on_surface_variant"
+                android:textSize="14sp" />
+        </LinearLayout>
     </LinearLayout>
 </FrameLayout>

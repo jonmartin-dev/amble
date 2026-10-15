@@ -11,8 +11,11 @@ import android.content.res.Configuration;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
+import android.util.ArrayMap;
+import android.util.SizeF;
 import android.view.View;
 import android.widget.RemoteViews;
+import java.util.Map;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -29,6 +32,8 @@ public class TodayWidget extends AppWidgetProvider {
     private static final String SCHEME = "dev.jonmartin.amble";
     // Before Android 12 the list can't scroll, so it shows what fits.
     private static final int ROWS_WITHOUT_SCROLLING = 4;
+    // Shorter than this (in dp), an empty day leaves out its art to fit.
+    private static final float ROOM_FOR_ART = 215f;
 
     @Override
     public void onUpdate(Context context, AppWidgetManager manager, int[] ids) {
@@ -42,7 +47,16 @@ public class TodayWidget extends AppWidgetProvider {
         for (int id : ids) manager.updateAppWidget(id, render(context));
     }
 
+    /** On Android 12 and up the home screen picks the version for the widget's size by itself. */
     private static RemoteViews render(Context context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return render(context, false);
+        Map<SizeF, RemoteViews> sizes = new ArrayMap<>();
+        sizes.put(new SizeF(180f, 110f), render(context, true));
+        sizes.put(new SizeF(180f, ROOM_FOR_ART), render(context, false));
+        return new RemoteViews(sizes);
+    }
+
+    private static RemoteViews render(Context context, boolean compact) {
         RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_today);
         JSONObject day = saved(context);
         Palette colors = new Palette(context, day == null ? null : day.optJSONObject("colors"));
@@ -53,6 +67,20 @@ public class TodayWidget extends AppWidgetProvider {
         colors.text(views, R.id.widget_title, "onSurface");
         colors.text(views, R.id.widget_date, "onSurfaceVariant");
         colors.text(views, R.id.widget_note, "onSurfaceVariant");
+        colors.tint(views, R.id.widget_empty_shape, "secondaryContainer");
+        colors.tint(views, R.id.widget_empty_icon, "onSecondaryContainer");
+        colors.text(views, R.id.widget_empty_title, "onSurface");
+        colors.text(views, R.id.widget_empty_text, "onSurfaceVariant");
+        // The home screen reuses the views it drew last time, so each part is set every time.
+        views.setViewVisibility(R.id.widget_load, View.VISIBLE);
+        views.setViewVisibility(R.id.widget_bar, View.VISIBLE);
+        views.setViewVisibility(R.id.widget_list, View.GONE);
+        views.setViewVisibility(R.id.widget_rows, View.GONE);
+        views.setViewVisibility(R.id.widget_note, View.GONE);
+        views.setViewVisibility(R.id.widget_empty, View.GONE);
+        views.setViewVisibility(R.id.widget_empty_art, compact ? View.GONE : View.VISIBLE);
+        views.setViewVisibility(R.id.widget_empty_title, View.VISIBLE);
+        views.setTextViewText(R.id.widget_empty_text, context.getString(R.string.widget_clear_text));
         views.setOnClickPendingIntent(R.id.widget_header, open(context, "today", 0));
         views.setOnClickPendingIntent(android.R.id.background, open(context, "today", 0));
         views.setOnClickPendingIntent(R.id.widget_add, open(context, "add", 1));
@@ -62,7 +90,9 @@ public class TodayWidget extends AppWidgetProvider {
             views.setTextViewText(R.id.widget_date, "");
             views.setViewVisibility(R.id.widget_load, View.GONE);
             views.setViewVisibility(R.id.widget_bar, View.GONE);
-            note(views, "Open Amble to see today.");
+            views.setViewVisibility(R.id.widget_empty_title, View.GONE);
+            views.setTextViewText(R.id.widget_empty_text, context.getString(R.string.widget_stale_text));
+            views.setViewVisibility(R.id.widget_empty, View.VISIBLE);
             return views;
         }
 
@@ -70,20 +100,22 @@ public class TodayWidget extends AppWidgetProvider {
         boolean heavy = day.optBoolean("heavy");
         views.setTextViewText(R.id.widget_load, day.optString("load"));
         colors.pill(views, R.id.widget_load, heavy ? "warmContainer" : "secondaryContainer", heavy ? "onWarmContainer" : "onSecondaryContainer");
-        views.setProgressBar(R.id.widget_bar, 100, Math.max(day.optInt("percent"), 2), false);
+        // Anything planned shows at least a sliver; nothing planned, an empty track.
+        int percent = day.optInt("percent");
+        views.setProgressBar(R.id.widget_bar, 100, percent > 0 ? Math.max(percent, 2) : 0, false);
         colors.bar(views, R.id.widget_bar, heavy ? "warm" : "primary", "track");
 
         JSONArray tasks = day.optJSONArray("tasks");
         int count = tasks == null ? 0 : tasks.length();
         if (count == 0) {
-            note(views, "Nothing planned. That's allowed.");
+            views.setViewVisibility(R.id.widget_empty, View.VISIBLE);
             return views;
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             RemoteViews.RemoteCollectionItems.Builder items = new RemoteViews.RemoteCollectionItems.Builder().setHasStableIds(true).setViewTypeCount(1);
             for (int i = 0; i < count; i++) {
                 JSONObject task = tasks.optJSONObject(i);
-                RemoteViews row = row(context, colors, task);
+                RemoteViews row = row(context, colors, task, i, count);
                 row.setOnClickFillInIntent(R.id.row, new Intent().setData(link("task/" + task.optString("id"))));
                 items.addItem(task.optString("id").hashCode(), row);
             }
@@ -99,7 +131,7 @@ public class TodayWidget extends AppWidgetProvider {
             int shown = Math.min(count, ROWS_WITHOUT_SCROLLING);
             for (int i = 0; i < shown; i++) {
                 JSONObject task = tasks.optJSONObject(i);
-                RemoteViews row = row(context, colors, task);
+                RemoteViews row = row(context, colors, task, i, shown);
                 row.setOnClickPendingIntent(R.id.row, open(context, "task/" + task.optString("id"), 10 + i));
                 views.addView(R.id.widget_rows, row);
             }
@@ -109,8 +141,14 @@ public class TodayWidget extends AppWidgetProvider {
         return views;
     }
 
-    private static RemoteViews row(Context context, Palette colors, JSONObject task) {
+    /** Row `i` of `count`, shaped as part of one group: round where it starts and ends, joined between. */
+    private static RemoteViews row(Context context, Palette colors, JSONObject task, int i, int count) {
         RemoteViews row = new RemoteViews(context.getPackageName(), R.layout.widget_today_row);
+        int shape = count == 1 ? R.drawable.widget_row_single
+            : i == 0 ? R.drawable.widget_row_first
+            : i == count - 1 ? R.drawable.widget_row_last
+            : R.drawable.widget_row_middle;
+        row.setImageViewResource(R.id.row_shape, shape);
         row.setTextViewText(R.id.row_title, task.optString("title"));
         row.setTextViewText(R.id.row_label, task.optString("label"));
         colors.tint(row, R.id.row_shape, "row");
