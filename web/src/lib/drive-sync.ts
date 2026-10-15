@@ -1,4 +1,4 @@
-// Keeping this device in step with Google Drive while Almanac is open: a round when it opens, every
+// Keeping this device in step with Google Drive while Amble is open: a round when it opens, every
 // minute while it's on screen, and soon after each change. The worker does the merging; this only
 // brings it a Google token. When the token has run out, sync waits for a tap.
 import { useSyncExternalStore } from 'react';

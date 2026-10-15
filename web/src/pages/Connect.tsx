@@ -65,14 +65,14 @@ export function Connect({ requestId }: { requestId: string }) {
           <h1 className="display mt-8 text-[2.5rem] leading-tight font-medium">This link has expired</h1>
           <p className="mt-3 text-lg text-on-surface-variant">Start connecting again from the assistant. Requests last 15 minutes.</p>
           <a href={appUrl('/')} className="mt-10 rounded-full bg-surface-high px-6 py-4 text-center font-medium">
-            Open Almanac
+            Open Amble
           </a>
         </>
       ) : !r ? (
         <div className="mt-8 h-40" />
       ) : (
         <>
-          <h1 className="display mt-8 text-[2.5rem] leading-tight font-medium">Let {r.clientName} use your Almanac?</h1>
+          <h1 className="display mt-8 text-[2.5rem] leading-tight font-medium">Let {r.clientName} use your Amble?</h1>
           <p className="mt-3 text-lg text-on-surface-variant">
             {r.clientName} from <span className="font-medium text-on-surface">{r.clientHost}</span> will be able to see and change your
             tasks, lists and plans as {firstName(me?.name ?? 'you')}.
@@ -110,7 +110,7 @@ export function Connect({ requestId }: { requestId: string }) {
               Cancel
             </motion.button>
           </div>
-          <p className="mt-6 text-center text-sm text-on-surface-variant">You can disconnect it any time from Connect an assistant in Almanac.</p>
+          <p className="mt-6 text-center text-sm text-on-surface-variant">You can disconnect it any time from Connect an assistant in Amble.</p>
         </>
       )}
     </main>

@@ -2,14 +2,14 @@
 // made offline show at once and survive a reload, they sync in order when the connection is back,
 // and a new deploy is offered as a reload.
 // Needs a production build served by the app's own server (the service worker only runs there):
-// `pnpm build`, then `node --env-file=.env server/index.ts` with ALMANAC_DATA_DIR set to a
-// throwaway database (see scripts/demo.ts) and ALMANAC_PUBLIC_URL matching ALMANAC_URL below.
+// `pnpm build`, then `node --env-file=.env server/index.ts` with AMBLE_DATA_DIR set to a
+// throwaway database (see scripts/demo.ts) and AMBLE_PUBLIC_URL matching AMBLE_URL below.
 // It changes that data, and briefly appends a comment to dist/web/sw.js to stand in for a deploy.
-// Usage: ALMANAC_URL=http://localhost:8790 node scripts/offline.ts <email>
+// Usage: AMBLE_URL=http://localhost:8790 node scripts/offline.ts <email>
 import fs from 'node:fs';
 import { chromium, type Page } from 'playwright-core';
 
-const base = process.env.ALMANAC_URL ?? 'http://localhost:8787';
+const base = process.env.AMBLE_URL ?? 'http://localhost:8787';
 const email = process.argv[2];
 if (!email) throw new Error('Usage: node scripts/offline.ts <email>');
 const swFile = new URL('../dist/web/sw.js', import.meta.url);

@@ -29,7 +29,7 @@ import { useGroups, useList, useListHistory, useTasks } from '../lib/queries.ts'
 import { useSnackbar } from '../lib/snackbar.tsx';
 
 /** The + in the toolbar, on a list page, adds to the list instead of opening quick add. */
-export const ADD_TO_LIST = 'almanac:add-to-list';
+export const ADD_TO_LIST = 'amble:add-to-list';
 
 // How long a press has to last to open an item instead of checking it off, and how far the finger
 // can drift before it counts as a scroll.

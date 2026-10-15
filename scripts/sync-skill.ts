@@ -1,17 +1,17 @@
-// Copies the Almanac skill from this repo (the source of truth) into a skills folder that Claude
+// Copies the Amble skill from this repo (the source of truth) into a skills folder that Claude
 // clients read, then shows what changed. Notes about your own household (who's who, time zone,
 // preferences) go in skill/household.md, which git ignores; they're added to the end of SKILL.md.
 // Usage: node scripts/sync-skill.ts [skills-dir]
-//   skills-dir defaults to $ALMANAC_SKILLS_DIR, then ~/.claude/skills. The skill lands in <skills-dir>/almanac.
+//   skills-dir defaults to $AMBLE_SKILLS_DIR, then ~/.claude/skills. The skill lands in <skills-dir>/amble.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const source = fileURLToPath(new URL('../skill/almanac', import.meta.url));
+const source = fileURLToPath(new URL('../skill/amble', import.meta.url));
 const household = fileURLToPath(new URL('../skill/household.md', import.meta.url));
-const skillsDir = process.argv[2] ?? process.env.ALMANAC_SKILLS_DIR ?? path.join(os.homedir(), '.claude', 'skills');
-const target = path.join(skillsDir, 'almanac');
+const skillsDir = process.argv[2] ?? process.env.AMBLE_SKILLS_DIR ?? path.join(os.homedir(), '.claude', 'skills');
+const target = path.join(skillsDir, 'amble');
 
 const files = (dir: string): string[] =>
   fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? files(path.join(dir, e.name)) : [path.join(dir, e.name)]));

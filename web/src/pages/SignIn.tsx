@@ -6,12 +6,12 @@ import { useSession } from '../lib/queries.ts';
 import { useSyncState } from '../lib/sync.ts';
 
 const errors: Record<string, string> = {
-  'not-allowed': "That account isn't on this household's list. Ask whoever runs Almanac to add it.",
+  'not-allowed': "That account isn't on this household's list. Ask whoever runs Amble to add it.",
   expired: 'That sign-in took too long. Try again.',
   failed: "Sign-in didn't go through. Try again.",
-  unavailable: "Almanac couldn't reach the sign-in provider. Try again in a moment.",
-  unverified: "Your sign-in provider says this email address isn't verified. Whoever runs Almanac can mark it verified there.",
-  'no-email': "Your sign-in provider didn't share an email address. Whoever runs Almanac needs to let it share one.",
+  unavailable: "Amble couldn't reach the sign-in provider. Try again in a moment.",
+  unverified: "Your sign-in provider says this email address isn't verified. Whoever runs Amble can mark it verified there.",
+  'no-email': "Your sign-in provider didn't share an email address. Whoever runs Amble needs to let it share one.",
 };
 
 export function SignIn() {
@@ -35,7 +35,7 @@ export function SignIn() {
         transition={expressive.slowSpatial}
         className="size-24"
       />
-      <h1 className="display mt-8 text-[3.5rem] leading-none font-medium">Almanac</h1>
+      <h1 className="display mt-8 text-[3.5rem] leading-none font-medium">Amble</h1>
       <p className="mt-3 text-lg text-on-surface-variant">A calm planner for your household that knows how full your days are.</p>
       {pending > 0 && (
         <p className="mt-4 rounded-2xl bg-secondary-container px-4 py-3 text-on-secondary-container">

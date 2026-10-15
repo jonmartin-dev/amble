@@ -1,4 +1,4 @@
-// Calendar events as Almanac uses them: what's on someone's calendar each day, and how much of the
+// Calendar events as Amble uses them: what's on someone's calendar each day, and how much of the
 // day it takes up.
 import { and, asc, eq, gt, lt } from 'drizzle-orm';
 import type { Db } from '../db/index.ts';

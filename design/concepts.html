@@ -1,4 +1,4 @@
-<title>Almanac Concepts</title>
+<title>Amble Concepts</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,wght@6..144,400..700&family=Hanken+Grotesk:wght@400..700&family=Literata:opsz,wght@7..72,400..700&family=IBM+Plex+Mono:wght@400;500&family=Urbanist:wght@400..800&family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Figtree:wght@400..700&display=swap">
@@ -129,7 +129,7 @@ svg { display: block; }
 .g-listhead { display: flex; align-items: center; gap: 10px; margin: 2px 0 12px; }
 .g-badge { width: 44px; height: 44px; border-radius: 15px; display: grid; place-items: center; background: var(--t-lime); color: var(--t-lime-on); }
 
-/* ---------- Option B: Field Notes (almanac print) ---------- */
+/* ---------- Option B: Field Notes (amble print) ---------- */
 .c-notes { --s-bg: #eef0ea; --s-fg: #1c2a4a; --n-ink2: #4b5674; --n-rule: #c7ccbf; --n-gold: #c98a12; --n-gold-soft: #f1ddaa; --n-gold-on: #3d2a00; }
 [data-phones="dark"] .c-notes { --s-bg: #141821; --s-fg: #e8e6dc; --n-ink2: #a9aebb; --n-rule: #303645; --n-gold: #e9b04a; --n-gold-soft: #3a2f17; --n-gold-on: #f6dfaa; }
 .c-notes .screen { font-family: 'Literata', Georgia, serif; }
@@ -266,7 +266,7 @@ svg { display: block; }
 
 <main class="page" data-phones="light">
   <header class="intro">
-    <h1>Four ways Almanac could look</h1>
+    <h1>Four ways Amble could look</h1>
     <p>Each concept shows the same Tuesday: the morning briefing, your day list, the week's load with a gap suggestion, and a grocery list made from the Groceries template. Swipe each row sideways to see all four screens.</p>
   </header>
 
@@ -306,7 +306,7 @@ svg { display: block; }
       <div>
         <p class="label">Option B</p>
         <h2>Field Notes</h2>
-        <p class="pitch">Leans into the name. Each day reads like a page from an almanac: sunrise and sunset, a load forecast in weather words, and tasks set like ledger entries.</p>
+        <p class="pitch">Leans into the name. Each day reads like a page from an amble: sunrise and sunset, a load forecast in weather words, and tasks set like ledger entries.</p>
       </div>
       <ul class="traits">
         <li><b>Type</b><span>Literata serif for reading, IBM Plex Mono for times and estimates</span></li>
@@ -434,7 +434,7 @@ const R = {
   notes() {
     const tabs = (on) => `<div class="n-tabs">${['Today', 'Backlog', 'Week', 'Lists'].map((t) => `<span class="${t === on ? 'on' : ''}">${t}</span>`).join('')}</div>`;
     const brief = shell(`
-      <div class="n-mast n-mono"><span>The Almanac</span><span>Tue · Oct 13</span></div>
+      <div class="n-mast n-mono"><span>The Amble</span><span>Tue · Oct 13</span></div>
       <h3 class="n-h1">Today's forecast: <em>fair</em></h3>
       <p class="n-dek">Two events and four tasks, with room for about two and a half hours more.</p>
       <div class="n-sun n-mono"><span>Sunrise 7:04</span><span>Sunset 6:16</span><span>Load 38%</span></div>
@@ -550,9 +550,9 @@ const setPhones = (mode) => {
   main.dataset.phones = mode;
   document.getElementById('phones-light').setAttribute('aria-pressed', String(mode === 'light'));
   document.getElementById('phones-dark').setAttribute('aria-pressed', String(mode === 'dark'));
-  try { localStorage.setItem('almanac-concepts-phones', mode); } catch {}
+  try { localStorage.setItem('amble-concepts-phones', mode); } catch {}
 };
 document.getElementById('phones-light').addEventListener('click', () => setPhones('light'));
 document.getElementById('phones-dark').addEventListener('click', () => setPhones('dark'));
-try { const saved = localStorage.getItem('almanac-concepts-phones'); if (saved === 'dark' || saved === 'light') setPhones(saved); } catch {}
+try { const saved = localStorage.getItem('amble-concepts-phones'); if (saved === 'dark' || saved === 'light') setPhones(saved); } catch {}
 </script>

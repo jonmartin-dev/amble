@@ -1,4 +1,4 @@
-package dev.jonmartin.almanac;
+package dev.jonmartin.amble;
 
 import android.app.PendingIntent;
 import android.appwidget.AppWidgetManager;
@@ -24,9 +24,9 @@ import org.json.JSONObject;
  */
 public class TodayWidget extends AppWidgetProvider {
 
-    static final String PREFS = "almanac-widget";
+    static final String PREFS = "amble-widget";
     static final String KEY = "today";
-    private static final String SCHEME = "dev.jonmartin.almanac";
+    private static final String SCHEME = "dev.jonmartin.amble";
     // Before Android 12 the list can't scroll, so it shows what fits.
     private static final int ROWS_WITHOUT_SCROLLING = 4;
 
@@ -35,7 +35,7 @@ public class TodayWidget extends AppWidgetProvider {
         for (int id : ids) manager.updateAppWidget(id, render(context));
     }
 
-    /** Draws every Almanac widget again, after the app handed over a new day. */
+    /** Draws every Amble widget again, after the app handed over a new day. */
     static void refresh(Context context) {
         AppWidgetManager manager = AppWidgetManager.getInstance(context);
         int[] ids = manager.getAppWidgetIds(new ComponentName(context, TodayWidget.class));
@@ -62,7 +62,7 @@ public class TodayWidget extends AppWidgetProvider {
             views.setTextViewText(R.id.widget_date, "");
             views.setViewVisibility(R.id.widget_load, View.GONE);
             views.setViewVisibility(R.id.widget_bar, View.GONE);
-            note(views, "Open Almanac to see today.");
+            note(views, "Open Amble to see today.");
             return views;
         }
 
@@ -151,7 +151,7 @@ public class TodayWidget extends AppWidgetProvider {
      */
     private static final class Palette {
 
-        // Almanac's default theme (Grove), until the app hands over its own.
+        // Amble's default theme (Grove), until the app hands over its own.
         private static final String DEFAULTS =
             "{\"light\":{\"surface\":\"#F4FBF7\",\"row\":\"#E3EAE6\",\"onSurface\":\"#171D1A\",\"onSurfaceVariant\":\"#3F4945\"," +
             "\"primary\":\"#2E6A57\",\"primaryContainer\":\"#B1F0D7\",\"onPrimaryContainer\":\"#002117\"," +

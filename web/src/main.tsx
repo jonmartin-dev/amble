@@ -131,7 +131,7 @@ function Offline() {
     <div className="grid min-h-dvh place-items-center px-8 text-center">
       <div>
         <p className="display text-2xl font-medium">You're offline</p>
-        <p className="mt-2 text-on-surface-variant">Almanac needs a connection the first time it opens on this device. After that it works offline too.</p>
+        <p className="mt-2 text-on-surface-variant">Amble needs a connection the first time it opens on this device. After that it works offline too.</p>
       </div>
     </div>
   );

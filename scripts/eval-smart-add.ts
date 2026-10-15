@@ -1,6 +1,6 @@
 // Runs smart add against real household phrasing at each effort level and scores the proposals.
 // Usage: node --env-file=.env scripts/eval-smart-add.ts [efforts=medium,high] [rounds=1] [case-filter]
-// Uses the model the environment sets (ALMANAC_AI_PROVIDER, ALMANAC_AI_API_KEY, ALMANAC_AI_MODEL, or
+// Uses the model the environment sets (AMBLE_AI_PROVIDER, AMBLE_AI_API_KEY, AMBLE_AI_MODEL, or
 // ANTHROPIC_API_KEY on its own for Haiku). Each case is one call per effort per round, a fraction of a cent.
 import fs from 'node:fs';
 import os from 'node:os';
@@ -310,7 +310,7 @@ const cases: Case[] = [
 const ai = createAi(config);
 const setup = ai.setup();
 if (!setup) {
-  console.error('Set an AI model in the environment: ALMANAC_AI_PROVIDER and ALMANAC_AI_API_KEY, or ANTHROPIC_API_KEY (node --env-file=.env ...).');
+  console.error('Set an AI model in the environment: AMBLE_AI_PROVIDER and AMBLE_AI_API_KEY, or ANTHROPIC_API_KEY (node --env-file=.env ...).');
   process.exit(1);
 }
 console.log(`Scoring ${setup.model} (${setup.provider}).`);

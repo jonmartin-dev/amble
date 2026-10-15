@@ -75,8 +75,8 @@ export function flush(send: (path: string, init: RequestInit) => Promise<Respons
           headers: {
             'Content-Type': 'application/json',
             'Idempotency-Key': op.key,
-            'Almanac-Member': op.memberId,
-            'Almanac-Age': String(Math.max(0, Date.now() - op.at)),
+            'Amble-Member': op.memberId,
+            'Amble-Age': String(Math.max(0, Date.now() - op.at)),
           },
           body: op.body === undefined ? undefined : JSON.stringify(op.body),
           signal: AbortSignal.timeout(SEND_TIMEOUT_MS),

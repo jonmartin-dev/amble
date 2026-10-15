@@ -134,8 +134,8 @@ export const activity = sqliteTable(
   {
     id: id(),
     memberId: text('member_id').references(() => members.id, { onDelete: 'set null' }),
-    // Where the change came from: the app, an assistant through the connector (one Almanac can
-    // name, or `assistant`), or Almanac itself.
+    // Where the change came from: the app, an assistant through the connector (one Amble can
+    // name, or `assistant`), or Amble itself.
     via: text('via', { enum: ['app', 'claude', 'chatgpt', 'assistant', 'system'] }).notNull().default('app'),
     action: text('action').notNull(),
     taskId: text('task_id'),
@@ -210,7 +210,7 @@ export const appliedRequests = sqliteTable(
   (t) => [primaryKey({ columns: [t.memberId, t.key] }), index('applied_requests_created_idx').on(t.createdAt)],
 );
 
-// A Google account someone connected so Almanac can read their calendars. The refresh token is
+// A Google account someone connected so Amble can read their calendars. The refresh token is
 // encrypted with a key derived from the OAuth client secret (server/calendar/google.ts).
 export const calendarAccounts = sqliteTable(
   'calendar_accounts',
@@ -234,7 +234,7 @@ export const calendarAccounts = sqliteTable(
 );
 
 // One calendar in a connected account. Only the ones that count are synced; their events show in
-// Almanac and take up room in the day.
+// Amble and take up room in the day.
 export const calendarSources = sqliteTable(
   'calendar_sources',
   {
@@ -286,7 +286,7 @@ export const calendarEvents = sqliteTable(
   (t) => [uniqueIndex('calendar_events_source_event_idx').on(t.sourceId, t.eventId), index('calendar_events_member_start_idx').on(t.memberId, t.startAt)],
 );
 
-// Settings Almanac makes for itself on first start, like its web push keys.
+// Settings Amble makes for itself on first start, like its web push keys.
 export const serverSettings = sqliteTable('server_settings', {
   key: text('key').primaryKey(),
   value: text('value', { mode: 'json' }).$type<unknown>().notNull(),

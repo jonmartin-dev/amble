@@ -63,7 +63,7 @@ export interface LearnedDay {
   /** ISO weekday, 1 is Monday. */
   weekday: number;
   minutes: number;
-  /** Days of this weekday the member used Almanac in the window. */
+  /** Days of this weekday the member used Amble in the window. */
   samples: number;
   /** How much of `minutes` comes from history rather than the default, 0 to 1. */
   confidence: number;
@@ -78,7 +78,7 @@ function percentile(values: number[], p: number) {
 
 /**
  * Capacity per weekday learned from what this member actually finished over recent weeks. A
- * day counts once they used Almanac at all; its sample is the minutes they finished (estimates,
+ * day counts once they used Amble at all; its sample is the minutes they finished (estimates,
  * or 30 for unestimated tasks). A good day's worth, the 75th percentile, is the target, blended
  * with the default until there are enough samples to trust it.
  */
@@ -128,7 +128,7 @@ export function learnedCapacity(db: Db, member: Member, today = planningDate(mem
 
 /**
  * Task minutes that fit on a date for this member: the number they pinned for that weekday, else
- * what Almanac learned, else the default.
+ * what Amble learned, else the default.
  */
 export function capacityFor(date: string, member?: Pick<Member, 'capacity'>, learned?: LearnedDay[]) {
   const dow = Temporal.PlainDate.from(date).dayOfWeek;

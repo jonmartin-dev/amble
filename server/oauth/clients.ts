@@ -121,13 +121,13 @@ function canBePublic(doc: MetadataDocument) {
 export async function resolveClient(db: Db, config: Config, clientId: string, fetchImpl: typeof fetch = fetch) {
   if (!clientId.startsWith('https://')) {
     const client = db.select().from(oauthClients).where(eq(oauthClients.id, clientId)).get();
-    if (!client) throw new OAuthFailure('invalid_client', 'Unknown client. Remove Almanac from the assistant and add it again.', 401);
+    if (!client) throw new OAuthFailure('invalid_client', 'Unknown client. Remove Amble from the assistant and add it again.', 401);
     return client;
   }
 
   const url = parse(clientId);
   if (!url || url.hash || url.pathname === '/' || !config.oauthClientHosts.includes(url.hostname)) {
-    throw new OAuthFailure('invalid_client', `Apps from ${url?.hostname ?? 'that address'} can't connect to this Almanac.`, 401);
+    throw new OAuthFailure('invalid_client', `Apps from ${url?.hostname ?? 'that address'} can't connect to this Amble.`, 401);
   }
   const cached = db.select().from(oauthClients).where(eq(oauthClients.id, clientId)).get();
   if (cached?.fetchedAt && Date.now() - cached.fetchedAt.getTime() < METADATA_MAX_AGE_MS) return cached;

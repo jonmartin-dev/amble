@@ -14,7 +14,7 @@ const STEP = 30;
 const MAX = 720;
 
 function learnedNote(day: CapacityDay) {
-  if (day.samples === 0) return 'Starting point until Almanac has seen a few of these';
+  if (day.samples === 0) return 'Starting point until Amble has seen a few of these';
   if (day.confidence < 1) return `Still learning, from ${day.samples} ${day.samples === 1 ? 'day' : 'days'} so far`;
   return `Learned from your recent ${weekdayName(day.weekday, 'long')}s`;
 }
@@ -58,7 +58,7 @@ export function Capacity() {
     <>
       <SubpageHeader title="Daily capacity" />
       <p className="px-1 text-on-surface-variant">
-        How much time you have for tasks each day. Almanac learns it from what you actually finish, so there's nothing to set up. If a day is different
+        How much time you have for tasks each day. Amble learns it from what you actually finish, so there's nothing to set up. If a day is different
         (a day off, a long shift), pin your own number with the buttons.
       </p>
 
@@ -122,14 +122,14 @@ export function Capacity() {
                 onClick={() => update({ ...pins, [d]: undefined })}
                 className="rounded-full bg-surface-high px-4 py-2 text-sm font-medium"
               >
-                Let Almanac learn {weekdayName(d, 'long')}
+                Let Amble learn {weekdayName(d, 'long')}
               </button>
             ))}
         </div>
       )}
       <p className="mt-4 px-1 text-sm text-on-surface-variant">
         It starts at {minutesLabel(180)} on weekdays and {minutesLabel(240)} on weekends and moves toward a good day's worth of what you finish,
-        counting tasks without an estimate as half an hour. It won't learn a day below half its starting point; pin a lower number (or 0 for a day off) if that's what you want. Days you don't open Almanac don't count against you.
+        counting tasks without an estimate as half an hour. It won't learn a day below half its starting point; pin a lower number (or 0 for a day off) if that's what you want. Days you don't open Amble don't count against you.
       </p>
     </>
   );

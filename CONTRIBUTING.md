@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for wanting to help with Almanac. It's a small project for households, built to stay calm: it never nags, keeps days light, and does nothing behind anyone's back. For a bigger change, open an issue first so we can talk it through.
+Thanks for wanting to help with Amble. It's a small project for households, built to stay calm: it never nags, keeps days light, and does nothing behind anyone's back. For a bigger change, open an issue first so we can talk it through.
 
 ## Principles
 
@@ -22,15 +22,15 @@ cp .env.example .env     # dev sign-in is on, so no OIDC provider is needed
 pnpm dev                 # the app on http://localhost:5173, the server on 8787
 ```
 
-With dev sign-in on, the sign-in page offers a "sign in as" picker: everyone in `ALMANAC_ADMIN_EMAILS`, `ALMANAC_ALLOWED_EMAILS` and the database, or `dev@almanac.local` when there's nobody yet.
+With dev sign-in on, the sign-in page offers a "sign in as" picker: everyone in `AMBLE_ADMIN_EMAILS`, `AMBLE_ALLOWED_EMAILS` and the database, or `dev@amble.local` when there's nobody yet.
 
 `pnpm dev:device` runs the app with no server instead (http://localhost:5174): the API runs in a worker in the browser, on SQLite in WebAssembly. [docs/google-drive.md](docs/google-drive.md) has what sync through Google Drive needs. `node scripts/android.ts run` builds the Android app and puts it on a plugged-in phone ([docs/android.md](docs/android.md)).
 
 For something to look at, build the demo household in an empty folder and run the app on it:
 
 ```sh
-node scripts/demo.ts ../almanac-demo sam@example.com
-ALMANAC_DATA_DIR=../almanac-demo pnpm dev
+node scripts/demo.ts ../amble-demo sam@example.com
+AMBLE_DATA_DIR=../amble-demo pnpm dev
 ```
 
 Smart add, estimates and the planner's wording need an AI model: set one up in Settings, AI, or in `.env` (see `.env.example`). Any provider works, including a local model through Ollama with no key. Without one, quick add takes text as typed and everything else still works. New AI features go through `ask()` in `server/ai/client.ts`, which meters every call and works with every provider; don't call a provider's SDK directly.
@@ -42,12 +42,12 @@ Smart add, estimates and the planner's wording need an AI model: set one up in S
 | `server/` | The Hono server: the API (`api.ts`), sign-in (`auth/`), the connector for Claude and ChatGPT (`connector.ts`, `oauth/`, `mcp/`), Google Calendar (`calendar/`), web push (`notify/`), AI features and their providers (`ai/`), the scheduler (`jobs.ts`) and the database (`db/`) |
 | `server/domain/` | The rules for tasks, lists, repeats, load and planning, shared by the API and the connector |
 | `server/sync/` | Sync between copies through Google Drive: recording changes (`capture.ts`), merging them (`state.ts`) and the rounds with Drive (`service.ts`, `server.ts`) |
-| `server/local.ts`, `web/src/worker/` | Almanac with no server: the same API in a web worker on SQLite in WebAssembly (`server/db/wasm.ts`) |
+| `server/local.ts`, `web/src/worker/` | Amble with no server: the same API in a web worker on SQLite in WebAssembly (`server/db/wasm.ts`) |
 | `android/`, `web/src/lib/native.ts`, `capacitor.config.ts` | The Android app: Capacitor around the device build, with the phone's own notifications and Google sign-in (`GoogleDrivePlugin.java`) |
 | `shared/` | Code the server and the app both use: list templates, repeat rules, smart add proposals |
 | `web/src/` | The React app: `pages/`, `components/`, `lib/` (queries, the offline outbox, theming, motion) and the service worker (`sw.ts`) |
 | `drizzle/` | Database migrations, applied when the server starts |
-| `skill/almanac/` | The Claude skill that teaches Claude to use the connector the calm way |
+| `skill/amble/` | The Claude skill that teaches Claude to use the connector the calm way |
 | `scripts/` | Demo data, screenshots, browser checks and the smart add eval |
 | `docs/` | Guides for self-hosters |
 
@@ -55,8 +55,8 @@ A new list template makes a good first change: one entry in `shared/templates.ts
 
 ## Help wanted
 
-- **Connect a real ChatGPT account.** The ChatGPT side of the connector follows OpenAI's auth docs and is tested against ChatGPT's real client metadata document, but nobody has signed in from ChatGPT itself yet. If your plan has Developer mode (Business, Enterprise or Edu to make changes, Pro to read), follow the ChatGPT steps on Connect an assistant against your own Almanac, ask `@Almanac` to add a task, and check that Activity says "via ChatGPT". Open an issue with how it went, especially any error during sign-in or the tool scan.
-- **Sign in with ChatGPT.** OpenAI has a preview that lets people use their ChatGPT plan in other apps instead of an API key, through the Responses API (with `store: false` and streaming). It's built for local tools that sign in through a loopback address, and each app has to ask OpenAI for a client id, so nobody knows yet whether an open-source app like Almanac can use it. Finding out would help as much as building it; the AI providers are in `shared/ai.ts` and `server/ai/client.ts`. Claude subscriptions can't be used this way, since Anthropic's terms keep them to Claude's own apps, so Claude stays on API keys.
+- **Connect a real ChatGPT account.** The ChatGPT side of the connector follows OpenAI's auth docs and is tested against ChatGPT's real client metadata document, but nobody has signed in from ChatGPT itself yet. If your plan has Developer mode (Business, Enterprise or Edu to make changes, Pro to read), follow the ChatGPT steps on Connect an assistant against your own Amble, ask `@Amble` to add a task, and check that Activity says "via ChatGPT". Open an issue with how it went, especially any error during sign-in or the tool scan.
+- **Sign in with ChatGPT.** OpenAI has a preview that lets people use their ChatGPT plan in other apps instead of an API key, through the Responses API (with `store: false` and streaming). It's built for local tools that sign in through a loopback address, and each app has to ask OpenAI for a client id, so nobody knows yet whether an open-source app like Amble can use it. Finding out would help as much as building it; the AI providers are in `shared/ai.ts` and `server/ai/client.ts`. Claude subscriptions can't be used this way, since Anthropic's terms keep them to Claude's own apps, so Claude stays on API keys.
 
 ## Before you open a pull request
 
@@ -69,7 +69,7 @@ pnpm test:wasm
 All three must pass. `test:wasm` runs the same tests on the WebAssembly SQLite the device app uses. For changes people can see, also run the app on a demo household and use these:
 
 - `node scripts/smoke.ts <email>` clicks through the core loop at phone size and fails on any broken step or console error. It changes the demo data.
-- `node scripts/screens.ts <email>` captures every screen at phone size in several themes into `design/screens/` (not committed), for looking over a change in light and dark. Set `ALMANAC_VIEWPORT=820x1180` to capture at tablet size.
+- `node scripts/screens.ts <email>` captures every screen at phone size in several themes into `design/screens/` (not committed), for looking over a change in light and dark. Set `AMBLE_VIEWPORT=820x1180` to capture at tablet size.
 - `node scripts/offline.ts <email>` checks offline use end to end. It needs a production build; the comment at the top of the script says how to run it.
 - `node scripts/readme-shots.ts` retakes the screenshots in the README, if the screens they show changed.
 
@@ -96,11 +96,11 @@ Sync has a few rules of its own:
 
 ## Words in the app
 
-Almanac talks like a thoughtful person in the household: plain words, short sentences, no exclamation marks, no guilt. "Saturday looks heavy" rather than "You're overcommitted!". It only notifies people when they asked for a reminder. New features shouldn't add notifications, badges or streak pressure.
+Amble talks like a thoughtful person in the household: plain words, short sentences, no exclamation marks, no guilt. "Saturday looks heavy" rather than "You're overcommitted!". It only notifies people when they asked for a reminder. New features shouldn't add notifications, badges or streak pressure.
 
 ## Commits and pull requests
 
-Keep a pull request to one change, and say in its description what changes for the people using Almanac and how you checked it. Commit messages are short, lowercase and plain: "add reminders to the task page", "fix the backlog search on phones".
+Keep a pull request to one change, and say in its description what changes for the people using Amble and how you checked it. Commit messages are short, lowercase and plain: "add reminders to the task page", "fix the backlog search on phones".
 
 ## Security
 
@@ -108,4 +108,4 @@ Please report security problems privately through the repository's Security tab 
 
 ## License
 
-Almanac is [AGPL-3.0](LICENSE). By contributing, you agree that your contributions are licensed under it too.
+Amble is [AGPL-3.0](LICENSE). By contributing, you agree that your contributions are licensed under it too.

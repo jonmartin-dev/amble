@@ -77,6 +77,30 @@ export function createApp({
 
   app.use(secureHeaders({ crossOriginEmbedderPolicy: false }));
 
+  // The address the app used to live at (AMBLE_REDIRECT_FROM) sends links and requests on here.
+  // An app installed from there gets a service worker that steps aside and moves its window over,
+  // since browsers won't follow a redirect when they check for a new service worker.
+  const from = config.redirectFrom;
+  if (from && from !== base) {
+    app.use('*', async (c, next) => {
+      const url = new URL(c.req.url);
+      if (url.pathname !== from && !url.pathname.startsWith(`${from}/`)) return next();
+      const rest = url.pathname.slice(from.length);
+      if (rest === '/sw.js') {
+        c.header('Content-Type', 'text/javascript');
+        c.header('Cache-Control', 'no-cache');
+        return c.body(
+          `self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', (e) => e.waitUntil((async () => {
+  await self.registration.unregister();
+  for (const w of await self.clients.matchAll({ type: 'window' })) w.navigate(${JSON.stringify(`${config.publicOrigin}${base}/`)});
+})()));`,
+        );
+      }
+      return c.redirect(`${config.publicOrigin}${base}${rest}${url.search}`, c.req.method === 'GET' || c.req.method === 'HEAD' ? 301 : 308);
+    });
+  }
+
   // Whatever a request changed (the app's, or an assistant's through the connector) goes out to
   // Google Drive soon after, when the server syncs with a household's devices.
   app.use('*', async (c, next) => {
@@ -245,7 +269,7 @@ export function createApp({
       .readFileSync(path.join(webDist, 'index.html'), 'utf8')
       .replace(
         '<head>',
-        `<head><base href="${base}/"><script>window.__ALMANAC__=${JSON.stringify({ basePath: base })}</script>`,
+        `<head><base href="${base}/"><script>window.__AMBLE__=${JSON.stringify({ basePath: base })}</script>`,
       );
     const root = path.relative(process.cwd(), webDist) || '.';
     const serveIndex = (c: Context<Env>) => {

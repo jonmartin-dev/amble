@@ -16,7 +16,7 @@ const MAX_AGE_MS = 60 * 24 * 60 * 60 * 1000;
 const LATE_AFTER_MS = 2000;
 
 /**
- * When a change was made, from the `Almanac-Age` header (milliseconds since the person made it).
+ * When a change was made, from the `Amble-Age` header (milliseconds since the person made it).
  * Using an age rather than a timestamp keeps a phone's wrong clock out of it.
  */
 export function madeAt(header: string | undefined, now = Date.now()): Date | undefined {

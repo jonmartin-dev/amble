@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import { chromium, type Page } from 'playwright-core';
 
-const base = process.env.ALMANAC_URL ?? 'http://localhost:5173';
+const base = process.env.AMBLE_URL ?? 'http://localhost:5173';
 const email = process.argv[2] ?? 'sam@example.com';
 const out = 'docs/screenshots';
 const light = { mode: 'light', seed: '#2e6a57', style: 'tonal', contrast: 0 };

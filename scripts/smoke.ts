@@ -3,7 +3,7 @@
 // Usage: node scripts/smoke.ts <email>
 import { chromium, type Page } from 'playwright-core';
 
-const base = process.env.ALMANAC_URL ?? 'http://localhost:5173';
+const base = process.env.AMBLE_URL ?? 'http://localhost:5173';
 const email = process.argv[2];
 if (!email) throw new Error('Usage: node scripts/smoke.ts <email>');
 
@@ -331,7 +331,7 @@ await check('pinning capacity changes how full today is, and unpinning goes back
   await p.waitForTimeout(1200);
   const after = await capacity();
   if (after !== before + 30) throw new Error(`capacity went from ${before} to ${after}`);
-  await p.getByRole('button', { name: `Let Almanac learn ${day}` }).click();
+  await p.getByRole('button', { name: `Let Amble learn ${day}` }).click();
   await p.waitForTimeout(1200);
   if ((await capacity()) !== before) throw new Error('unpinning did not go back to the learned number');
 });

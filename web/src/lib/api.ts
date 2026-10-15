@@ -8,12 +8,12 @@ export type { Repeat, Proposal };
 
 declare global {
   interface Window {
-    __ALMANAC__?: { basePath: string };
+    __AMBLE__?: { basePath: string };
   }
 }
 
 // The server writes its base path into the page; a device build is told it when it's built.
-export const basePath = window.__ALMANAC__?.basePath ?? (onDevice ? import.meta.env.BASE_URL.replace(/\/$/, '') : '');
+export const basePath = window.__AMBLE__?.basePath ?? (onDevice ? import.meta.env.BASE_URL.replace(/\/$/, '') : '');
 
 export const appUrl = (path: string) => `${basePath}${path}`;
 
@@ -74,7 +74,7 @@ export interface Session {
     devEmails: string[];
     privacyContact: string;
     ai: { provider: AiProviderId; name: string } | null;
-    /** `device`: Almanac runs on this device, with no server and no sign-in. */
+    /** `device`: Amble runs on this device, with no server and no sign-in. */
     mode?: 'device';
   };
 }
@@ -337,7 +337,7 @@ export interface ActivityEntry {
   at: string;
   memberId: string | null;
   memberName: string | null;
-  /** `assistant` is one connected through the connector that Almanac can't name. */
+  /** `assistant` is one connected through the connector that Amble can't name. */
   via: 'app' | 'claude' | 'chatgpt' | 'assistant' | 'system';
   action: string;
   taskId: string | null;

@@ -5,7 +5,7 @@ import { members, type Member } from '../db/schema.ts';
 
 const memberColors = ['green', 'blue', 'orange', 'violet', 'teal', 'rose'];
 
-export const DEV_FALLBACK_EMAIL = 'dev@almanac.local';
+export const DEV_FALLBACK_EMAIL = 'dev@amble.local';
 
 /**
  * Who may sign in: the emails in the deployment's config (how the first admin gets in) plus every

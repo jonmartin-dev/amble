@@ -1,4 +1,4 @@
-// Almanac's service worker, built by the `serviceWorker` plugin in vite.config.ts.
+// Amble's service worker, built by the `serviceWorker` plugin in vite.config.ts.
 // - Keeps every file of this build so the app opens without a connection. A new build installs in
 //   the background and waits; the app offers a reload rather than swapping code under someone.
 // - Sends changes made offline once the connection is back, even with the app closed (Background
@@ -6,10 +6,10 @@
 // - Shows reminders, and handles their Done and Snooze buttons without opening the app.
 import { addOp, flush } from './lib/outbox.ts';
 
-declare const __ALMANAC_BUILD__: string;
-declare const __ALMANAC_ASSETS__: string[];
-/** A build that runs Almanac on the device: there's no server to send the outbox to. */
-declare const __ALMANAC_DEVICE__: boolean;
+declare const __AMBLE_BUILD__: string;
+declare const __AMBLE_ASSETS__: string[];
+/** A build that runs Amble on the device: there's no server to send the outbox to. */
+declare const __AMBLE_DEVICE__: boolean;
 
 // The DOM typings don't describe a service worker's scope; these are the parts used here.
 interface ExtendableEvent extends Event {
@@ -64,7 +64,7 @@ interface PushMessage {
 }
 
 const sw = globalThis as unknown as ServiceWorkerScope;
-const CACHE = `almanac-${__ALMANAC_BUILD__}`;
+const CACHE = `almanac-${__AMBLE_BUILD__}`;
 const scope = new URL(sw.registration.scope);
 const base = scope.pathname.replace(/\/$/, '');
 const shell = new URL('./', scope).href;
@@ -79,7 +79,7 @@ sw.addEventListener('install', (event) => {
       const first = !(await caches.keys()).some((k) => k.startsWith('almanac-'));
       const cache = await caches.open(CACHE);
       // The page itself comes from the server, which writes the base path into it.
-      await cache.addAll([shell, ...__ALMANAC_ASSETS__.map((a) => new URL(a, scope).href)]);
+      await cache.addAll([shell, ...__AMBLE_ASSETS__.map((a) => new URL(a, scope).href)]);
       if (first) await sw.skipWaiting();
     })(),
   );
@@ -126,7 +126,7 @@ sw.addEventListener('fetch', (event) => {
 
 /** Sends the outbox and tells open windows; the result says whether anything is still waiting. */
 async function sendOutbox() {
-  if (__ALMANAC_DEVICE__) {
+  if (__AMBLE_DEVICE__) {
     // The app's own worker applies changes; an open window sends them now, or the next one opened will.
     for (const client of await sw.clients.matchAll({ type: 'window' })) client.postMessage({ type: 'outbox-added' });
     return { sent: [], failed: [], blocked: null };
@@ -137,7 +137,7 @@ async function sendOutbox() {
 }
 
 sw.addEventListener('sync', (event) => {
-  if (event.tag !== 'almanac-outbox' || __ALMANAC_DEVICE__) return;
+  if (event.tag !== 'almanac-outbox' || __AMBLE_DEVICE__) return;
   event.waitUntil(
     sendOutbox().then((result) => {
       // Rejecting asks the browser to try again later.
@@ -164,7 +164,7 @@ sw.addEventListener('push', (event) => {
     timestamp: Date.now(),
     data: { url: message?.url, ...message?.data },
   };
-  event.waitUntil(sw.registration.showNotification(message?.title || 'Almanac', options));
+  event.waitUntil(sw.registration.showNotification(message?.title || 'Amble', options));
 });
 
 /** Brings the app forward on a page, opening it if it isn't open. */

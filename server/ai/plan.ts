@@ -15,7 +15,7 @@ import { AiUnavailable, ask as askModel, effortFor, requireAi, type Ai, type Eff
 
 const ORGANIZE_TASKS = 150;
 const ORGANIZE_MAX = 12;
-// Briefings are written for people who've used Almanac lately.
+// Briefings are written for people who've used Amble lately.
 const ACTIVE_DAYS = 14;
 
 async function ask<T extends z.ZodType>(
@@ -65,7 +65,7 @@ function taskLine(ref: string, t: TaskDetail, today: string) {
     .join(' · ');
 }
 
-const VOICE = `Almanac is a calm household planner. Write the way a thoughtful friend would mention it: plain, warm, brief, second person. Never nag, scold or hype: no exclamation marks, no "don't forget", no "you should". Mention a calendar event only when it explains the reason. Never invent facts.`;
+const VOICE = `Amble is a calm household planner. Write the way a thoughtful friend would mention it: plain, warm, brief, second person. Never nag, scold or hype: no exclamation marks, no "don't forget", no "you should". Mention a calendar event only when it explains the reason. Never invent facts.`;
 
 // ---- the morning's reasons -----------------------------------------------------------------------
 
@@ -96,7 +96,7 @@ export async function wordReasons(db: Db, ai: Ai, me: Member, suggestions: Sugge
     effort: 'low',
     timezone,
     schema: Reasons,
-    system: `You write the one-line reason under each task Almanac suggests doing today. Keep the planner's facts (deadlines, how full days are) and say them naturally, in one short sentence of at most 15 words. ${VOICE}`,
+    system: `You write the one-line reason under each task Amble suggests doing today. Keep the planner's facts (deadlines, how full days are) and say them naturally, in one short sentence of at most 15 words. ${VOICE}`,
     content,
   });
   const reasons = new Map<string, string>();
@@ -185,7 +185,7 @@ export async function planMyWeek(db: Db, ai: Ai, me: Member, { note, timezone }:
   const tasksByRef = new Map<string, TaskDetail>([...base.picks.map((p) => p.task), ...spare].map((t, i) => [`t${i + 1}`, t]));
   const refOf = new Map([...tasksByRef].map(([r, t]) => [t.id, r]));
   const content = [
-    `Today is ${weekday(today)} ${today}. ${firstName(me)} asked Almanac to plan their week (${today} to ${end}).`,
+    `Today is ${weekday(today)} ${today}. ${firstName(me)} asked Amble to plan their week (${today} to ${end}).`,
     note?.trim() ? `They said: """${note.trim().slice(0, 500)}"""` : 'They added nothing to keep in mind.',
     '',
     'Days, before the plan:',
@@ -208,7 +208,7 @@ export async function planMyWeek(db: Db, ai: Ai, me: Member, { note, timezone }:
       effort: 'chosen',
       timezone,
       schema: PlanOut,
-      system: `You help plan someone's week in Almanac. The planner already placed tasks on the days with the most room. Keep its plan unless what they said, or something clear in the calendar, gives a reason to change it. Follow what they said exactly ("keep Saturday free" means nothing goes on Saturday). Never put a task after its due date, never fill a day past its task minutes when another day has room, and leave a task out (day "") rather than overload the week. Give every planned task a reason of at most 12 words, and add a one-sentence note only if it helps. ${VOICE}`,
+      system: `You help plan someone's week in Amble. The planner already placed tasks on the days with the most room. Keep its plan unless what they said, or something clear in the calendar, gives a reason to change it. Follow what they said exactly ("keep Saturday free" means nothing goes on Saturday). Never put a task after its due date, never fill a day past its task minutes when another day has room, and leave a task out (day "") rather than overload the week. Give every planned task a reason of at most 12 words, and add a one-sentence note only if it helps. ${VOICE}`,
       content,
     });
   } catch (err) {
@@ -283,7 +283,7 @@ export async function organizeBacklog(db: Db, ai: Ai, me: Member, timezone: stri
     effort: 'chosen',
     timezone,
     schema: OrganizeOut,
-    system: `You suggest a few ways to tidy a household's open tasks in Almanac. Only suggest what clearly helps:
+    system: `You suggest a few ways to tidy a household's open tasks in Amble. Only suggest what clearly helps:
 - regroup: a task with no group, or plainly in the wrong one, into the group it belongs in.
 - merge: two or more tasks that are the same thing written twice. Not merely related tasks.
 - split: a task that is really several separate jobs ("clean the garage and fix the bike"), into those jobs. Not a task that just has steps.

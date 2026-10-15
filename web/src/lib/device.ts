@@ -1,12 +1,12 @@
-// Almanac with no server: the API runs in a worker on this device (web/src/worker/api.worker.ts),
+// Amble with no server: the API runs in a worker on this device (web/src/worker/api.worker.ts),
 // and requests the app would send over the network go to it instead. Only one tab can have the
 // database open; another tab waits, and can take it over.
 import { Capacitor } from '@capacitor/core';
 import { useSyncExternalStore } from 'react';
 import type { FromWorker, ToWorker } from '../worker/protocol.ts';
 
-/** This build runs Almanac on the device rather than talking to a server. */
-export const onDevice = import.meta.env.VITE_ALMANAC_DEVICE === '1';
+/** This build runs Amble on the device rather than talking to a server. */
+export const onDevice = import.meta.env.VITE_AMBLE_DEVICE === '1';
 
 export type DeviceState = 'starting' | 'ready' | 'busy' | 'moved' | 'failed';
 
@@ -67,7 +67,7 @@ async function showNotification(message: Extract<FromWorker, { type: 'notify' }>
 }
 
 function startWorker() {
-  worker = new Worker(new URL('../worker/api.worker.ts', import.meta.url), { type: 'module', name: 'almanac' });
+  worker = new Worker(new URL('../worker/api.worker.ts', import.meta.url), { type: 'module', name: 'amble' });
   worker.addEventListener('message', (event: MessageEvent<FromWorker>) => {
     const m = event.data;
     if (m.type === 'ready') {
@@ -91,14 +91,14 @@ function startWorker() {
     failure = e.message || 'The worker stopped.';
     set('failed');
   });
-  send({ type: 'init', basePath: (window.__ALMANAC__?.basePath ?? import.meta.env.BASE_URL.replace(/\/$/, '')) || '', userAgent: navigator.userAgent });
+  send({ type: 'init', basePath: (window.__AMBLE__?.basePath ?? import.meta.env.BASE_URL.replace(/\/$/, '')) || '', userAgent: navigator.userAgent });
 }
 
 /** Another tab wants the database: let it go. */
 function release() {
   worker?.terminate();
   worker = null;
-  for (const w of waiting.values()) w.reject(new DOMException('Almanac moved to another tab.', 'AbortError'));
+  for (const w of waiting.values()) w.reject(new DOMException('Amble moved to another tab.', 'AbortError'));
   waiting.clear();
   ready = new Promise<void>((resolve) => (readyNow = resolve));
   set('moved');
@@ -119,7 +119,7 @@ channel?.addEventListener('message', (e: MessageEvent<{ type?: string }>) => {
 
 if (onDevice) {
   startWorker();
-  // Asks the browser not to clear Almanac's storage to make room; installed apps usually get this.
+  // Asks the browser not to clear Amble's storage to make room; installed apps usually get this.
   void navigator.storage?.persist?.().catch(() => {});
 }
 

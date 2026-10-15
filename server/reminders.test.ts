@@ -14,12 +14,12 @@ import { addDays, planningDate } from './lib/dates.ts';
 import { createPush, deviceName } from './notify/push.ts';
 import { createReminderSender, reminderBody } from './notify/reminders.ts';
 
-const ORIGIN = 'https://almanac.test';
+const ORIGIN = 'https://amble.test';
 const testConfig: Config = {
   ...config,
   production: false,
   publicUrl: ORIGIN,
-  basePath: '/almanac',
+  basePath: '/amble',
   publicOrigin: ORIGIN,
   adminEmails: ['jon@example.com'],
   allowedEmails: ['jon@example.com', 'alex@example.com'],
@@ -45,7 +45,7 @@ const cookies = new Map<string, string>();
 function as(member: Member) {
   if (!cookies.has(member.id)) cookies.set(member.id, `almanac_session=${createSession(db, member.id, 'test')}`);
   const call = async (method: string, path: string, data?: unknown, headers: Record<string, string> = {}) => {
-    const res = await app.request(`${ORIGIN}/almanac/api${path}`, {
+    const res = await app.request(`${ORIGIN}/amble/api${path}`, {
       method,
       headers: {
         cookie: cookies.get(member.id)!,
@@ -174,7 +174,7 @@ describe('devices', () => {
 });
 
 describe('sending reminders', () => {
-  const sender = () => createReminderSender(db, push, '/almanac');
+  const sender = () => createReminderSender(db, push, '/amble');
   const soon = async (title = 'Take the bins out', minutes = 1) => {
     const [task] = createTasks(db, { member: jon, via: 'app' }, [{ title, notes: 'Recycling week\nBlue bin too', remindAt: inMinutes(minutes) }]);
     return task!;
@@ -193,7 +193,7 @@ describe('sending reminders', () => {
     expect(payload).toMatchObject({
       title: 'Take the bins out',
       body: 'Recycling week',
-      url: `/almanac/task/${task.id}`,
+      url: `/amble/task/${task.id}`,
       actions: [{ action: 'done' }, { action: 'snooze' }],
       data: { kind: 'reminder', taskId: task.id, memberId: jon.id },
     });

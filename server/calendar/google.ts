@@ -1,4 +1,4 @@
-// The small part of Google's Calendar API Almanac uses, over plain fetch: refreshing an access
+// The small part of Google's Calendar API Amble uses, over plain fetch: refreshing an access
 // token, listing calendars, reading events, and revoking access when someone disconnects.
 import type { Config } from '../config.ts';
 import { seal, unseal } from '../lib/seal.ts';
@@ -79,7 +79,7 @@ export function createGoogle(config: Config, fetchImpl: typeof fetch = fetch): G
         }),
       });
       const body = (await res.json().catch(() => ({}))) as { access_token?: string; expires_in?: number; error?: string };
-      if (body.error === 'invalid_grant') throw new GoogleAuthError('Google no longer lets Almanac read this calendar.');
+      if (body.error === 'invalid_grant') throw new GoogleAuthError('Google no longer lets Amble read this calendar.');
       if (!res.ok || !body.access_token) throw new Error(`Google's token endpoint answered ${res.status} ${body.error ?? ''}`.trim());
       return { accessToken: body.access_token, expiresAt: Date.now() + (body.expires_in ?? 3600) * 1000 };
     },

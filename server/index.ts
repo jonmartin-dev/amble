@@ -44,7 +44,7 @@ startJobs([
 ]);
 
 const server = serve({ fetch: app.fetch, port: config.port, hostname: config.host }, (info) => {
-  console.log(`Almanac listening on ${info.address}:${info.port}, public URL ${config.publicUrl}`);
+  console.log(`Amble listening on ${info.address}:${info.port}, public URL ${config.publicUrl}`);
   if (config.devLogin) console.log('Dev sign-in is on. Do not use this in production.');
 });
 // Node drops an idle connection after 5 seconds, which a client reusing it can hit mid-request.

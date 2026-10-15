@@ -1,6 +1,6 @@
 // A stand-in for Google Drive, for tests and for trying sync without a Google account. It answers
 // the calls server/sync/drive.ts makes, for several people at once (one token each), and follows
-// the drive.file rule: Almanac sees a file only if it made it for that person, or they picked it.
+// the drive.file rule: Amble sees a file only if it made it for that person, or they picked it.
 
 interface FakeFile {
   id: string;
@@ -13,7 +13,7 @@ interface FakeFile {
   appProperties: Record<string, string>;
   /** Writers by email; the owner is one. */
   writers: Map<string, string>;
-  /** People whose Almanac can open it: its maker, and anyone who picked it. */
+  /** People whose Amble can open it: its maker, and anyone who picked it. */
   opened: Set<string>;
 }
 
@@ -138,13 +138,13 @@ export function createFakeDrive() {
   return {
     fetch: fetchImpl,
     sent,
-    /** Someone with a Google account; their token is the one Almanac gets after they say yes. */
+    /** Someone with a Google account; their token is the one Amble gets after they say yes. */
     user(email: string, name: string) {
       const token = `token-${email}`;
       users.set(token, { email, name });
       return token;
     },
-    /** What choosing a file in Google's picker does: Almanac can open it for that person from now on. */
+    /** What choosing a file in Google's picker does: Amble can open it for that person from now on. */
     pick(email: string, fileId: string) {
       files.get(fileId)?.opened.add(email);
     },

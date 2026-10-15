@@ -1,6 +1,6 @@
 // Fills a fresh database with a small, realistic household for screenshots and manual testing.
 // Usage: node scripts/demo.ts <data-dir> <email> [name] [partner-email] [partner-name]
-// Then run the app against it: ALMANAC_DATA_DIR=<data-dir> pnpm dev
+// Then run the app against it: AMBLE_DATA_DIR=<data-dir> pnpm dev
 import fs from 'node:fs';
 import path from 'node:path';
 import { config } from '../server/config.ts';

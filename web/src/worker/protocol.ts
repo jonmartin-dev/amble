@@ -1,4 +1,4 @@
-// Messages between the app and the worker that runs Almanac's API on the device.
+// Messages between the app and the worker that runs Amble's API on the device.
 import type { PushMessage } from '../../../server/notify/devices.ts';
 
 export type ToWorker =
@@ -9,7 +9,7 @@ export type ToWorker =
 
 export type FromWorker =
   | { type: 'ready' }
-  /** Another tab has Almanac's database open; this one waits for it. */
+  /** Another tab has Amble's database open; this one waits for it. */
   | { type: 'busy' }
   | { type: 'failed'; message: string }
   | { type: 'response'; id: number; status: number; headers: [string, string][]; body: ArrayBuffer | null }

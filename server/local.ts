@@ -1,4 +1,4 @@
-// Almanac with no server: the same API, run inside the app on the device (web/src/worker/). There's
+// Amble with no server: the same API, run inside the app on the device (web/src/worker/). There's
 // no sign-in; the person using this device is the member it was set up for, and everything stays
 // in the device's own database until they choose to sync it.
 import { eq } from 'drizzle-orm';
@@ -123,12 +123,12 @@ export function createLocalApp({
     const parsed = z
       .object({ name: z.string().trim().min(1).max(80) })
       .safeParse(await c.req.json().catch(() => null));
-    if (!parsed.success) return c.json({ error: 'Say what Almanac should call you.' }, 400);
+    if (!parsed.success) return c.json({ error: 'Say what Amble should call you.' }, 400);
     return c.json({ member: startDevice(db, config, parsed.data.name) }, 201);
   });
 
   app.use('/api/*', async (c, next) => {
-    if (!c.get('member')) return c.json({ error: 'Set up Almanac on this device first.' }, 401);
+    if (!c.get('member')) return c.json({ error: 'Set up Amble on this device first.' }, 401);
     await next();
   });
   app.use('/api/*', queuedWrites(db));
@@ -186,7 +186,7 @@ function registerSync(app: Hono<Env>, sync: SyncService, db: Db) {
   );
 
   app.use('/api/sync/*', async (c, next) => {
-    if (!deviceMember(db)) return c.json({ error: 'Set up Almanac on this device first.' }, 401);
+    if (!deviceMember(db)) return c.json({ error: 'Set up Amble on this device first.' }, 401);
     await next();
   });
 
@@ -226,6 +226,7 @@ export function deviceConfig(origin: string, basePath: string, timezone: string)
     host: '',
     publicUrl: `${origin}${basePath}`,
     basePath,
+    redirectFrom: '',
     publicOrigin: origin,
     secureCookies: origin.startsWith('https://'),
     dataDir: '/',

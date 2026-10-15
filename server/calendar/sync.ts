@@ -27,14 +27,14 @@ export function startOfDate(date: string, timeZone: string) {
   return Temporal.PlainDate.from(date).toZonedDateTime({ timeZone }).epochMilliseconds;
 }
 
-/** Calendars Almanac counts unless someone says otherwise: their own and ones they help keep, not subscriptions. */
+/** Calendars Amble counts unless someone says otherwise: their own and ones they help keep, not subscriptions. */
 function countsByDefault(c: GoogleCalendar) {
   if (c.primary) return true;
   if (c.id.endsWith('.calendar.google.com') && /#(holiday|contacts|weeknum)@/.test(c.id)) return false;
   return (c.accessRole === 'owner' || c.accessRole === 'writer') && c.selected !== false;
 }
 
-/** An event as Almanac keeps it, or null when it shouldn't show or count (cancelled, declined, a working-location marker). */
+/** An event as Amble keeps it, or null when it shouldn't show or count (cancelled, declined, a working-location marker). */
 export function toRow(e: GoogleEvent, source: Pick<CalendarSource, 'id' | 'memberId'>, timeZone: string): EventRow | null {
   if (e.status === 'cancelled' || !e.start || !e.end) return null;
   if (e.eventType === 'workingLocation') return null;
@@ -76,8 +76,8 @@ function friendly(err: unknown) {
   if (/has not been used|is disabled|SERVICE_DISABLED|accessNotConfigured/i.test(text)) {
     return "The Google Calendar API isn't turned on in this server's Google Cloud project yet.";
   }
-  if (/timeout|aborted|fetch failed|ENOTFOUND|ECONNRESET/i.test(text)) return "Couldn't reach Google. Almanac will try again.";
-  return "Google Calendar didn't answer as expected. Almanac will try again.";
+  if (/timeout|aborted|fetch failed|ENOTFOUND|ECONNRESET/i.test(text)) return "Couldn't reach Google. Amble will try again.";
+  return "Google Calendar didn't answer as expected. Amble will try again.";
 }
 
 export function createCalendarSync({ db, config, google }: { db: Db; config: Config; google: GoogleApi }) {
@@ -263,7 +263,7 @@ export function createCalendarSync({ db, config, google }: { db: Db; config: Con
       if (!result.scope.split(/\s+/).includes(CALENDAR_SCOPE)) {
         throw new ConnectError('Google didn\'t share your calendars. Try again and leave "See your calendars" ticked.');
       }
-      if (!result.refreshToken) throw new ConnectError("Google didn't give Almanac lasting access. Try connecting again.");
+      if (!result.refreshToken) throw new ConnectError("Google didn't give Amble lasting access. Try connecting again.");
       const values = {
         memberId: result.memberId,
         subject: result.subject,
@@ -329,7 +329,7 @@ export function createCalendarSync({ db, config, google }: { db: Db; config: Con
       await syncAccount(source.accountId);
     },
 
-    /** Forgets an account and its events, and tells Google to drop Almanac's access. */
+    /** Forgets an account and its events, and tells Google to drop Amble's access. */
     async disconnect(member: Member, accountId: string) {
       const account = db
         .select()

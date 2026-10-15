@@ -151,7 +151,7 @@ export function Settings() {
           {
             icon: <Forum className="size-6" />,
             title: 'Connect an assistant',
-            subtitle: onDevice ? 'Plan from Claude or ChatGPT, with your own Almanac server' : 'Plan from a Claude or ChatGPT chat',
+            subtitle: onDevice ? 'Plan from Claude or ChatGPT, with your own Amble server' : 'Plan from a Claude or ChatGPT chat',
             to: '/connections',
           },
         ]}
@@ -160,7 +160,7 @@ export function Settings() {
       <SectionTitle>About</SectionTitle>
       <ListGroup
         rows={[
-          { icon: <Policy className="size-6" />, title: 'Privacy', subtitle: 'What Almanac keeps and why', to: '/privacy' },
+          { icon: <Policy className="size-6" />, title: 'Privacy', subtitle: 'What Amble keeps and why', to: '/privacy' },
           // On a device there's nobody to sign out; the data is this device's.
           ...(onDevice ? [] : [{ icon: <Logout className="size-6" />, title: 'Sign out', onClick: () => void signOut(qc) }]),
         ]}

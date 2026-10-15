@@ -1,5 +1,5 @@
-// Almanac as the Android app: Capacitor around the device build. The phone itself shows each
-// reminder at its time, even with Almanac closed, so the app hands it the coming ones whenever they
+// Amble as the Android app: Capacitor around the device build. The phone itself shows each
+// reminder at its time, even with Amble closed, so the app hands it the coming ones whenever they
 // may have changed. Done and Snooze on a notification work as they do for web push.
 import { App } from '@capacitor/app';
 import { Capacitor, registerPlugin } from '@capacitor/core';
@@ -70,7 +70,7 @@ export async function askPhoneNotifyPermission(): Promise<'granted' | 'denied' |
 }
 
 /**
- * Whether Android lets Almanac show reminders on the minute ("Alarms and reminders" in its
+ * Whether Android lets Amble show reminders on the minute ("Alarms and reminders" in its
  * settings). Without it they still show, sometimes a few minutes late while the phone is idle.
  */
 export async function exactReminders() {
@@ -251,9 +251,9 @@ export async function updateTodayWidget() {
 }
 
 /** Opens quick add, from the widget's +. */
-export const QUICK_ADD = 'almanac:quick-add';
+export const QUICK_ADD = 'amble:quick-add';
 
-/** Where a link from the widget goes: dev.jonmartin.almanac://task/<id>, ://add or ://today. */
+/** Where a link from the widget goes: dev.jonmartin.amble://task/<id>, ://add or ://today. */
 function followLink(url: string, open: (path: string) => void) {
   let link: URL;
   try {

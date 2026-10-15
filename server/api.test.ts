@@ -9,7 +9,7 @@ import { activity, members, type Member } from './db/schema.ts';
 import { seedStarterGroups } from './db/seed.ts';
 import { addDays, planningDate } from './lib/dates.ts';
 
-const ORIGIN = 'https://almanac.test';
+const ORIGIN = 'https://amble.test';
 const testConfig: Config = {
   ...config,
   production: false,
@@ -210,7 +210,7 @@ describe('phase 4 API', () => {
 });
 
 describe('phase 5 API', () => {
-  it('repeats, skips and shows what capacity Almanac has learned', async () => {
+  it('repeats, skips and shows what capacity Amble has learned', async () => {
     const api = as(jon);
     const { json } = await api.post('/tasks', { title: 'Bins out', repeat: { mode: 'schedule', every: 1, unit: 'day' } });
     expect(json.task).toMatchObject({ plannedDate: today, repeat: { unit: 'day' } });

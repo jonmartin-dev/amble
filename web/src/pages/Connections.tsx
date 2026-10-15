@@ -76,10 +76,10 @@ function Steps({ assistant, url }: { assistant: Assistant; url: string | undefin
         <ol className="flex list-decimal flex-col gap-3 pl-5">
           <li>In Claude, open Settings, then Connectors, and choose Add custom connector.</li>
           <li>
-            Name it Almanac and paste this address:
+            Name it Amble and paste this address:
             <Address url={url} />
           </li>
-          <li>Choose Connect, then Allow on the Almanac page that opens.</li>
+          <li>Choose Connect, then Allow on the Amble page that opens.</li>
         </ol>
         <p className="mt-4 text-sm">It works in Claude on the web, the desktop and phone apps, and Claude Code.</p>
       </>
@@ -90,14 +90,14 @@ function Steps({ assistant, url }: { assistant: Assistant; url: string | undefin
       <ol className="flex list-decimal flex-col gap-3 pl-5">
         <li>In ChatGPT on the web, open Settings, then Apps, then Advanced settings, and turn on Developer mode.</li>
         <li>
-          Back in Apps, choose Create. Name it Almanac and paste this address:
+          Back in Apps, choose Create. Name it Amble and paste this address:
           <Address url={url} />
         </li>
-        <li>Pick OAuth for authentication, then Allow on the Almanac page that opens, and choose Create.</li>
+        <li>Pick OAuth for authentication, then Allow on the Amble page that opens, and choose Create.</li>
       </ol>
       <p className="mt-4 text-sm">
         Developer mode is a ChatGPT beta, only on the web. On Business, Enterprise and Edu plans ChatGPT can add and change things; on
-        Pro it can only look. In a chat, pick Almanac from the tools menu or type @Almanac.
+        Pro it can only look. In a chat, pick Amble from the tools menu or type @Amble.
       </p>
     </>
   );
@@ -112,14 +112,14 @@ function NeedsServer() {
         Ask Claude or ChatGPT to add tasks, plan your week, hand something to someone, or put milk on the grocery list.
       </p>
       <section className="mt-5 rounded-[2rem] bg-secondary-container p-5 text-on-secondary-container">
-        <h2 className="display text-xl font-medium">This needs an Almanac server</h2>
+        <h2 className="display text-xl font-medium">This needs an Amble server</h2>
         <p className="mt-2">
-          Claude and ChatGPT reach Almanac from their own computers on the internet, so they need an address that's always there. A
+          Claude and ChatGPT reach Amble from their own computers on the internet, so they need an address that's always there. A
           phone or a browser tab can't be that.
         </p>
         <p className="mt-2">
-          Almanac's server runs as one Docker container on a computer you keep on, like a home server. It joins your household's sync
-          as one more copy, and gives you the address to connect. Almanac's docs walk through setting it up.
+          Amble's server runs as one Docker container on a computer you keep on, like a home server. It joins your household's sync
+          as one more copy, and gives you the address to connect. Amble's docs walk through setting it up.
         </p>
       </section>
     </>

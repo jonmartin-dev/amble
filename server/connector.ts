@@ -1,7 +1,7 @@
-// The remote connector: Almanac as its own OAuth 2.1 authorization server, plus the MCP endpoint
+// The remote connector: Amble as its own OAuth 2.1 authorization server, plus the MCP endpoint
 // those tokens unlock. Claude (claude.ai, the desktop and mobile apps, Claude Code) and ChatGPT
 // find everything from the 401 on /mcp, identify themselves with a Client ID Metadata Document
-// (or dynamic registration), and send the member through Almanac's normal sign-in and a one-tap
+// (or dynamic registration), and send the member through Amble's normal sign-in and a one-tap
 // consent page.
 import { createMcpHandler, OAuthError, OAuthErrorCode, requireBearerAuth, type AuthInfo } from '@modelcontextprotocol/server';
 import { eq } from 'drizzle-orm';
@@ -39,7 +39,7 @@ function oauthError(c: Context<Env>, err: unknown) {
 
 function errorPage(message: string) {
   const safe = message.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
-  return `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Almanac</title>
+  return `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Amble</title>
 <body style="font:16px/1.5 system-ui,sans-serif;max-width:32rem;margin:15vh auto;padding:0 1.5rem;color:#171d1a;background:#f4fbf7">
 <h1 style="font-weight:500">Can't connect</h1><p>${safe}</p><p>Start again from the app you were connecting.</p></body>`;
 }
@@ -88,7 +88,7 @@ export function registerConnector(app: Hono<Env>, { db, config, fetchImpl = fetc
     authorization_servers: [issuer],
     scopes_supported: [SCOPE],
     bearer_methods_supported: ['header'],
-    resource_name: 'Almanac',
+    resource_name: 'Amble',
   };
 
   // Everything a client calls directly is open to any origin. None of it uses cookies.

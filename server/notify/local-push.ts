@@ -1,5 +1,5 @@
 // Reminders on a device with no server: the app's worker hands each one to the page, which shows
-// it as a notification. That works while Almanac is open (or, in the Android app, through the
+// it as a notification. That works while Amble is open (or, in the Android app, through the
 // phone's own scheduled notifications). Devices are kept in the same table as web push ones, with
 // an address that only means "this browser".
 import { and, eq } from 'drizzle-orm';

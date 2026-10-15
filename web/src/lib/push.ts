@@ -1,5 +1,5 @@
 // Notifications on this device, for reminders: whether they can be on here, turning them on and
-// off, and keeping the server's record of this device current. Almanac only ever notifies someone
+// off, and keeping the server's record of this device current. Amble only ever notifies someone
 // about a reminder they set.
 import { useCallback, useEffect, useState } from 'react';
 import { api } from './api.ts';
@@ -9,7 +9,7 @@ import { askPhoneNotifyPermission, cancelPhoneReminders, native, phoneNotifyPerm
 
 /**
  * - unsupported: this browser can't show notifications from a web app.
- * - needs-install: iPhone and iPad can, once Almanac is added to the home screen.
+ * - needs-install: iPhone and iPad can, once Amble is added to the home screen.
  * - blocked: the person said no in the browser; only its site settings can undo that.
  */
 export type PushState = 'unsupported' | 'needs-install' | 'blocked' | 'off' | 'on';
@@ -88,7 +88,7 @@ export async function enablePush(): Promise<PushState> {
     return 'on';
   }
   const reg = await registration();
-  if (!reg) throw new Error("Notifications need the installed app. Reload Almanac and try again.");
+  if (!reg) throw new Error("Notifications need the installed app. Reload Amble and try again.");
   const { publicKey } = await api<{ publicKey: string }>('/push');
   await subscribe(reg, publicKey);
   return 'on';

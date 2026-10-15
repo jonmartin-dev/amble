@@ -14,7 +14,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile --prod
 
 FROM node:26-slim
-ENV NODE_ENV=production PORT=8080 ALMANAC_DATA_DIR=/data
+ENV NODE_ENV=production PORT=8080 AMBLE_DATA_DIR=/data
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json ./

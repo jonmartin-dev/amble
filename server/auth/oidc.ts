@@ -3,7 +3,7 @@ import type { Config } from '../config.ts';
 
 /** Read access to calendars and events, which is all phase 7 needs. */
 export const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.readonly';
-/** Almanac's own files in Google Drive, for keeping the server in step with a household's devices. */
+/** Amble's own files in Google Drive, for keeping the server in step with a household's devices. */
 export const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/drive.file';
 
 interface PendingLogin {
@@ -16,7 +16,7 @@ interface PendingLogin {
   expires: number;
 }
 
-/** Lasting access to part of someone's Google account: their calendars, or Almanac's files in their Drive. */
+/** Lasting access to part of someone's Google account: their calendars, or Amble's files in their Drive. */
 export interface GoogleGrant {
   memberId: string;
   returnTo: string;
@@ -36,7 +36,7 @@ export type Finished =
 const FLOW_TTL_MS = 10 * 60 * 1000;
 const GOOGLE = 'https://accounts.google.com';
 
-/** A sign-in the provider finished but Almanac can't accept; `code` picks the message the sign-in page shows. */
+/** A sign-in the provider finished but Amble can't accept; `code` picks the message the sign-in page shows. */
 export class SignInError extends Error {
   readonly code: 'no-email' | 'unverified';
   constructor(code: SignInError['code'], message: string) {
@@ -149,7 +149,7 @@ export function createOidc(config: Config) {
     },
 
     /**
-     * Asks Google to let the server keep Almanac's files in someone's Drive, offline so it syncs
+     * Asks Google to let the server keep Amble's files in someone's Drive, offline so it syncs
      * while nobody's using it.
      */
     beginDrive(memberId: string, loginHint: string, returnTo: string) {

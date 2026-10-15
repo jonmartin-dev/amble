@@ -63,7 +63,7 @@ export function createGrantStore(db: Db, config: Config) {
   function memberFor(id: string): Member {
     const member = db.select().from(members).where(eq(members.id, id)).get();
     if (!member || !isAllowed(db, config, member.email)) {
-      throw new OAuthFailure('invalid_grant', 'This account can no longer use Almanac.');
+      throw new OAuthFailure('invalid_grant', 'This account can no longer use Amble.');
     }
     return member;
   }

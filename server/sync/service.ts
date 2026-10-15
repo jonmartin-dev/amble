@@ -1,5 +1,5 @@
-// Keeping a copy of Almanac in step through Google Drive. One file holds the state: in Almanac's
-// hidden folder in the person's own Drive when it's just them, or a shared "Almanac household" file
+// Keeping a copy of Amble in step through Google Drive. One file holds the state: in Amble's
+// hidden folder in the person's own Drive when it's just them, or a shared "Amble household" file
 // when it's a household. Each round downloads it if it changed, merges it in, and writes it back if
 // this copy has changes it lacks. Two devices writing at once can overwrite each other; the next
 // round notices its changes are missing and writes them again.
@@ -113,7 +113,7 @@ export function createSyncService({ db, schema, fetchImpl = fetch, adopt }: { db
       err instanceof DriveAuthError
         ? 'Google needs you to sign in again.'
         : err instanceof NewerSchema
-          ? 'Another device has a newer Almanac. Update this one to keep syncing.'
+          ? 'Another device has a newer Amble. Update this one to keep syncing.'
           : err instanceof SyncSetupError || err instanceof DriveError
             ? err.message
             : "Couldn't reach Google Drive.";
@@ -162,7 +162,7 @@ export function createSyncService({ db, schema, fetchImpl = fetch, adopt }: { db
           kind = 'household';
           file = await drive.meta(how.fileId).catch(() => undefined);
           if (!file || file.appProperties?.[HOUSEHOLD_PROPERTY.key] !== HOUSEHOLD_PROPERTY.value) {
-            throw new SyncSetupError("That isn't an Almanac household file. Pick the one shared with you, named like “Almanac household”.");
+            throw new SyncSetupError("That isn't an Amble household file. Pick the one shared with you, named like “Amble household”.");
           }
           if (file.capabilities?.canEdit === false) throw new SyncSetupError('That household file is shared with you to view only. Ask whoever shared it to let you edit.');
         } else kind = 'household';
@@ -183,10 +183,10 @@ export function createSyncService({ db, schema, fetchImpl = fetch, adopt }: { db
               ? await drive.create({ name: PERSONAL_FILE, parents: ['appDataFolder'] }, await pack(state))
               : await drive.create(
                   {
-                    name: how.mode === 'create' ? how.name : 'Almanac household',
+                    name: how.mode === 'create' ? how.name : 'Amble household',
                     mimeType: HOUSEHOLD_MIME,
                     appProperties: { [HOUSEHOLD_PROPERTY.key]: HOUSEHOLD_PROPERTY.value },
-                    description: "Almanac keeps your household's tasks and lists in step through this file. Leave it here; Almanac reads and writes it.",
+                    description: "Amble keeps your household's tasks and lists in step through this file. Leave it here; Amble reads and writes it.",
                   },
                   await pack(state),
                 );
@@ -241,7 +241,7 @@ export function createSyncService({ db, schema, fetchImpl = fetch, adopt }: { db
       await createDrive(token, fetchImpl).share(
         target.fileId,
         address,
-        `${from} is sharing their Almanac household with you. Open Almanac, choose “Join a household”, and pick this file.`,
+        `${from} is sharing their Amble household with you. Open Amble, choose “Join a household”, and pick this file.`,
       );
       if (!db.select().from(members).where(eq(members.email, address)).get()) {
         const timezone = db.select({ tz: members.timezone }).from(members).get()?.tz ?? 'UTC';

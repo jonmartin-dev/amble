@@ -86,7 +86,7 @@ export function PlanWeekSheet({ open, onClose, today }: { open: boolean; onClose
       {!week && ai?.available && (
         <>
           <p className="mt-3 text-on-surface-variant">
-            Almanac puts what's due and what's waited longest on the days with the most room, and leaves some slack. You review it before
+            Amble puts what's due and what's waited longest on the days with the most room, and leaves some slack. You review it before
             anything moves.
           </p>
           <label className="mt-4 block">

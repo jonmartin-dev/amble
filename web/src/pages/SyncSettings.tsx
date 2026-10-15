@@ -102,7 +102,7 @@ function ServerSync() {
           <h2 className="display text-xl font-medium">Keep this server in step with your devices</h2>
         </div>
         <p className="mt-2">
-          A household that keeps Almanac in Google Drive can have this server as one more copy. Then the server's own app, and Claude or
+          A household that keeps Amble in Google Drive can have this server as one more copy. Then the server's own app, and Claude or
           ChatGPT through the connector, see and change the same tasks and lists as everyone's phones.
         </p>
       </section>
@@ -150,7 +150,7 @@ function ServerSync() {
             Connect Google Drive
           </button>
           <p className="px-1 text-sm text-on-surface-variant">
-            Google asks whether Almanac can keep its files in your Drive. The server keeps that access, to sync while nobody's using it.
+            Google asks whether Amble can keep its files in your Drive. The server keeps that access, to sync while nobody's using it.
           </p>
         </div>
       ) : (
@@ -172,12 +172,12 @@ function ServerSync() {
           ) : (
             <p className="px-1 text-on-surface-variant">
               {households
-                ? `No household files that ${status.google} can open yet. Join or make one in Almanac on a device with this account, or start one here.`
+                ? `No household files that ${status.google} can open yet. Join or make one in Amble on a device with this account, or start one here.`
                 : 'Looking…'}
             </p>
           )}
           <SectionTitle>Or start one</SectionTitle>
-          <button type="button" disabled={busy} onClick={() => void connect({ mode: 'create', name: `${me?.name ?? 'Our'}'s Almanac household` })} className={button}>
+          <button type="button" disabled={busy} onClick={() => void connect({ mode: 'create', name: `${me?.name ?? 'Our'}'s Amble household` })} className={button}>
             Make a household from this server
           </button>
           <p className="mt-2 px-1 text-sm text-on-surface-variant">Everything on this server goes into a new file in Google Drive, for devices to join.</p>
@@ -216,7 +216,7 @@ function DeviceSync() {
   const connect = (mode: 'personal' | 'create') =>
     run('Syncing', async () => {
       const token = await tokenFromTap(`connect:${mode}`, status?.account?.email);
-      const body = mode === 'create' ? { token, mode, name: `${me?.name ?? 'Our'}'s Almanac household` } : { token, mode };
+      const body = mode === 'create' ? { token, mode, name: `${me?.name ?? 'Our'}'s Amble household` } : { token, mode };
       await api('/sync/connect', { method: 'POST', body: JSON.stringify(body) });
       await qc.invalidateQueries({ queryKey: ['session'] });
     });
@@ -268,7 +268,7 @@ function DeviceSync() {
         <SubpageHeader title="Sync and backup" />
         <p className="mt-4 flex gap-3 rounded-3xl bg-surface-low p-5 text-on-surface-variant">
           <Warning className="size-6 shrink-0" aria-hidden />
-          This copy of Almanac wasn't built with a Google sign-in client, so it can't sync through Google Drive.
+          This copy of Amble wasn't built with a Google sign-in client, so it can't sync through Google Drive.
         </p>
       </>
     );
@@ -287,7 +287,7 @@ function DeviceSync() {
           <h2 className="display text-xl font-medium">Keep it in your Google Drive</h2>
         </div>
         <p className="mt-2">
-          Almanac keeps a copy in your own Google Drive and brings your other devices and your household in step with it. It can only see
+          Amble keeps a copy in your own Google Drive and brings your other devices and your household in step with it. It can only see
           the files it makes there, and nothing goes anywhere else.
         </p>
       </section>
@@ -300,7 +300,7 @@ function DeviceSync() {
           <button type="button" disabled={busy} onClick={() => void join()} className={quiet}>
             Join a household someone shared with you
           </button>
-          <p className="px-1 text-sm text-on-surface-variant">Google asks once whether Almanac can keep its files in your Drive.</p>
+          <p className="px-1 text-sm text-on-surface-variant">Google asks once whether Amble can keep its files in your Drive.</p>
         </div>
       ) : (
         <>
@@ -321,14 +321,14 @@ function DeviceSync() {
           />
           <p className="mt-2 px-1 text-sm text-on-surface-variant">
             {native
-              ? 'It syncs when Almanac opens, every minute while it’s open, and soon after each change.'
-              : 'While Almanac is open it syncs every minute. Google lets a browser keep access for about an hour, so now and then it asks you to tap to carry on.'}
+              ? 'It syncs when Amble opens, every minute while it’s open, and soon after each change.'
+              : 'While Amble is open it syncs every minute. Google lets a browser keep access for about an hour, so now and then it asks you to tap to carry on.'}
           </p>
 
           <SectionTitle>Household</SectionTitle>
           {!household ? (
             <div className="flex flex-col items-start gap-3">
-              <p className="px-1 text-on-surface-variant">Share Almanac with the people you live with: groups, lists and tasks you can hand each other.</p>
+              <p className="px-1 text-on-surface-variant">Share Amble with the people you live with: groups, lists and tasks you can hand each other.</p>
               <button type="button" disabled={busy} onClick={() => void connect('create')} className={button}>
                 <span className="flex items-center gap-2">
                   <Groups className="size-5" aria-hidden />
@@ -383,7 +383,7 @@ function DeviceSync() {
                       className="rounded-2xl bg-surface-high px-4 py-3 outline-none placeholder:text-on-surface-variant"
                     />
                     <p className="px-1 text-sm text-on-surface-variant">
-                      Google emails them a link. In Almanac they choose “Join a household” and pick the file once.
+                      Google emails them a link. In Amble they choose “Join a household” and pick the file once.
                     </p>
                     <div className="flex justify-end gap-2">
                       <button type="button" onClick={() => setAdding(null)} className="rounded-full px-4 py-2 text-sm font-medium">
@@ -401,7 +401,7 @@ function DeviceSync() {
                   </button>
                 ))}
               <p className="mt-3 px-1 text-sm text-on-surface-variant">
-                Everyone in the household has the whole file in their Drive. Private lists stay out of their view in Almanac, but the file
+                Everyone in the household has the whole file in their Drive. Private lists stay out of their view in Amble, but the file
                 itself holds them. Photos and files on tasks stay on the devices of whoever added them.
               </p>
             </>

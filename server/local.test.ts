@@ -51,7 +51,7 @@ beforeAll(async () => {
 beforeEach(() => {
   db = drizzleOn(asBetterSqlite(new WasmClient(sqlite3, new sqlite3.oo1.DB(':memory:', 'c'))));
   applyMigrations(db, readMigrationFiles({ migrationsFolder: fileURLToPath(new URL('../drizzle', import.meta.url)) }));
-  const config = deviceConfig('https://almanac.example', '', 'America/Chicago');
+  const config = deviceConfig('https://amble.example', '', 'America/Chicago');
   shown = [];
   app = createLocalApp({
     db,
@@ -67,7 +67,7 @@ beforeEach(() => {
 });
 
 const call = async (method: string, path: string, body?: unknown) => {
-  const res = await app.request(`https://almanac.example/api${path}`, {
+  const res = await app.request(`https://amble.example/api${path}`, {
     method,
     headers: { 'content-type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -75,7 +75,7 @@ const call = async (method: string, path: string, body?: unknown) => {
   return { status: res.status, json: res.status === 204 ? null : await res.json() };
 };
 
-describe('Almanac on a device', () => {
+describe('Amble on a device', () => {
   it('starts with nobody, then sets up its person with the starter groups', async () => {
     expect((await call('GET', '/session')).json).toMatchObject({ member: null, auth: { mode: 'device' } });
     expect((await call('GET', '/groups')).status).toBe(401);
@@ -107,14 +107,14 @@ describe('Almanac on a device', () => {
       ]),
     );
 
-    const upload = await app.request(`https://almanac.example/api/tasks/${task.id}/files?name=note.txt`, {
+    const upload = await app.request(`https://amble.example/api/tasks/${task.id}/files?name=note.txt`, {
       method: 'POST',
       headers: { 'content-type': 'text/plain' },
       body: 'two cups a week',
     });
     expect(upload.status).toBe(201);
     const file = (await upload.json()).file;
-    const back = await app.request(`https://almanac.example/api/files/${file.id}`);
+    const back = await app.request(`https://amble.example/api/files/${file.id}`);
     expect(await back.text()).toBe('two cups a week');
 
     await call('POST', '/push/subscriptions', { endpoint: 'device:this-browser', keys: { p256dh: '-', auth: '-' } });

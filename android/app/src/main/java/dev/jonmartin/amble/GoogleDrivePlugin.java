@@ -1,4 +1,4 @@
-package dev.jonmartin.almanac;
+package dev.jonmartin.amble;
 
 import android.accounts.Account;
 import android.app.Activity;
@@ -95,7 +95,7 @@ public class GoogleDrivePlugin extends Plugin {
             .addOnFailureListener((e) -> call.reject(e.getMessage(), "FAILED"));
     }
 
-    /** Takes Almanac's Drive access away, for when sync is stopped. */
+    /** Takes Amble's Drive access away, for when sync is stopped. */
     @PluginMethod
     public void revoke(PluginCall call) {
         String email = call.getString("email");

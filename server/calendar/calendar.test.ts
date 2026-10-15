@@ -272,7 +272,7 @@ describe('load with a calendar', () => {
 });
 
 describe('calendars API', () => {
-  const ORIGIN = 'https://almanac.test';
+  const ORIGIN = 'https://amble.test';
   const appConfig: Config = { ...testConfig, publicUrl: ORIGIN, basePath: '', publicOrigin: ORIGIN, devLogin: false, ai: { ...config.ai, apiKey: '' } };
 
   async function client(cfg = appConfig) {

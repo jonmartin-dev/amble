@@ -128,7 +128,7 @@ export const googleReturnUrl = () => new URL(`${basePath}/google-return`, locati
  * better. Only call it from a tap.
  */
 export function signInWithGoogle(action: string, hint?: string): Promise<never> {
-  if (!CLIENT_ID) throw new Error("This copy of Almanac isn't set up to sign in with Google.");
+  if (!CLIENT_ID) throw new Error("This copy of Amble isn't set up to sign in with Google.");
   const state = crypto.randomUUID();
   sessionStorage.setItem(PENDING_KEY, JSON.stringify({ state, action, path: location.pathname + location.search } satisfies Pending));
   const params = new URLSearchParams({
@@ -175,7 +175,7 @@ export function takeGoogleReturn() {
       ? 'Google sign-in was cancelled.'
       : "Google didn't sign you in. Try again."
     : !DRIVE_SCOPES.every((s) => granted.includes(s))
-      ? 'Almanac needs both Drive permissions to sync. Try again and leave them ticked.'
+      ? 'Amble needs both Drive permissions to sync. Try again and leave them ticked.'
       : null;
   if (token && !error) {
     try {
@@ -201,24 +201,25 @@ export async function tokenFromTap(action: string, hint?: string): Promise<strin
   return currentToken() ?? signInWithGoogle(action, hint);
 }
 
-// Household files are gzipped (Drive can go by what's inside, whatever type Almanac gives them).
+// Household files are gzipped (Drive can go by what's inside, whatever type Amble gives them).
 const HOUSEHOLD_TYPES = `${HOUSEHOLD_MIME},application/x-gzip,application/gzip`;
 
 /** Google's picker, for choosing the household file someone shared. Resolves with its id, or null. */
 export async function pickHouseholdFile(token: string, email?: string): Promise<string | null> {
   if (native) return (await GoogleDrive.pick({ mimeTypes: HOUSEHOLD_TYPES, email })).fileId;
-  if (!API_KEY || !APP_ID) throw new Error("This copy of Almanac isn't set up to pick files from Google Drive.");
+  if (!API_KEY || !APP_ID) throw new Error("This copy of Amble isn't set up to pick files from Google Drive.");
   await load('https://apis.google.com/js/api.js');
   await new Promise<void>((resolve) => window.gapi.load('picker', () => resolve()));
   const picker = window.google.picker;
   return new Promise<string | null>((resolve) => {
-    // Almanac in the name keeps other gzipped files out of the list.
+    // "household" in the name keeps other gzipped files out of the list (files made before the app
+    // was renamed say Almanac household, newer ones Amble household).
     const view = (mine: boolean) =>
-      new picker.DocsView(picker.ViewId.DOCS).setOwnedByMe(mine).setMode(picker.DocsViewMode.LIST).setMimeTypes(HOUSEHOLD_TYPES).setQuery('Almanac');
+      new picker.DocsView(picker.ViewId.DOCS).setOwnedByMe(mine).setMode(picker.DocsViewMode.LIST).setMimeTypes(HOUSEHOLD_TYPES).setQuery('household');
     const shared = view(false);
     const mine = view(true);
     new picker.PickerBuilder()
-      .setTitle('Pick the Almanac household file shared with you')
+      .setTitle('Pick the Amble household file shared with you')
       .addView(shared)
       .addView(mine)
       .setOAuthToken(token)

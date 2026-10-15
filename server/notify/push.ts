@@ -1,4 +1,4 @@
-// Web push: the keys Almanac signs with, the devices people turned notifications on for, and
+// Web push: the keys Amble signs with, the devices people turned notifications on for, and
 // sending to them. Each message is encrypted for its device; the push service in between (Google's
 // for Chrome) only passes it along.
 import { and, eq } from 'drizzle-orm';
@@ -39,14 +39,14 @@ function checkEndpoint(endpoint: string) {
   }
   const host = url.hostname.toLowerCase();
   if (url.protocol !== 'https:' || !PUSH_HOSTS.some((h) => host === h || host.endsWith(`.${h}`))) {
-    throw new DomainError("Almanac can't send notifications through that browser's push service.");
+    throw new DomainError("Amble can't send notifications through that browser's push service.");
   }
 }
 
 export function createPush(db: Db, config: Config, send: Send = (sub, payload, options) => webpush.sendNotification(sub, payload, options)): Push {
   const keys = vapidKeys(db);
   // Push services want a way to reach whoever runs the server: its address, or an admin's email.
-  const subject = config.publicUrl.startsWith('https://') ? config.publicUrl : `mailto:${config.adminEmails[0] ?? 'almanac@example.com'}`;
+  const subject = config.publicUrl.startsWith('https://') ? config.publicUrl : `mailto:${config.adminEmails[0] ?? 'amble@example.com'}`;
 
   return {
     publicKey: keys.publicKey,

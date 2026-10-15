@@ -62,15 +62,15 @@ describe('the WebAssembly SQLite client', () => {
   it('runs functions defined in JavaScript', () => {
     const c = client();
     let n = 0;
-    c.function('almanac_next', () => ++n);
-    expect(c.prepare('select almanac_next() as a, almanac_next() as b').get()).toEqual({ a: 1, b: 2 });
+    c.function('amble_next', () => ++n);
+    expect(c.prepare('select amble_next() as a, amble_next() as b').get()).toEqual({ a: 1, b: 2 });
   });
 
   it('carries drizzle and the migrations', () => {
     const db = drizzleOn(asBetterSqlite(client()));
     db.run(sql`create table g (id text primary key, name text not null, archived integer)`);
-    const db2 = (globalThis as { __almanacSqlite3?: unknown }).__almanacSqlite3 ? openDatabase(':memory:') : null;
-    // Under ALMANAC_SQLITE=wasm the whole suite's databases are this client too.
+    const db2 = (globalThis as { __ambleSqlite3?: unknown }).__ambleSqlite3 ? openDatabase(':memory:') : null;
+    // Under AMBLE_SQLITE=wasm the whole suite's databases are this client too.
     if (db2) expect(db2.$client).toBeInstanceOf(WasmClient);
     const real = openDatabase(':memory:');
     const jon = real.insert(members).values({ email: 'jon@example.com', name: 'Jon', timezone: 'America/Chicago' }).returning().get();

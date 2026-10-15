@@ -16,44 +16,44 @@ export function Privacy() {
   return onDevice ? <DevicePrivacy /> : <ServerPrivacy />;
 }
 
-/** Almanac with no server: what stays on the device, and what goes to Google Drive or an AI provider when someone sets that up. */
+/** Amble with no server: what stays on the device, and what goes to Google Drive or an AI provider when someone sets that up. */
 function DevicePrivacy() {
   const auth = useSession().data?.auth;
   const aiName = auth?.ai?.provider === 'custom' ? 'the service you chose' : (auth?.ai?.name ?? '');
   return (
     <main className="mx-auto max-w-xl px-6 py-12 leading-relaxed">
       <a href={appUrl('/')} className="text-sm font-medium text-primary">
-        Almanac
+        Amble
       </a>
       <h1 className="display mt-4 text-4xl font-medium">Privacy</h1>
       <p className="mt-2 text-on-surface-variant">Last updated October 15, 2026</p>
 
       <div className="mt-8 flex flex-col gap-5 [&_h2]:display [&_h2]:text-xl [&_h2]:font-medium">
         <p>
-          This copy of Almanac runs on your device. Everything you put in it (tasks, lists, notes, links and files) is kept in this
+          This copy of Amble runs on your device. Everything you put in it (tasks, lists, notes, links and files) is kept in this
           browser's own storage for this site, and nothing goes anywhere unless you set up one of the things below. There's no
-          Almanac server, account or analytics.
+          Amble server, account or analytics.
         </p>
         <h2>Sync with Google Drive</h2>
         <p>
-          If you turn on sync, Almanac keeps a copy in your Google Drive and brings your other devices in step with it. Just for you, the
-          copy is in Almanac's own hidden folder in your Drive, which only Almanac can open. For a household, it's a file in the Drive of
+          If you turn on sync, Amble keeps a copy in your Google Drive and brings your other devices in step with it. Just for you, the
+          copy is in Amble's own hidden folder in your Drive, which only Amble can open. For a household, it's a file in the Drive of
           whoever made the household, shared with the people they add; everyone in it has the whole file, including lists marked as
-          only theirs, which Almanac keeps out of others' view but doesn't keep out of the file. Almanac asks Google only for its own
+          only theirs, which Amble keeps out of others' view but doesn't keep out of the file. Amble asks Google only for its own
           files: the hidden folder, and files it made or that you picked for it. It can't see anything else in your Drive. Photos and
           files on tasks stay on the devices of whoever added them.
         </p>
         <p>
           {native
-            ? 'Android gives the app a key to your Drive that lasts about an hour, and a fresh one while you allow Almanac.'
+            ? 'Android gives the app a key to your Drive that lasts about an hour, and a fresh one while you allow Amble.'
             : 'Google gives the app a key to your Drive that lasts about an hour and is kept only in this tab.'}{' '}
-          If someone in the household runs their own Almanac server and connects it, the server is one more copy of the household's file.
+          If someone in the household runs their own Amble server and connects it, the server is one more copy of the household's file.
         </p>
         <h2>Reminders</h2>
         <p>
           {native
             ? 'A reminder you set is handed to your phone, which shows it at its time. Nothing goes through a push service.'
-            : 'A reminder you set shows as a notification from this browser while Almanac is open. Nothing goes through a push service.'}
+            : 'A reminder you set shows as a notification from this browser while Amble is open. Nothing goes through a push service.'}
         </p>
         <h2>AI features</h2>
         {auth?.ai ? (
@@ -69,7 +69,7 @@ function DevicePrivacy() {
         <h2>Removing your data</h2>
         <p>
           Stop syncing in Settings, then clear this site's data in your browser to remove everything from this device. A household file
-          in Google Drive is removed like any other file there; Almanac's hidden copy goes when you disconnect Almanac at
+          in Google Drive is removed like any other file there; Amble's hidden copy goes when you disconnect Amble at
           myaccount.google.com/connections.
         </p>
       </div>
@@ -84,35 +84,35 @@ function ServerPrivacy() {
   return (
     <main className="mx-auto max-w-xl px-6 py-12 leading-relaxed">
       <a href={appUrl('/')} className="text-sm font-medium text-primary">
-        Almanac
+        Amble
       </a>
       <h1 className="display mt-4 text-4xl font-medium">Privacy</h1>
       <p className="mt-2 text-on-surface-variant">Last updated October 14, 2026</p>
 
       <div className="mt-8 flex flex-col gap-5 [&_h2]:display [&_h2]:text-xl [&_h2]:font-medium">
         <p>
-          Almanac is a self-hosted planner. This copy runs on the household's own server, and only people the household admin has
+          Amble is a self-hosted planner. This copy runs on the household's own server, and only people the household admin has
           added can sign in.
         </p>
-        <h2>What Almanac stores</h2>
+        <h2>What Amble stores</h2>
         <p>
           Your name, email address and profile picture from your {provider} account, so you can sign in and so the household can see who
-          a task belongs to. Everything you put into Almanac (tasks, lists, notes, links and files) is stored on the household's own
+          a task belongs to. Everything you put into Amble (tasks, lists, notes, links and files) is stored on the household's own
           server. Files on a task are visible to everyone who can see that task.
         </p>
         <h2>Reminders</h2>
         <p>
-          Almanac only sends a notification for a reminder you set yourself. It goes to the devices where you turned notifications on,
+          Amble only sends a notification for a reminder you set yourself. It goes to the devices where you turned notifications on,
           through your browser's push service (Google's for Chrome and Android, Apple's for iPhone). The task's title and a line of its
           notes travel encrypted for your device, so the push service passes them along without being able to read them. Signing out
           or turning notifications off in Settings stops them on that device.
         </p>
         <h2>Google Calendar</h2>
         <p>
-          If you connect Google Calendar, Almanac reads the calendars you choose, to work out how busy your days are and plan around them.
+          If you connect Google Calendar, Amble reads the calendars you choose, to work out how busy your days are and plan around them.
           It keeps a copy of their events from twelve weeks back to six months ahead on the household's server, refreshed every few
-          minutes. Only you see your events; everyone else in the household only sees that a day is busier. Almanac only reads: it never
-          adds, edits or deletes events. Disconnecting a calendar in Settings deletes the copy and tells Google to end Almanac's access.
+          minutes. Only you see your events; everyone else in the household only sees that a day is busier. Amble only reads: it never
+          adds, edits or deletes events. Disconnecting a calendar in Settings deletes the copy and tells Google to end Amble's access.
         </p>
         <h2>AI features</h2>
         {auth?.ai ? (
@@ -136,17 +136,17 @@ function ServerPrivacy() {
         </p>
         <h2>Claude and ChatGPT</h2>
         <p>
-          If you connect Claude or ChatGPT to Almanac, it can read and change your tasks, lists and plans when you ask it to, acting as
+          If you connect Claude or ChatGPT to Amble, it can read and change your tasks, lists and plans when you ask it to, acting as
           you, and look at photos and text files on tasks. What it reads becomes part of that conversation and is handled under your
           Anthropic or OpenAI account's privacy settings. Changes it makes show in Activity as made through it. You can disconnect it at
-          any time from Connect an assistant in Almanac.
+          any time from Connect an assistant in Amble.
         </p>
         <h2>Sharing</h2>
-        <p>Almanac never sells your data or shares it with anyone besides the services named above. There are no ads or trackers.</p>
+        <p>Amble never sells your data or shares it with anyone besides the services named above. There are no ads or trackers.</p>
         <h2>Removing your data</h2>
         <p>
           Ask the household admin to remove your account
-          {provider === 'Google' ? ', or disconnect Almanac from your Google account at myaccount.google.com/connections' : ''}.
+          {provider === 'Google' ? ', or disconnect Amble from your Google account at myaccount.google.com/connections' : ''}.
           {auth?.privacyContact ? ` Questions: ${auth.privacyContact}.` : ''}
         </p>
       </div>

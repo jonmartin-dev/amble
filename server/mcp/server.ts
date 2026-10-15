@@ -51,7 +51,7 @@ const TEXT_MAX_BYTES = 200 * 1024;
 const READABLE_IMAGES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 
 /**
- * Builds the Almanac MCP server acting as one member. Changes are logged as made via the
+ * Builds the Amble MCP server acting as one member. Changes are logged as made via the
  * assistant on the other end: Claude for the local stdio connector, whichever app connected for
  * the remote one.
  */
@@ -70,7 +70,7 @@ export function createMcpServer({
   const today = () => planningDate(member);
 
   const server = new McpServer(
-    { name: 'almanac', title: 'Almanac', version: VERSION },
+    { name: 'amble', title: 'Amble', version: VERSION },
     { instructions: instructions(db, member) },
   );
 
@@ -152,8 +152,8 @@ export function createMcpServer({
         return { content: [{ type: 'text', text: JSON.stringify(fn(args)) }] };
       } catch (err) {
         if (err instanceof DomainError) return { isError: true, content: [{ type: 'text', text: err.message }] };
-        console.error('Almanac tool failed:', err);
-        return { isError: true, content: [{ type: 'text', text: 'Something went wrong in Almanac. Try again.' }] };
+        console.error('Amble tool failed:', err);
+        return { isError: true, content: [{ type: 'text', text: 'Something went wrong in Amble. Try again.' }] };
       }
     };
 
@@ -403,7 +403,7 @@ export function createMcpServer({
       const devices = db.select({ n: count() }).from(pushSubscriptions).where(eq(pushSubscriptions.memberId, member.id)).get()?.n ?? 0;
       return {
         ...present(task),
-        ...(a.at && !devices && { note: `${firstName(member)} hasn't turned on notifications on any device yet, so it can't reach them. They can in Almanac's Settings, under Notifications.` }),
+        ...(a.at && !devices && { note: `${firstName(member)} hasn't turned on notifications on any device yet, so it can't reach them. They can in Amble's Settings, under Notifications.` }),
       };
     }),
   );
@@ -450,7 +450,7 @@ export function createMcpServer({
         if (size > TEXT_MAX_BYTES) return text(`${file.name} is too long to read here.`, true);
         return text(`${file.name}:\n\n${new TextDecoder().decode(await stored.bytes())}`);
       }
-      return text(`${file.name} is a ${file.mime} file, which can't be opened through the connector. It's on the task in Almanac.`, true);
+      return text(`${file.name} is a ${file.mime} file, which can't be opened through the connector. It's on the task in Amble.`, true);
     },
   );
 
@@ -743,15 +743,15 @@ function instructions(db: Db, member: Member) {
       .map((g) => g.name)
       .join(', ') || 'none yet';
   const me = firstName(member);
-  return `Almanac is a calm, shared household planner. You're acting for ${member.name}${others.length ? `, who shares it with ${others.map((m) => m.name).join(' and ')}` : ''}. For ${me}, today is ${weekday(today)} ${today}; the day turns over at ${member.dayCutoffHour}am (${member.timezone}).
+  return `Amble is a calm, shared household planner. You're acting for ${member.name}${others.length ? `, who shares it with ${others.map((m) => m.name).join(' and ')}` : ''}. For ${me}, today is ${weekday(today)} ${today}; the day turns over at ${member.dayCutoffHour}am (${member.timezone}).
 
 How it fits together:
 - Tasks live in groups (${names('tasks')}). Lists (${names('list')}) hold shopping-style items: use add_to_list for those, not add_tasks.
 - "planned" is the day someone means to do a task, which puts it on that day's list. "due" is a real deadline. A task with no planned date sits in the backlog.
 - New tasks are for ${me} unless you say otherwise; "anyone" makes a task shared. Assigning to someone else puts it on their backlog quietly.
-- Almanac's only notifications are reminders someone asks for ("remind me Thursday at 6"): set_reminder, or remind_at on add_tasks. One notification at that time, to ${me} only. Never add one they didn't ask for.
+- Amble's only notifications are reminders someone asks for ("remind me Thursday at 6"): set_reminder, or remind_at on add_tasks. One notification at that time, to ${me} only. Never add one they didn't ask for.
 - Tasks can have files (photos, receipts, manuals). get_task lists them; read_file shows you a photo or a text file.
-- Almanac is deliberately calm. Don't schedule everything: keep each day light, check get_load before adding to a day, and use find_gap for things due later. suggest_day and plan_week give the planner's own picks with reasons.
+- Amble is deliberately calm. Don't schedule everything: keep each day light, check get_load before adding to a day, and use find_gap for things due later. suggest_day and plan_week give the planner's own picks with reasons.
 - Day load counts each person's Google Calendar once they've connected it in Settings: a day with more on the calendar than usual has less room for tasks.
 - Ids in results are short prefixes. Pass them back exactly as given.`;
 }

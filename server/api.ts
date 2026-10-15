@@ -419,7 +419,7 @@ export function registerApi(
     return c.json({ days: getLoad(db, viewer, person === 'everyone' ? viewer : person, start, end) });
   });
 
-  // What Almanac has learned about the viewer's capacity, next to the defaults and their pins.
+  // What Amble has learned about the viewer's capacity, next to the defaults and their pins.
   app.get('/api/capacity', (c) => {
     const m = me(c);
     const days = learnedCapacity(db, m).map((d) => ({ ...d, default: defaultCapacity(d.weekday), pinned: m.capacity?.[String(d.weekday)] ?? null }));
@@ -549,8 +549,8 @@ export function registerApi(
   app.post('/api/push/test', async (c) => {
     const result = await push.sendTo(me(c).id, {
       title: 'Notifications are on',
-      body: "This is how Almanac's reminders will look.",
-      tag: 'almanac-test',
+      body: "This is how Amble's reminders will look.",
+      tag: 'amble-test',
       url: `${config.basePath}/settings/notifications`,
     });
     return c.json(result);

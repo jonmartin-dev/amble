@@ -284,14 +284,14 @@ export function Stats() {
 
       {data.estimates.made > 0 && (
         <Card
-          title="Almanac's size guesses"
+          title="Amble's size guesses"
           footer={
             data.estimates.typicalRatio == null
-              ? 'Nobody has changed a guess yet. Changing one teaches Almanac your pace.'
+              ? 'Nobody has changed a guess yet. Changing one teaches Amble your pace.'
               : data.estimates.typicalRatio > 1.15
-                ? 'Things tend to take longer than Almanac guesses. Your changes teach it.'
+                ? 'Things tend to take longer than Amble guesses. Your changes teach it.'
                 : data.estimates.typicalRatio < 0.87
-                  ? 'Things tend to go quicker than Almanac guesses. Your changes teach it.'
+                  ? 'Things tend to go quicker than Amble guesses. Your changes teach it.'
                   : "When a guess is off, it's off both ways about equally."
           }
         >

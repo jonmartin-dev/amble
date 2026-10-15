@@ -75,7 +75,7 @@ export function CalendarsPage() {
   };
 
   const disconnect = async (account: CalendarAccount) => {
-    if (!confirm(`Disconnect ${account.email}? Its events leave Almanac, and Google stops sharing them.`)) return;
+    if (!confirm(`Disconnect ${account.email}? Its events leave Amble, and Google stops sharing them.`)) return;
     try {
       await api(`/calendars/accounts/${account.id}`, { method: 'DELETE' });
       snack({ message: `Disconnected ${account.email}.` });
@@ -98,7 +98,7 @@ export function CalendarsPage() {
           <h2 className="display text-xl font-medium">Plan around your calendar</h2>
         </div>
         <p className="mt-2">
-          Almanac reads your Google Calendar so a day with more on it than usual has less room for tasks, and suggestions steer around it.
+          Amble reads your Google Calendar so a day with more on it than usual has less room for tasks, and suggestions steer around it.
           It only reads, and only you see your events. Everyone else just sees that a day is busier.
         </p>
       </section>
@@ -157,7 +157,7 @@ export function CalendarsPage() {
       {data?.enabled && !online && <p className="mt-2 px-1 text-sm text-on-surface-variant">Connecting needs a connection.</p>}
       {data?.enabled && data.accounts.length === 0 && (
         <p className="mt-3 px-1 text-sm text-on-surface-variant">
-          Google will warn that it hasn't verified Almanac. That's expected for an app you run yourself: choose Advanced, then continue.
+          Google will warn that it hasn't verified Amble. That's expected for an app you run yourself: choose Advanced, then continue.
         </p>
       )}
     </>

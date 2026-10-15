@@ -42,10 +42,10 @@ export function pushHint(state: PushState | null) {
       return 'Notifications are off on this device.';
     case 'blocked':
       return native
-        ? "Notifications are off for Almanac in Android's settings, so reminders can't show here."
-        : "Notifications are blocked for Almanac in this browser's site settings, so reminders can't show here.";
+        ? "Notifications are off for Amble in Android's settings, so reminders can't show here."
+        : "Notifications are blocked for Amble in this browser's site settings, so reminders can't show here.";
     case 'needs-install':
-      return 'Add Almanac to your home screen (Share, then Add to Home Screen) to get reminders on this device.';
+      return 'Add Amble to your home screen (Share, then Add to Home Screen) to get reminders on this device.';
     case 'unsupported':
       return "This browser can't show reminders. They'll go to your other devices.";
     default:

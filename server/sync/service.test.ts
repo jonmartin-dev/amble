@@ -10,7 +10,7 @@ import { createFakeDrive, type FakeDrive } from './fake-drive.ts';
 import { createSyncService } from './service.ts';
 
 const SCHEMA = '0010_sync';
-const ORIGIN = 'https://almanac.example';
+const ORIGIN = 'https://amble.example';
 
 const noFiles: FileStore = {
   save: async () => ({ sha256: '0'.repeat(64), size: 1 }),
@@ -18,7 +18,7 @@ const noFiles: FileStore = {
   sweep: async () => 0,
 };
 
-/** A phone or laptop running Almanac with no server, syncing through the fake Drive. */
+/** A phone or laptop running Amble with no server, syncing through the fake Drive. */
 function device(drive: FakeDrive, token: string) {
   const db = openDatabase(':memory:');
   const config = deviceConfig(ORIGIN, '', 'America/Chicago');
@@ -98,14 +98,14 @@ describe('sync through Google Drive', () => {
     expect(people).toEqual(['ali@example.com', 'sam@example.com']);
     await samPhone.run();
 
-    // Ali has been using Almanac alone, with a task in their own Home group.
+    // Ali has been using Amble alone, with a task in their own Home group.
     const aliPhone = device(drive, ali);
     await aliPhone.call('POST', '/device/start', { name: 'Ali' });
     const home = (await aliPhone.call('GET', '/groups')).json.groups.find((g: { name: string }) => g.name === 'Home');
     await aliPhone.call('POST', '/tasks', { title: 'Water the tomatoes', groupId: home.id });
 
-    // Without picking the file in Google's picker, Almanac can't open it.
-    expect((await aliPhone.connect({ mode: 'join', fileId })).json.error).toMatch(/isn't an Almanac household file/);
+    // Without picking the file in Google's picker, Amble can't open it.
+    expect((await aliPhone.connect({ mode: 'join', fileId })).json.error).toMatch(/isn't an Amble household file/);
     drive.pick('ali@example.com', fileId);
     expect((await aliPhone.connect({ mode: 'join', fileId })).status).toBe(200);
 

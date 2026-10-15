@@ -47,7 +47,7 @@ describe('learned capacity', () => {
     expect(getLoad(db, jon, jon, today, today)[0]!.capacityMinutes).toBe(225);
   });
 
-  it('blends with the default while history is thin, and ignores days Almanac went unused', () => {
+  it('blends with the default while history is thin, and ignores days Amble went unused', () => {
     finished(weeksAgo(1), 300);
     finished(weeksAgo(2), 300);
     const day = learnedCapacity(db, jon).find((d) => d.weekday === dow())!;

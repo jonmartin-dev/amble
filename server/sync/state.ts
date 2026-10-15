@@ -117,7 +117,7 @@ export interface MergeResult {
  * that span rows are put right again.
  */
 export function mergeState(db: Db, clock: Clock, remote: SyncState, schema: string): MergeResult {
-  if (remote.schema > schema) throw new NewerSchema(`That copy was written by a newer Almanac (${remote.schema}).`);
+  if (remote.schema > schema) throw new NewerSchema(`That copy was written by a newer Amble (${remote.schema}).`);
   // Local changes get their times first, so they can be weighed against the incoming ones.
   stamp(db, clock);
   for (const hlc of Object.values(remote.sites)) clock.see(hlc);

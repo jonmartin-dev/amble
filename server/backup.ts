@@ -1,5 +1,5 @@
 // Writes a transactionally consistent copy of the database for file-level backups to pick up.
-// Usage (inside the container): node server/backup.ts  -> $ALMANAC_DATA_DIR/snapshots/almanac-latest.db
+// Usage (inside the container): node server/backup.ts  -> $AMBLE_DATA_DIR/snapshots/almanac-latest.db
 import fs from 'node:fs';
 import path from 'node:path';
 import Database from 'better-sqlite3';

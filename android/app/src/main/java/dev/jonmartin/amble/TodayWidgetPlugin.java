@@ -1,4 +1,4 @@
-package dev.jonmartin.almanac;
+package dev.jonmartin.amble;
 
 import android.appwidget.AppWidgetManager;
 import android.content.ComponentName;

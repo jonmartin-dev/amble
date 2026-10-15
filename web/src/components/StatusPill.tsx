@@ -85,7 +85,7 @@ export function StatusPill() {
   } else if (!sync.online || sync.blocked === 'offline') {
     status = { key: 'offline', icon: <CloudOff className="size-[18px]" aria-hidden />, text: sync.pending ? `Offline · ${changes(sync.pending)} to sync` : 'Offline' };
   } else if (sync.blocked === 'server') {
-    status = { key: 'server', icon: <CloudOff className="size-[18px]" aria-hidden />, text: `Can't reach Almanac · ${changes(sync.pending)} to sync` };
+    status = { key: 'server', icon: <CloudOff className="size-[18px]" aria-hidden />, text: `Can't reach Amble · ${changes(sync.pending)} to sync` };
   } else if (slowSync && sync.pending) {
     status = {
       key: 'syncing',

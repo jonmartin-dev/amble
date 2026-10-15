@@ -300,7 +300,7 @@ function Detail({ task }: { task: Task }) {
           </Field>
         )}
 
-        <Field icon={<Timer className="size-5" />} label={task.estimateSource === 'ai' && task.estimateMinutes ? "Takes about (Almanac's guess)" : 'Takes about'}>
+        <Field icon={<Timer className="size-5" />} label={task.estimateSource === 'ai' && task.estimateMinutes ? "Takes about (Amble's guess)" : 'Takes about'}>
           <ChipRow>
             {[null, 5, 15, 30, 60, 120, ...(task.estimateMinutes && ![5, 15, 30, 60, 120].includes(task.estimateMinutes) ? [task.estimateMinutes] : [])]
               .sort((a, b) => (a ?? 0) - (b ?? 0))

@@ -1,6 +1,6 @@
-// The app that runs Almanac on the device, with no server: `node scripts/device.ts dev` serves it
+// The app that runs Amble on the device, with no server: `node scripts/device.ts dev` serves it
 // on port 5174, and `node scripts/device.ts build` writes static files to dist/device.
-// ALMANAC_BASE sets the path it's served under (default "/").
+// AMBLE_BASE sets the path it's served under (default "/").
 import { spawn } from 'node:child_process';
 
 const [command = 'dev', ...rest] = process.argv.slice(2);
@@ -10,6 +10,6 @@ const args = command === 'build' ? ['build', ...rest] : ['--port', '5174', '--ho
 const child = spawn('pnpm', ['exec', 'vite', ...args], {
   stdio: 'inherit',
   shell: process.platform === 'win32',
-  env: { ...process.env, VITE_ALMANAC_DEVICE: '1' },
+  env: { ...process.env, VITE_AMBLE_DEVICE: '1' },
 });
 child.on('exit', (code) => process.exit(code ?? 1));

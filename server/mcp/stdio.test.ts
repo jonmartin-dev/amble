@@ -25,18 +25,18 @@ async function call(name: string, args: Record<string, unknown> = {}) {
 }
 
 beforeAll(async () => {
-  dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'almanac-mcp-'));
+  dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'amble-mcp-'));
   const db = openDatabase(path.join(dataDir, 'almanac.db'));
   db.insert(members).values({ email: 'jon@example.com', name: 'Jon Martin', timezone: 'America/Chicago', role: 'admin' }).run();
   db.insert(members).values({ email: 'alex@example.com', name: 'Alex B', timezone: 'America/Chicago' }).run();
   db.$client.close();
 
-  client = new Client({ name: 'almanac-test', version: '1.0.0' });
+  client = new Client({ name: 'amble-test', version: '1.0.0' });
   await client.connect(
     new StdioClientTransport({
       command: process.execPath,
       args: [entry],
-      env: { ALMANAC_DATA_DIR: dataDir, ALMANAC_MEMBER: 'jon@example.com', PATH: process.env.PATH ?? '' },
+      env: { AMBLE_DATA_DIR: dataDir, AMBLE_MEMBER: 'jon@example.com', PATH: process.env.PATH ?? '' },
       stderr: 'pipe',
     }),
   );

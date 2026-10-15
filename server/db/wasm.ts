@@ -63,7 +63,7 @@ class Statement {
   }
 }
 
-/** The parts of better-sqlite3's Database that drizzle and Almanac use. */
+/** The parts of better-sqlite3's Database that drizzle and Amble use. */
 export class WasmClient {
   private readonly cache = new Map<string, { stmt: PreparedStatement; busy: boolean }>();
   private savepoints = 0;
@@ -164,7 +164,7 @@ export class WasmClient {
   transaction<A extends unknown[], R>(fn: (...args: A) => R) {
     const run = (begin: string) => (...args: A): R => {
       const nested = this.inTransaction;
-      const name = `almanac_sp_${++this.savepoints}`;
+      const name = `amble_sp_${++this.savepoints}`;
       this.db.exec(nested ? `SAVEPOINT ${name}` : begin);
       try {
         const result = fn(...args);

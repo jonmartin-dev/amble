@@ -22,7 +22,7 @@
   }
 }
 
-/* Material 3 color roles generated from the Almanac green seed. */
+/* Material 3 color roles generated from the Amble green seed. */
 :root {
   color-scheme: light;
   --md-primary: #2e6a57;
@@ -116,7 +116,7 @@ body {
 }
 
 /*
- * Behind the phone's status bar when the app draws under it (the Android app, or Almanac added to
+ * Behind the phone's status bar when the app draws under it (the Android app, or Amble added to
  * an iPhone's home screen): the page's own color, so the clock and icons never sit on what scrolls
  * beneath them. Once something has scrolled under it (data-scrolled, set in main.tsx), it fades
  * out just below the bar rather than stopping at a hard edge; at the top of a page the fade would

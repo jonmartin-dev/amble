@@ -1,11 +1,11 @@
-# Run Almanac with Docker Compose:
-#   1. cp .env.example .env and fill it in (ALMANAC_PUBLIC_URL, emails, OIDC_CLIENT_ID).
+# Run Amble with Docker Compose:
+#   1. cp .env.example .env and fill it in (AMBLE_PUBLIC_URL, emails, OIDC_CLIENT_ID).
 #   2. mkdir -p data secrets && put the OIDC client secret in secrets/oidc_client_secret
 #   3. docker compose up -d --build
 services:
-  almanac:
+  amble:
     build: .
-    image: almanac:local
+    image: amble:local
     restart: unless-stopped
     read_only: true
     # Runs as the image's "node" user (uid 1000); ./data must be writable by it.
@@ -13,18 +13,18 @@ services:
     # The default bridge needs no new subnet, which helps on hosts whose address pools are used up.
     network_mode: bridge
     ports:
-      - "127.0.0.1:${ALMANAC_PORT:-18085}:8080"
+      - "127.0.0.1:${AMBLE_PORT:-18085}:8080"
     env_file: .env
     environment:
       NODE_ENV: production
       PORT: "8080"
-      ALMANAC_DATA_DIR: /data
+      AMBLE_DATA_DIR: /data
       OIDC_CLIENT_SECRET_FILE: /run/secrets/oidc_client_secret
       # Optional: the AI provider's key (or an Anthropic key in the older file). Leave both out to run
       # without AI, or set the model up in the app instead.
-      ALMANAC_AI_API_KEY_FILE: /run/secrets/ai_api_key
+      AMBLE_AI_API_KEY_FILE: /run/secrets/ai_api_key
       ANTHROPIC_API_KEY_FILE: /run/secrets/anthropic_api_key
-      ALMANAC_DEV_LOGIN: "0"
+      AMBLE_DEV_LOGIN: "0"
     volumes:
       - ./data:/data
       - ./secrets:/run/secrets:ro

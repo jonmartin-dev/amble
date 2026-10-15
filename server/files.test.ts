@@ -16,7 +16,7 @@ import { createGroup } from './domain/household.ts';
 import { completeTasks, createTasks, getTask } from './domain/tasks.ts';
 import { planningDate } from './lib/dates.ts';
 
-const ORIGIN = 'https://almanac.test';
+const ORIGIN = 'https://amble.test';
 const testConfig: Config = {
   ...config,
   production: false,
@@ -63,7 +63,7 @@ beforeEach(() => {
   db = openDatabase(':memory:');
   seedStarterGroups(db);
   cookies.clear();
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'almanac-files-'));
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'amble-files-'));
   store = createFileStore(dir);
   jon = db.insert(members).values({ email: 'jon@example.com', name: 'Jon Martin', timezone: 'America/Chicago', role: 'admin' }).returning().get();
   alex = db.insert(members).values({ email: 'alex@example.com', name: 'Alex Martin', timezone: 'America/Chicago' }).returning().get();

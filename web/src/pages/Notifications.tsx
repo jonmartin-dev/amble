@@ -26,7 +26,7 @@ export function notificationSummary(state: PushState | null) {
     case 'blocked':
       return native ? "Off in Android's settings" : 'Blocked in this browser';
     case 'needs-install':
-      return 'Add Almanac to your home screen first';
+      return 'Add Amble to your home screen first';
     case 'unsupported':
       return "This browser can't show them";
     default:
@@ -63,8 +63,8 @@ export function Notifications() {
         if (state === 'blocked')
           snack({
             message: native
-              ? 'Notifications are off for Almanac. Turn them on in Android’s settings for Almanac, then try again.'
-              : 'Notifications are blocked for Almanac. Allow them in the browser’s site settings, then try again.',
+              ? 'Notifications are off for Amble. Turn them on in Android’s settings for Amble, then try again.'
+              : 'Notifications are blocked for Amble. Allow them in the browser’s site settings, then try again.',
           });
       } else await disablePush();
     } catch (e) {
@@ -107,7 +107,7 @@ export function Notifications() {
           <h2 className="display text-xl font-medium">Reminders, and nothing else</h2>
         </div>
         <p className="mt-2">
-          Almanac only notifies you about reminders you set on a task: one notification at the time you picked, with Done and Snooze
+          Amble only notifies you about reminders you set on a task: one notification at the time you picked, with Done and Snooze
           right on it. Nothing else ever pings you, not even tasks someone hands you.
         </p>
       </section>
@@ -132,7 +132,7 @@ export function Notifications() {
               {
                 icon: <Alarm className="size-6" />,
                 title: 'On the minute',
-                subtitle: 'Android can hold reminders back a few minutes while the phone is idle. Allow Alarms and reminders for Almanac to have them on time.',
+                subtitle: 'Android can hold reminders back a few minutes while the phone is idle. Allow Alarms and reminders for Amble to have them on time.',
                 trailing: (
                   <button type="button" onClick={() => void allowExactReminders().then(checkExact)} className="rounded-full bg-secondary-container px-4 py-2 text-sm font-medium text-on-secondary-container">
                     Allow
@@ -152,8 +152,8 @@ export function Notifications() {
       {onDevice && (
         <p className="mt-2 px-1 text-sm text-on-surface-variant">
           {native
-            ? 'Your phone shows each reminder at its time, even with Almanac closed.'
-            : 'With no Almanac server, a reminder shows while Almanac is open in this browser. Keep it open in a tab, or install it, to be reminded.'}
+            ? 'Your phone shows each reminder at its time, even with Amble closed.'
+            : 'With no Amble server, a reminder shows while Amble is open in this browser. Keep it open in a tab, or install it, to be reminded.'}
         </p>
       )}
 

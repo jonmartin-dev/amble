@@ -1,5 +1,5 @@
-// The first screen on a device with no server: Almanac asks what to call you and starts. Also the
-// screens for when another tab has the database, or the browser won't give Almanac storage.
+// The first screen on a device with no server: Amble asks what to call you and starts. Also the
+// screens for when another tab has the database, or the browser won't give Amble storage.
 import { useQueryClient } from '@tanstack/react-query';
 import { motion } from 'motion/react';
 import { useEffect, useState } from 'react';
@@ -21,7 +21,7 @@ function Frame({ children }: { children: React.ReactNode }) {
         transition={expressive.slowSpatial}
         className="size-24"
       />
-      <h1 className="display mt-8 text-[3.5rem] leading-none font-medium">Almanac</h1>
+      <h1 className="display mt-8 text-[3.5rem] leading-none font-medium">Amble</h1>
       {children}
     </main>
   );
@@ -50,7 +50,7 @@ export function Welcome() {
     }
   };
 
-  // Back from Google after "I already use Almanac": carry on.
+  // Back from Google after "I already use Amble": carry on.
   useEffect(() => {
     const back = resumeAfterGoogle('welcome');
     if (back?.error) setError(back.error);
@@ -79,7 +79,7 @@ export function Welcome() {
       </p>
       <form onSubmit={start} className="mt-10 flex flex-col gap-3">
         <label className="flex flex-col gap-2">
-          <span className="font-medium">What should Almanac call you?</span>
+          <span className="font-medium">What should Amble call you?</span>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -111,7 +111,7 @@ export function Welcome() {
               disabled={saving}
               className="rounded-full px-6 py-3 font-medium text-primary transition-transform active:scale-[0.97] disabled:opacity-40"
             >
-              I already use Almanac
+              I already use Amble
             </button>
             <p className="text-center text-sm text-on-surface-variant">Signs in with Google to bring in what you have, or join a household someone shared.</p>
           </>
@@ -129,7 +129,7 @@ export function DeviceBlocked({ state }: { state: DeviceState }) {
         <div role="alert" className="mt-8 flex gap-3 rounded-3xl bg-warm-container p-4 text-on-warm-container">
           <ErrorIcon className="mt-0.5 size-5 shrink-0" aria-hidden />
           <div>
-            <p className="font-medium">Almanac couldn't open its storage on this device.</p>
+            <p className="font-medium">Amble couldn't open its storage on this device.</p>
             <p className="mt-1 text-sm">
               A private window, or a browser set not to keep data for sites, can stop it. Try a normal window.
             </p>
@@ -141,7 +141,7 @@ export function DeviceBlocked({ state }: { state: DeviceState }) {
   }
   return (
     <Frame>
-      <p className="mt-6 text-lg">{state === 'moved' ? 'Almanac moved to another tab.' : 'Almanac is open in another tab.'}</p>
+      <p className="mt-6 text-lg">{state === 'moved' ? 'Amble moved to another tab.' : 'Amble is open in another tab.'}</p>
       <p className="mt-2 text-on-surface-variant">It can be open in one tab at a time on this device.</p>
       <button
         type="button"

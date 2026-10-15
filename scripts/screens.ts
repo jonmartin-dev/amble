@@ -1,12 +1,12 @@
 // Captures every screen at phone size for visual review.
-// Needs `pnpm dev` running with ALMANAC_DEV_LOGIN=1, and Chrome installed.
+// Needs `pnpm dev` running with AMBLE_DEV_LOGIN=1, and Chrome installed.
 // Usage: node scripts/screens.ts [email] [variant,variant]   -> design/screens/*.png
-// ALMANAC_VIEWPORT=820x1180 captures at another size (a tablet, a Fold opened), into files named for it.
+// AMBLE_VIEWPORT=820x1180 captures at another size (a tablet, a Fold opened), into files named for it.
 import fs from 'node:fs';
 import { chromium } from 'playwright-core';
 
-const base = process.env.ALMANAC_URL ?? 'http://localhost:5173';
-const email = process.argv[2] ?? 'dev@almanac.local';
+const base = process.env.AMBLE_URL ?? 'http://localhost:5173';
+const email = process.argv[2] ?? 'dev@amble.local';
 const out = 'design/screens';
 const routes = [
   '/',
@@ -33,8 +33,8 @@ const allVariants = [
   { name: 'ocean-dark-vibrant', mode: 'dark', seed: '#3a5ba9', style: 'vibrant' },
 ];
 const variants = only ? allVariants.filter((v) => only.includes(v.name)) : allVariants;
-const [width, height] = (process.env.ALMANAC_VIEWPORT ?? '390x844').split('x').map(Number);
-const file = (variant: string, name: string) => `${out}/${process.env.ALMANAC_VIEWPORT ? `${width}x${height}-` : ''}${variant}-${name}.png`;
+const [width, height] = (process.env.AMBLE_VIEWPORT ?? '390x844').split('x').map(Number);
+const file = (variant: string, name: string) => `${out}/${process.env.AMBLE_VIEWPORT ? `${width}x${height}-` : ''}${variant}-${name}.png`;
 
 fs.mkdirSync(out, { recursive: true });
 const browser = await chromium.launch({ channel: 'chrome' });

@@ -8,7 +8,8 @@ mkdir -p data
 
 docker compose build -q
 docker compose up -d
-port=$(grep -E '^ALMANAC_PORT=' .env | cut -d= -f2 || true)
+# ALMANAC_PORT is the name from before the app was renamed.
+port=$(grep -E '^(AMBLE|ALMANAC)_PORT=' .env | head -1 | cut -d= -f2 || true)
 for _ in $(seq 1 30); do
   if curl -fsS "http://127.0.0.1:${port:-18085}/healthz" >/dev/null 2>&1; then
     echo "healthy"
@@ -17,5 +18,5 @@ for _ in $(seq 1 30); do
   sleep 1
 done
 echo "not healthy after 30 s" >&2
-docker compose logs --tail=40 almanac >&2
+docker compose logs --tail=40 amble >&2
 exit 1

@@ -8,10 +8,10 @@ import { build, type Plugin } from 'vite';
 import { configDefaults, defineConfig } from 'vitest/config';
 
 const server = `http://localhost:${process.env.PORT ?? 8787}`;
-// VITE_ALMANAC_DEVICE=1 builds the app that runs Almanac on the device, with no server: static
-// files for any host, under ALMANAC_BASE (default "/").
-const device = process.env.VITE_ALMANAC_DEVICE === '1';
-const deviceBase = process.env.ALMANAC_BASE ?? '/';
+// VITE_AMBLE_DEVICE=1 builds the app that runs Amble on the device, with no server: static
+// files for any host, under AMBLE_BASE (default "/").
+const device = process.env.VITE_AMBLE_DEVICE === '1';
+const deviceBase = process.env.AMBLE_BASE ?? '/';
 
 function filesIn(dir: string, prefix = ''): string[] {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
@@ -27,7 +27,7 @@ function serviceWorker(): Plugin {
   let root = '';
   let outDir = '';
   return {
-    name: 'almanac-service-worker',
+    name: 'amble-service-worker',
     apply: 'build',
     configResolved(config) {
       root = config.root;
@@ -48,15 +48,15 @@ function serviceWorker(): Plugin {
         logLevel: 'warn',
         root,
         define: {
-          __ALMANAC_BUILD__: JSON.stringify(hash.digest('hex').slice(0, 12)),
-          __ALMANAC_ASSETS__: JSON.stringify(assets),
-          __ALMANAC_DEVICE__: JSON.stringify(device),
+          __AMBLE_BUILD__: JSON.stringify(hash.digest('hex').slice(0, 12)),
+          __AMBLE_ASSETS__: JSON.stringify(assets),
+          __AMBLE_DEVICE__: JSON.stringify(device),
         },
         build: {
           outDir,
           emptyOutDir: false,
           copyPublicDir: false,
-          lib: { entry: path.join(root, 'src/sw.ts'), formats: ['iife'], name: 'almanacServiceWorker', fileName: () => 'sw.js' },
+          lib: { entry: path.join(root, 'src/sw.ts'), formats: ['iife'], name: 'ambleServiceWorker', fileName: () => 'sw.js' },
         },
       });
     },
@@ -68,7 +68,7 @@ function serviceWorker(): Plugin {
  * has no server, so it's written in here (otherwise /settings/sync asks for /settings/icon.svg).
  */
 function baseTag(): Plugin {
-  return { name: 'almanac-base-tag', transformIndexHtml: (html) => html.replace('<head>', `<head>
+  return { name: 'amble-base-tag', transformIndexHtml: (html) => html.replace('<head>', `<head>
     <base href="${deviceBase}" />`) };
 }
 
@@ -97,8 +97,8 @@ export default defineConfig({
     dir: import.meta.dirname,
     // Worktrees of other sessions live under .claude/ and carry their own copy of every test.
     exclude: [...configDefaults.exclude, '.claude/**'],
-    // `ALMANAC_SQLITE=wasm pnpm test` runs the suite on the WebAssembly SQLite the app's worker uses.
-    setupFiles: process.env.ALMANAC_SQLITE === 'wasm' ? [path.join(import.meta.dirname, 'server/test-wasm.ts')] : [],
+    // `AMBLE_SQLITE=wasm pnpm test` runs the suite on the WebAssembly SQLite the app's worker uses.
+    setupFiles: process.env.AMBLE_SQLITE === 'wasm' ? [path.join(import.meta.dirname, 'server/test-wasm.ts')] : [],
     // material-color-utilities has extensionless ESM imports that only a bundler resolves.
     server: { deps: { inline: ['@material/material-color-utilities'] } },
   },

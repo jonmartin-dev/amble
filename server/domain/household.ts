@@ -6,7 +6,7 @@ import { activity, groups, listItems, members, tasks, type Group, type Member } 
 /** A mistake in what was asked for, worded so the person (or Claude) can fix it and retry. */
 export class DomainError extends Error {}
 
-/** The assistant behind a change made through the connector. `assistant` is one Almanac can't name. */
+/** The assistant behind a change made through the connector. `assistant` is one Amble can't name. */
 export type Assistant = 'claude' | 'chatgpt' | 'assistant';
 
 /** Who is making a change, and from where. Every change lands in Activity with this. */

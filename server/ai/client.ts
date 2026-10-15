@@ -27,7 +27,7 @@ export interface AiSetup {
   /** Smart add's effort. "default" sends none on any call and leaves it to the model. */
   effort: AiEffort;
   monthlyCapUsd: number;
-  /** US dollars per million tokens, in and out, when Almanac or the admin knows them. */
+  /** US dollars per million tokens, in and out, when Amble or the admin knows them. */
   prices: [number, number] | null;
   /** Saved in Settings, or read from the server's environment. */
   source: 'settings' | 'environment';
@@ -99,7 +99,7 @@ interface Stored extends Omit<AiSettings, 'apiKey'> {
 
 const KEY_PURPOSE = 'ai api key';
 
-/** The setup the environment describes: ALMANAC_AI_* (or ANTHROPIC_API_KEY on its own). */
+/** The setup the environment describes: AMBLE_AI_* (or ANTHROPIC_API_KEY on its own). */
 export function fromEnvironment(config: Config): AiSetup | null {
   const { provider, apiKey, model, baseUrl, effort, monthlyCapUsd, prices } = config.ai;
   const known = aiProvider(provider);
@@ -171,7 +171,7 @@ export function savedKeyState(db: Db, config: Config, keys: KeyBox = sealedKeys(
   return keys.open(saved.key) === undefined ? 'unreadable' : 'saved';
 }
 
-/** What to call the model in messages: "Claude Haiku 5.5", or the id of one Almanac doesn't know. */
+/** What to call the model in messages: "Claude Haiku 5.5", or the id of one Amble doesn't know. */
 export function modelName(setup: Pick<AiSetup, 'provider' | 'model'>) {
   return aiModelName(setup.provider, setup.model);
 }
@@ -345,7 +345,7 @@ async function chatCall<T extends z.ZodType>(setup: AiSetup, req: AiRequest<T>, 
     }
     return { output: checked.data as z.output<T>, problem: null, usage };
   }
-  throw new Error("refused every way Almanac knows to ask for JSON");
+  throw new Error("refused every way Amble knows to ask for JSON");
 }
 
 // ---- metering ----------------------------------------------------------------------------------

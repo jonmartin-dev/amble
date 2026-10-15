@@ -8,7 +8,7 @@
     <string name="widget_preview_2">Call the dentist</string>
     <dimen name="widget_radius">24dp</dimen>
     <dimen name="widget_inner_radius">12dp</dimen>
-    <!-- Almanac's default theme (Grove), until the app hands over its own colors. -->
+    <!-- Amble's default theme (Grove), until the app hands over its own colors. -->
     <color name="widget_surface">#F4FBF7</color>
     <color name="widget_row">#E3EAE6</color>
     <color name="widget_on_surface">#171D1A</color>

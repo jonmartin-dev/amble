@@ -18,13 +18,13 @@ export interface Stats {
   timesOfDay: { key: TimeOfDayBucket; count: number }[];
   /** Groups with open tasks, most first. Added and done cover the last four weeks. */
   pilingUp: { groupId: string | null; name: string; icon: string; color: string; open: number; oldestDays: number; added: number; done: number }[];
-  /** How Almanac's size guesses held up: which ones people left alone, and how far they moved the rest. */
+  /** How Amble's size guesses held up: which ones people left alone, and how far they moved the rest. */
   estimates: {
     made: number;
     kept: number;
     raised: number;
     lowered: number;
-    /** Across changed guesses, the person's number over Almanac's, middle value. Null with none changed. */
+    /** Across changed guesses, the person's number over Amble's, middle value. Null with none changed. */
     typicalRatio: number | null;
     /** The last six months, oldest first, so the trend shows. */
     months: { month: string; made: number; kept: number }[];

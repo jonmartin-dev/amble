@@ -1,5 +1,5 @@
 // Reminders: one notification about a task, at a time someone chose. They're personal: only the
-// person who set one sees it on the task or gets the notification. Nothing in Almanac sets one on
+// person who set one sees it on the task or gets the notification. Nothing in Amble sets one on
 // its own.
 import { and, asc, eq, inArray, isNull, lte } from 'drizzle-orm';
 import type { Db } from '../db/index.ts';

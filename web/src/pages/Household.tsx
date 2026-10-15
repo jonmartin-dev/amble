@@ -123,7 +123,7 @@ export function Household() {
         <>
           <SectionTitle>Add someone</SectionTitle>
           <p className="px-1 text-on-surface-variant">
-            People join by sharing Almanac through Google Drive: make this a household in{' '}
+            People join by sharing Amble through Google Drive: make this a household in{' '}
             <Link to="/settings/sync" className="font-medium text-primary">
               Sync and backup
             </Link>

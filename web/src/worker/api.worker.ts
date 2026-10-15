@@ -1,4 +1,4 @@
-// Almanac's server, run inside the app: the same API and domain code, on SQLite compiled to
+// Amble's server, run inside the app: the same API and domain code, on SQLite compiled to
 // WebAssembly, with the database in the browser's private file system (the "opfs-sahpool" VFS,
 // which needs no special headers). One tab at a time holds the database; a Web Lock decides which.
 import sqlite3InitModule, { type Sqlite3Static } from '@sqlite.org/sqlite-wasm';
@@ -116,7 +116,7 @@ const ready = start();
 ready.then(
   () => post({ type: 'ready' }),
   (err: unknown) => {
-    console.error('Almanac could not open its database:', err);
+    console.error('Amble could not open its database:', err);
     post({ type: 'failed', message: err instanceof Error ? err.message : String(err) });
   },
 );

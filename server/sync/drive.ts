@@ -1,4 +1,4 @@
-// The few Google Drive calls sync needs, over plain fetch with an access token. Almanac asks only
+// The few Google Drive calls sync needs, over plain fetch with an access token. Amble asks only
 // for drive.appdata (its own hidden folder in each person's Drive) and drive.file (files it made,
 // or that someone picked for it), which Google counts as non-sensitive.
 
@@ -19,7 +19,7 @@ export class DriveError extends Error {
   }
 }
 
-/** The access token was turned down: it ran out, or the person took Almanac's access away. */
+/** The access token was turned down: it ran out, or the person took Amble's access away. */
 export class DriveAuthError extends DriveError {}
 
 export interface DriveFile {
@@ -61,7 +61,7 @@ export function createDrive(token: string, fetchImpl: typeof fetch = fetch) {
 
   /** A multipart body: the file's details, then its bytes. */
   function multipart(meta: object, bytes: Uint8Array) {
-    const boundary = `almanac${crypto.randomUUID().replace(/-/g, '')}`;
+    const boundary = `amble${crypto.randomUUID().replace(/-/g, '')}`;
     const head = new TextEncoder().encode(
       `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${boundary}\r\nContent-Type: application/octet-stream\r\n\r\n`,
     );
@@ -77,7 +77,7 @@ export function createDrive(token: string, fetchImpl: typeof fetch = fetch) {
     /** Who the token belongs to. */
     about: () => json<{ user: { displayName?: string; emailAddress?: string; photoLink?: string } }>(`${API}/about?fields=user(displayName,emailAddress,photoLink)`),
 
-    /** Files Almanac can see that match a Drive query, in its hidden folder or not. */
+    /** Files Amble can see that match a Drive query, in its hidden folder or not. */
     async find(q: string, appData = false) {
       const params = new URLSearchParams({ q: `${q} and trashed = false`, fields: `files(${FILE_FIELDS})`, pageSize: '20' });
       if (appData) params.set('spaces', 'appDataFolder');

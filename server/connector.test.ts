@@ -13,12 +13,12 @@ import { activity, members, oauthGrants, oauthTokens, type Member, type OAuthCli
 import { seedStarterGroups } from './db/seed.ts';
 import { assistantFor } from './oauth/clients.ts';
 
-const ORIGIN = 'https://almanac.test';
-const ISSUER = `${ORIGIN}/almanac`;
+const ORIGIN = 'https://amble.test';
+const ISSUER = `${ORIGIN}/amble`;
 const MCP_URL = `${ISSUER}/mcp`;
 const CLAUDE = 'https://claude.ai/oauth/mcp-oauth-client-metadata';
 const CLAUDE_CALLBACK = 'https://claude.ai/api/mcp/auth_callback';
-// ChatGPT uses these for servers that return iss (RFC 9207), as Almanac does...
+// ChatGPT uses these for servers that return iss (RFC 9207), as Amble does...
 const CHATGPT = 'https://chatgpt.com/oauth/client.json';
 const CHATGPT_CALLBACK = 'https://chatgpt.com/connector_platform_oauth_redirect';
 // ...and these, with a per-connection callback id, for servers that don't.
@@ -29,7 +29,7 @@ const testConfig: Config = {
   ...config,
   production: false,
   publicUrl: ISSUER,
-  basePath: '/almanac',
+  basePath: '/amble',
   publicOrigin: ORIGIN,
   secureCookies: true,
   adminEmails: ['jon@example.com'],
@@ -109,7 +109,7 @@ async function connect({ clientId = CLAUDE, redirectUri = CLAUDE_CALLBACK, appro
   });
   const authorize = await signedIn(`/oauth/authorize?${query}`);
   expect(authorize.status).toBe(302);
-  const requestId = authorize.headers.get('location')!.match(/\/almanac\/connect\/(.+)$/)![1]!;
+  const requestId = authorize.headers.get('location')!.match(/\/amble\/connect\/(.+)$/)![1]!;
   const consent = await (await signedIn(`/api/oauth/requests/${requestId}`)).json();
   const decided = await signedIn(`/api/oauth/requests/${requestId}`, { method: 'POST', body: JSON.stringify({ approve }) });
   const redirect = new URL((await decided.json()).redirect);
@@ -156,14 +156,14 @@ describe('discovery', () => {
     const res = await request('/mcp', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
     expect(res.status).toBe(401);
     const challenge = res.headers.get('www-authenticate')!;
-    expect(challenge).toContain(`resource_metadata="${ORIGIN}/.well-known/oauth-protected-resource/almanac/mcp"`);
+    expect(challenge).toContain(`resource_metadata="${ORIGIN}/.well-known/oauth-protected-resource/amble/mcp"`);
     expect(challenge).toContain('scope="almanac"');
   });
 
   it('serves resource and authorization server metadata at the RFC paths, outside the base path', async () => {
-    const prm = await (await request(`${ORIGIN}/.well-known/oauth-protected-resource/almanac/mcp`)).json();
+    const prm = await (await request(`${ORIGIN}/.well-known/oauth-protected-resource/amble/mcp`)).json();
     expect(prm).toMatchObject({ resource: MCP_URL, authorization_servers: [ISSUER], scopes_supported: ['almanac'] });
-    const as = await (await request(`${ORIGIN}/.well-known/oauth-authorization-server/almanac`)).json();
+    const as = await (await request(`${ORIGIN}/.well-known/oauth-authorization-server/amble`)).json();
     expect(as).toMatchObject({
       issuer: ISSUER,
       authorization_endpoint: `${ISSUER}/oauth/authorize`,
@@ -185,7 +185,7 @@ describe('connecting Claude', () => {
     );
     expect(res.status).toBe(302);
     const location = new URL(res.headers.get('location')!, ORIGIN);
-    expect(location.pathname).toBe('/almanac/auth/login');
+    expect(location.pathname).toBe('/amble/auth/login');
     expect(location.searchParams.get('return')).toMatch(/^\/oauth\/authorize\?/);
   });
 
@@ -256,7 +256,7 @@ describe('connecting Claude', () => {
     expect(after.status).toBe(401);
   });
 
-  it('disconnecting from Almanac revokes every token', async () => {
+  it('disconnecting from Amble revokes every token', async () => {
     const issued = (await tokens(await connect())).body;
     const [grant] = (await (await signedIn('/api/connections')).json()).connections;
     expect((await signedIn(`/api/connections/${grant.id}`, { method: 'DELETE' })).status).toBe(204);
@@ -361,7 +361,7 @@ describe('connecting ChatGPT', () => {
     expect((await signedIn(`/oauth/authorize?${query}`)).status).toBe(400);
   });
 
-  it.skipIf(process.env.ALMANAC_OAUTH_CLIENT_HOSTS)('is allowed by default, alongside Claude', () => {
+  it.skipIf(process.env.AMBLE_OAUTH_CLIENT_HOSTS)('is allowed by default, alongside Claude', () => {
     expect(config.oauthClientHosts).toEqual(['claude.ai', 'claude.com', 'chatgpt.com']);
   });
 });
@@ -386,7 +386,7 @@ describe('which assistant made a change', () => {
   });
 
   it('goes by the name for local tools, and otherwise says an assistant', () => {
-    expect(assistantFor(client({ name: 'Claude Code (almanac)', redirectUris: ['http://localhost/callback'] }))).toBe('claude');
+    expect(assistantFor(client({ name: 'Claude Code (amble)', redirectUris: ['http://localhost/callback'] }))).toBe('claude');
     expect(assistantFor(client({ name: 'Local tool', redirectUris: ['http://127.0.0.1/callback'] }))).toBe('assistant');
   });
 });

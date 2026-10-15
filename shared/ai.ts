@@ -1,4 +1,4 @@
-// The AI providers Almanac knows how to talk to, and the fast models it suggests for each. Smart
+// The AI providers Amble knows how to talk to, and the fast models it suggests for each. Smart
 // add, estimates and the planner's wording only need a quick model that answers in JSON, so the
 // suggestions are each provider's small, cheap tier. Any other model id works too.
 
@@ -29,7 +29,7 @@ export interface AiProvider {
   models: AiModel[];
   note?: string;
   /**
-   * When Almanac runs on a device, calls go straight from the browser, which only works if the
+   * When Amble runs on a device, calls go straight from the browser, which only works if the
    * provider allows it (CORS). Checked with a preflight on 2026-10-15.
    */
   fromBrowser: boolean;
@@ -80,7 +80,7 @@ export const AI_PROVIDERS: AiProvider[] = [
       { id: 'glm-5.3-flash', name: 'GLM-5.3-Flash', price: [0.15, 0.5], effort: 'default' },
     ],
     fromBrowser: false,
-    deviceNote: "Z.ai doesn't take calls straight from a browser. Use GLM through OpenRouter here, or from your own Almanac server.",
+    deviceNote: "Z.ai doesn't take calls straight from a browser. Use GLM through OpenRouter here, or from your own Amble server.",
   },
   {
     id: 'openrouter',
@@ -118,7 +118,7 @@ export function aiModel(provider: string, model: string): AiModel | undefined {
   return aiProvider(provider)?.models.find((m) => m.id === model);
 }
 
-/** What to call a model on screen: its name when Almanac knows it, its id otherwise. */
+/** What to call a model on screen: its name when Amble knows it, its id otherwise. */
 export function aiModelName(provider: string, model: string) {
   return aiModel(provider, model)?.name ?? model;
 }

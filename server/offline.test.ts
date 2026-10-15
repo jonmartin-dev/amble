@@ -10,7 +10,7 @@ import { seedStarterGroups } from './db/seed.ts';
 import { addDays, planningDate } from './lib/dates.ts';
 import { madeAt } from './requests.ts';
 
-const ORIGIN = 'https://almanac.test';
+const ORIGIN = 'https://amble.test';
 const testConfig: Config = {
   ...config,
   production: false,
