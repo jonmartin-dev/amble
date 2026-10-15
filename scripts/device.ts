@@ -4,7 +4,9 @@
 import { spawn } from 'node:child_process';
 
 const [command = 'dev', ...rest] = process.argv.slice(2);
-const args = command === 'build' ? ['build', ...rest] : ['--port', '5174', ...rest];
+// On 127.0.0.1 so http://127.0.0.1:5174 works as well as localhost: two addresses are two
+// separate sites to the browser, which is handy for trying sync between two "devices".
+const args = command === 'build' ? ['build', ...rest] : ['--port', '5174', '--host', '127.0.0.1', ...rest];
 const child = spawn('pnpm', ['exec', 'vite', ...args], {
   stdio: 'inherit',
   shell: process.platform === 'win32',

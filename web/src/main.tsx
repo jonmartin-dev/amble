@@ -50,6 +50,9 @@ import { GroupsSettings } from './pages/GroupsSettings.tsx';
 import { Settings } from './pages/Settings.tsx';
 import { SignIn } from './pages/SignIn.tsx';
 import { DeviceBlocked, Welcome } from './pages/Welcome.tsx';
+import { SyncSettings } from './pages/SyncSettings.tsx';
+import { startDriveSync, syncSoon } from './lib/drive-sync.ts';
+import { takeGoogleReturn } from './lib/google.ts';
 import { onDevice, onDeviceChange, useDeviceState } from './lib/device.ts';
 import { Stats } from './pages/Stats.tsx';
 import { Today } from './pages/Today.tsx';
@@ -61,7 +64,11 @@ function SyncBridge() {
   useEffect(
     () =>
       startSync({
-        onSent: () => refreshViews(qc),
+        onSent: () => {
+          refreshViews(qc);
+          // On a device, a change here goes out to Google Drive soon after.
+          syncSoon();
+        },
         onFailed: (failures) => {
           const [first] = failures;
           snack({
@@ -78,6 +85,8 @@ function SyncBridge() {
   );
   // On a device, the worker says when something changed by itself, like a size guess.
   useEffect(() => onDeviceChange(() => refreshViews(qc)), [qc]);
+  // On a device that syncs through Google Drive, rounds run while the app is open.
+  useEffect(() => startDriveSync(() => refreshViews(qc)), [qc]);
   return null;
 }
 
@@ -232,6 +241,7 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/ai', component: AiSettings }),
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/calendars', component: CalendarsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/notifications', component: Notifications }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/settings/sync', component: SyncSettings }),
   createRoute({ getParentRoute: () => rootRoute, path: '/briefing', component: Briefing }),
   createRoute({ getParentRoute: () => rootRoute, path: '/activity', component: Activity }),
   createRoute({
@@ -261,6 +271,10 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/signin', component: SignIn }),
   createRoute({ getParentRoute: () => rootRoute, path: '/privacy', component: Privacy }),
 ]);
+
+// Back from Google's sign-in (Drive sync on a device): keep the token and restore the address
+// before the router reads it.
+if (onDevice) takeGoogleReturn();
 
 // Apply the saved theme before the first paint so there's no flash of the default colors.
 applyTheme(loadLocalTheme());

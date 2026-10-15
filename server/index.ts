@@ -7,22 +7,25 @@ import { createOidc } from './auth/oidc.ts';
 import { createGoogle } from './calendar/google.ts';
 import { createCalendarSync } from './calendar/sync.ts';
 import { config } from './config.ts';
-import { openDatabase } from './db/index.ts';
+import { openDatabase, SCHEMA } from './db/index.ts';
 import { seedStarterGroups } from './db/seed.ts';
 import { sweepFiles } from './domain/files.ts';
 import { createFileStore } from './lib/disk-files.ts';
 import { every, startJobs } from './jobs.ts';
 import { createPush } from './notify/push.ts';
 import { createReminderSender } from './notify/reminders.ts';
+import { createServerSync } from './sync/server.ts';
 
 const db = openDatabase();
 seedStarterGroups(db);
 
 const ai = createAi(config, db);
-const calendar = createCalendarSync({ db, config, google: createGoogle(config) });
+const google = createGoogle(config);
+const calendar = createCalendarSync({ db, config, google });
+const sync = createServerSync({ db, config, google, schema: SCHEMA });
 const push = createPush(db, config);
 const files = createFileStore(config.dataDir);
-const app = createApp({ db, config, oidc: createOidc(config), ai, calendar, push, files });
+const app = createApp({ db, config, oidc: createOidc(config), ai, calendar, push, files, sync });
 
 const estimator = createEstimator(db, ai, config.timezone);
 const briefings = createBriefings(db, ai, config.timezone);
@@ -36,6 +39,8 @@ startJobs([
   // After the calendar and estimates, so the morning's suggestions see both.
   { name: 'briefings', run: () => briefings.run() },
   { name: 'file cleanup', run: every(24 * 60 * 60 * 1000, () => sweepFiles(db, files)) },
+  // Last, so what the jobs above changed goes out in the same round.
+  { name: 'drive sync', run: () => sync.run() },
 ]);
 
 const server = serve({ fetch: app.fetch, port: config.port, hostname: config.host }, (info) => {

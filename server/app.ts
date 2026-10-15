@@ -19,6 +19,10 @@ import type { Config } from './config.ts';
 import { registerApi } from './api.ts';
 import { registerConnector } from './connector.ts';
 import { queuedWrites } from './requests.ts';
+import { SCHEMA } from './db/index.ts';
+import { createServerSync, type ServerSync } from './sync/server.ts';
+import { SyncSetupError } from './sync/service.ts';
+import { z } from 'zod';
 import type { Db } from './db/index.ts';
 import type { Env } from './env.ts';
 
@@ -40,6 +44,7 @@ export function createApp({
   calendar = createCalendarSync({ db, config, google: createGoogle(config) }),
   push = createPush(db, config),
   files = createFileStore(config.dataDir),
+  sync = createServerSync({ db, config, google: createGoogle(config), schema: SCHEMA }),
 }: {
   db: Db;
   config: Config;
@@ -52,6 +57,8 @@ export function createApp({
   push?: Push;
   /** Where files on tasks are kept; tests pass a temporary folder. */
   files?: FileStore;
+  /** Keeping the server in step with a household's devices through Google Drive. */
+  sync?: ServerSync;
   /** For fetching client metadata documents; tests swap it out. */
   fetchImpl?: typeof fetch;
 }) {
@@ -69,6 +76,13 @@ export function createApp({
   });
 
   app.use(secureHeaders({ crossOriginEmbedderPolicy: false }));
+
+  // Whatever a request changed (the app's, or an assistant's through the connector) goes out to
+  // Google Drive soon after, when the server syncs with a household's devices.
+  app.use('*', async (c, next) => {
+    await next();
+    if (c.req.method !== 'GET' && c.req.method !== 'HEAD') sync.soon();
+  });
 
   app.use('*', async (c, next) => {
     const token = getCookie(c, SESSION_COOKIE);
@@ -127,6 +141,17 @@ export function createApp({
     return c.redirect(url);
   });
 
+  // Connecting Google Drive, for syncing with a household's devices: an admin's choice, through
+  // the same redirect as sign-in.
+  app.get('/auth/drive', async (c) => {
+    const member = c.get('member');
+    if (!member) return c.redirect(appUrl('/signin?return=/settings/sync'));
+    if (member.role !== 'admin' || !sync.enabled) return c.redirect(appUrl('/settings/sync?error=off'));
+    const { url, state } = await oidc.beginDrive(member.id, member.email, '/settings/sync');
+    setCookie(c, STATE_COOKIE, state, { path: cookiePath, httpOnly: true, secure: config.secureCookies, sameSite: 'Lax', maxAge: 600 });
+    return c.redirect(url);
+  });
+
   app.get('/auth/callback', async (c) => {
     const state = getCookie(c, STATE_COOKIE);
     deleteCookie(c, STATE_COOKIE, { path: cookiePath });
@@ -140,6 +165,16 @@ export function createApp({
       console.warn('Sign-in failed:', describeError(err));
       if (c.get('member')) return c.redirect(appUrl(`/settings/calendars?error=${declined ? 'declined' : 'failed'}`));
       return c.redirect(appUrl(`/signin?error=${err instanceof SignInError ? err.code : 'failed'}`));
+    }
+    if (identity.kind === 'drive') {
+      if (c.get('member')?.id !== identity.memberId) return c.redirect(appUrl('/signin?error=expired'));
+      try {
+        sync.saveGrant(identity);
+      } catch (err) {
+        if (!(err instanceof SyncSetupError)) throw err;
+        return c.redirect(appUrl(`/settings/sync?error=${encodeURIComponent(err.message)}`));
+      }
+      return c.redirect(appUrl(`${identity.returnTo}?connected=1`));
     }
     if (identity.kind === 'calendar') {
       if (c.get('member')?.id !== identity.memberId) return c.redirect(appUrl('/signin?error=expired'));
@@ -199,6 +234,7 @@ export function createApp({
   app.use('/api/*', queuedWrites(db));
 
   registerApi(app, { db, config, ai, calendar, push, files });
+  registerServerSync(app, sync);
   registerConnectorApi(app);
 
   app.all('/api/*', (c) => c.json({ error: 'Not found.' }, 404));
@@ -237,4 +273,55 @@ export function createApp({
   }
 
   return app;
+}
+
+/** Settings → Sync on a server: the admin connects Google Drive and picks the household to keep in step with. */
+function registerServerSync(app: Hono<Env>, sync: ServerSync) {
+  const admin = (c: Context<Env>) => c.get('member')?.role === 'admin';
+  const answer = (fn: (c: Context<Env>) => Promise<Response>) => async (c: Context<Env>) => {
+    if (!admin(c)) return c.json({ error: 'Only an admin can change sync.' }, 403);
+    try {
+      return await fn(c);
+    } catch (err) {
+      if (err instanceof SyncSetupError) return c.json({ error: err.message }, 400);
+      throw err;
+    }
+  };
+
+  app.get('/api/sync', (c) => c.json({ ...sync.service.status(), mode: 'server', enabled: sync.enabled, google: sync.account()?.email ?? null }));
+
+  app.post(
+    '/api/sync/households',
+    answer(async (c) => {
+      const files = await sync.households();
+      return c.json({ households: files.map((f) => ({ id: f.id, name: f.name, owner: f.owners?.[0]?.displayName ?? f.owners?.[0]?.emailAddress ?? null })) });
+    }),
+  );
+
+  app.post(
+    '/api/sync/connect',
+    answer(async (c) => {
+      const parsed = z
+        .discriminatedUnion('mode', [
+          z.object({ mode: z.literal('create'), name: z.string().trim().min(1).max(100) }),
+          z.object({ mode: z.literal('join'), fileId: z.string().min(1).max(200) }),
+        ])
+        .safeParse(await c.req.json().catch(() => null));
+      if (!parsed.success) throw new SyncSetupError("That request doesn't look right.");
+      return c.json(await sync.connect(parsed.data));
+    }),
+  );
+
+  app.post(
+    '/api/sync/run',
+    answer(async (c) => c.json(await sync.run())),
+  );
+
+  app.delete(
+    '/api/sync',
+    answer(async (c) => {
+      await sync.off();
+      return c.json(sync.service.status());
+    }),
+  );
 }

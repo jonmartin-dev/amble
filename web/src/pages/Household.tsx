@@ -4,7 +4,9 @@ import { useState } from 'react';
 import PersonAdd from '~icons/material-symbols/person-add-outline-rounded';
 import { Avatar } from '../components/Avatar.tsx';
 import { SectionTitle, SubpageHeader } from '../components/ui.tsx';
+import { Link } from '@tanstack/react-router';
 import { api, type HouseholdMember } from '../lib/api.ts';
+import { onDevice } from '../lib/device.ts';
 import { expressive } from '../lib/motion.ts';
 import { useMe, useMembers } from '../lib/queries.ts';
 import { useSnackbar } from '../lib/snackbar.tsx';
@@ -60,8 +62,9 @@ export function Household() {
                   {m.name}
                   {m.id === me?.id && <span className="font-normal text-on-surface-variant"> (you)</span>}
                 </p>
-                <p className="truncate text-sm text-on-surface-variant">{m.email}</p>
-                {(m.role === 'admin' || !m.signedIn) && (
+                {/* A device's own person has no email until they sign in to Google. */}
+                {!m.email.endsWith('@device.invalid') && <p className="truncate text-sm text-on-surface-variant">{m.email}</p>}
+                {!onDevice && (m.role === 'admin' || !m.signedIn) && (
                   <p className="text-sm text-on-surface-variant">{m.role === 'admin' ? 'Admin' : "Hasn't signed in yet"}</p>
                 )}
               </div>
@@ -116,7 +119,18 @@ export function Household() {
         ))}
       </ul>
 
-      {admin && (
+      {onDevice ? (
+        <>
+          <SectionTitle>Add someone</SectionTitle>
+          <p className="px-1 text-on-surface-variant">
+            People join by sharing Almanac through Google Drive: make this a household in{' '}
+            <Link to="/settings/sync" className="font-medium text-primary">
+              Sync and backup
+            </Link>
+            , then add them there.
+          </p>
+        </>
+      ) : admin && (
         <>
           <SectionTitle>Add someone</SectionTitle>
           {data?.pending.map((email) => (

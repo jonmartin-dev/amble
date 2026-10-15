@@ -2,10 +2,12 @@
 // screens for when another tab has the database, or the browser won't give Almanac storage.
 import { useQueryClient } from '@tanstack/react-query';
 import { motion } from 'motion/react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import ErrorIcon from '~icons/material-symbols/error-outline-rounded';
 import { api, ApiError, appUrl, type Member } from '../lib/api.ts';
 import { deviceFailure, useHere, type DeviceState } from '../lib/device.ts';
+import { googleConfigured, resumeAfterGoogle, tokenFromTap } from '../lib/google.ts';
+import { joinHousehold } from './SyncSettings.tsx';
 import { expressive } from '../lib/motion.ts';
 
 function Frame({ children }: { children: React.ReactNode }) {
@@ -30,6 +32,30 @@ export function Welcome() {
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  /** A second device: whatever this Google account syncs comes in, and the device is theirs. */
+  const fromDrive = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      const token = await tokenFromTap('welcome');
+      const { households } = await api<{ households: { id: string }[] }>('/sync/households', { method: 'POST', body: JSON.stringify({ token }) });
+      if (households.length) await joinHousehold('welcome');
+      else await api('/sync/connect', { method: 'POST', body: JSON.stringify({ token, mode: 'personal' }) });
+      await qc.invalidateQueries();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "That didn't work. Try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Back from Google after "I already use Almanac": carry on.
+  useEffect(() => {
+    const back = resumeAfterGoogle('welcome');
+    if (back?.error) setError(back.error);
+    else if (back) void fromDrive();
+  }, []);
 
   const start = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -77,6 +103,19 @@ export function Welcome() {
         >
           Start
         </button>
+        {googleConfigured && (
+          <>
+            <button
+              type="button"
+              onClick={() => void fromDrive()}
+              disabled={saving}
+              className="rounded-full px-6 py-3 font-medium text-primary transition-transform active:scale-[0.97] disabled:opacity-40"
+            >
+              I already use Almanac
+            </button>
+            <p className="text-center text-sm text-on-surface-variant">Signs in with Google to bring in what you have, or join a household someone shared.</p>
+          </>
+        )}
       </form>
     </Frame>
   );

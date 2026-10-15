@@ -12,10 +12,11 @@ import { applyMigrations, drizzleOn, migrationsFrom, type Db } from '../../../se
 import { asBetterSqlite, WasmClient } from '../../../server/db/wasm.ts';
 import { sweepFiles } from '../../../server/domain/files.ts';
 import { every, startJobs } from '../../../server/jobs.ts';
-import { createLocalApp, deviceConfig } from '../../../server/local.ts';
+import { createLocalApp, deviceAdopt, deviceConfig } from '../../../server/local.ts';
 import { createLocalPush } from '../../../server/notify/local-push.ts';
 import { createReminderSender } from '../../../server/notify/reminders.ts';
 import type { PushMessage } from '../../../server/notify/devices.ts';
+import { createSyncService } from '../../../server/sync/service.ts';
 import journal from '../../../drizzle/meta/_journal.json';
 import { createOpfsFiles } from './files.ts';
 import type { FromWorker, ToWorker } from './protocol.ts';
@@ -83,7 +84,10 @@ async function start() {
   const push = createLocalPush(db, showNotification);
   const files = await createOpfsFiles();
   const calendar = createCalendarSync({ db, config, google: createGoogle(config) });
-  const app = createLocalApp({ db, config, ai, calendar, push, files });
+  // The newest migration this build has: another device's copy from a newer one can't be merged.
+  const schema = journal.entries.at(-1)!.tag;
+  const sync = createSyncService({ db, schema, adopt: deviceAdopt(db, config) });
+  const app = createLocalApp({ db, config, ai, calendar, push, files, sync });
 
   const estimator = createEstimator(db, ai, timezone);
   const briefings = createBriefings(db, ai, timezone);
@@ -91,11 +95,19 @@ async function start() {
   const changed = (n: unknown) => {
     if (typeof n === 'number' && n > 0) post({ type: 'changed' });
   };
+  // What a background job changes gets its time for sync, like a request's changes.
+  const timed = (run: () => Promise<unknown>) => async () => {
+    try {
+      return await run();
+    } finally {
+      sync.stamp();
+    }
+  };
   startJobs([
-    { name: 'reminders', run: () => reminders.run() },
-    { name: 'estimates', run: async () => changed(await estimator.run()) },
-    { name: 'briefings', run: () => briefings.run() },
-    { name: 'file cleanup', run: every(24 * 60 * 60 * 1000, () => sweepFiles(db, files)) },
+    { name: 'reminders', run: timed(() => reminders.run()) },
+    { name: 'estimates', run: timed(async () => changed(await estimator.run())) },
+    { name: 'briefings', run: timed(() => briefings.run()) },
+    { name: 'file cleanup', run: timed(every(24 * 60 * 60 * 1000, () => sweepFiles(db, files))) },
   ]);
   return { app, origin: self.location.origin, basePath, userAgent };
 }

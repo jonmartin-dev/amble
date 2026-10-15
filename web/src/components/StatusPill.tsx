@@ -7,6 +7,7 @@ import Sync from '~icons/material-symbols/sync-rounded';
 import Upgrade from '~icons/material-symbols/upgrade-rounded';
 import { appUrl } from '../lib/api.ts';
 import { onDevice } from '../lib/device.ts';
+import { syncNow, useDriveSync } from '../lib/drive-sync.ts';
 import { expressive } from '../lib/motion.ts';
 import { applyUpdate, useUpdateReady } from '../lib/pwa.ts';
 import { useSyncState } from '../lib/sync.ts';
@@ -32,6 +33,7 @@ interface Status {
 export function StatusPill() {
   const sync = useSyncState();
   const update = useUpdateReady();
+  const drive = useDriveSync();
   const [slowSync, setSlowSync] = useState(false);
   const [synced, setSynced] = useState(false);
   const wasBehind = useRef(false);
@@ -71,7 +73,15 @@ export function StatusPill() {
       action: { label: 'Sign in', run: () => window.location.assign(appUrl(`/auth/login?return=${encodeURIComponent(location.pathname)}`)) },
     };
   } else if (onDevice) {
-    // Changes go straight into the database on this device, so there's nothing to wait for.
+    // Changes go straight into the database on this device; only Drive sync can be waiting.
+    if (drive.needsGoogle && drive.status?.on) {
+      status = {
+        key: 'drive',
+        icon: <Sync className="size-[18px]" aria-hidden />,
+        text: drive.status.waiting ? 'Changes to sync' : 'Sync paused',
+        action: { label: 'Continue', run: () => void syncNow({ tap: true }).catch(() => {}) },
+      };
+    }
   } else if (!sync.online || sync.blocked === 'offline') {
     status = { key: 'offline', icon: <CloudOff className="size-[18px]" aria-hidden />, text: sync.pending ? `Offline · ${changes(sync.pending)} to sync` : 'Offline' };
   } else if (sync.blocked === 'server') {

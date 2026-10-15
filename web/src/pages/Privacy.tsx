@@ -1,4 +1,5 @@
 import { appUrl } from '../lib/api.ts';
+import { onDevice } from '../lib/device.ts';
 import { useSession } from '../lib/queries.ts';
 
 // What each provider says it does with what's sent through its API. Others link to their own terms.
@@ -11,6 +12,67 @@ const AI_TRAINING: Record<string, string> = {
 };
 
 export function Privacy() {
+  return onDevice ? <DevicePrivacy /> : <ServerPrivacy />;
+}
+
+/** Almanac with no server: what stays on the device, and what goes to Google Drive or an AI provider when someone sets that up. */
+function DevicePrivacy() {
+  const auth = useSession().data?.auth;
+  const aiName = auth?.ai?.provider === 'custom' ? 'the service you chose' : (auth?.ai?.name ?? '');
+  return (
+    <main className="mx-auto max-w-xl px-6 py-12 leading-relaxed">
+      <a href={appUrl('/')} className="text-sm font-medium text-primary">
+        Almanac
+      </a>
+      <h1 className="display mt-4 text-4xl font-medium">Privacy</h1>
+      <p className="mt-2 text-on-surface-variant">Last updated October 15, 2026</p>
+
+      <div className="mt-8 flex flex-col gap-5 [&_h2]:display [&_h2]:text-xl [&_h2]:font-medium">
+        <p>
+          This copy of Almanac runs on your device. Everything you put in it (tasks, lists, notes, links and files) is kept in this
+          browser's own storage for this site, and nothing goes anywhere unless you set up one of the things below. There's no
+          Almanac server, account or analytics.
+        </p>
+        <h2>Sync with Google Drive</h2>
+        <p>
+          If you turn on sync, Almanac keeps a copy in your Google Drive and brings your other devices in step with it. Just for you, the
+          copy is in Almanac's own hidden folder in your Drive, which only Almanac can open. For a household, it's a file in the Drive of
+          whoever made the household, shared with the people they add; everyone in it has the whole file, including lists marked as
+          only theirs, which Almanac keeps out of others' view but doesn't keep out of the file. Almanac asks Google only for its own
+          files: the hidden folder, and files it made or that you picked for it. It can't see anything else in your Drive. Photos and
+          files on tasks stay on the devices of whoever added them.
+        </p>
+        <p>
+          Google gives the app a key to your Drive that lasts about an hour and is kept only in this tab. If someone in the household
+          runs their own Almanac server and connects it, the server is one more copy of the household's file.
+        </p>
+        <h2>Reminders</h2>
+        <p>
+          A reminder you set shows as a notification from this browser while Almanac is open. Nothing goes through a push service.
+        </p>
+        <h2>AI features</h2>
+        {auth?.ai ? (
+          <p>
+            This copy uses an AI model from {aiName}, with a key you entered that stays on this device. Task titles and related details
+            go straight from this device to {aiName}'s API to turn what you type into tasks, estimate how long tasks take, word the
+            morning's suggestions, plan your week and suggest tidying the backlog.{' '}
+            {AI_TRAINING[auth.ai.provider] ?? `${aiName}'s own terms say what it keeps and whether it learns from it.`}
+          </p>
+        ) : (
+          <p>No AI model is set up, so nothing is sent to an AI service. If you set one up, this page will name it.</p>
+        )}
+        <h2>Removing your data</h2>
+        <p>
+          Stop syncing in Settings, then clear this site's data in your browser to remove everything from this device. A household file
+          in Google Drive is removed like any other file there; Almanac's hidden copy goes when you disconnect Almanac at
+          myaccount.google.com/connections.
+        </p>
+      </div>
+    </main>
+  );
+}
+
+function ServerPrivacy() {
   const auth = useSession().data?.auth;
   const provider = auth?.provider ?? 'Google';
   const aiName = auth?.ai?.provider === 'custom' ? 'the service the household admin chose' : (auth?.ai?.name ?? '');
@@ -62,6 +124,11 @@ export function Privacy() {
             and this page will name it.
           </p>
         )}
+        <h2>Google Drive</h2>
+        <p>
+          If the household admin connects this server to Google Drive, so it keeps in step with the household's own devices, the
+          household's tasks and lists are also kept in a file in that admin's Google Drive, shared with the people in the household.
+        </p>
         <h2>Claude and ChatGPT</h2>
         <p>
           If you connect Claude or ChatGPT to Almanac, it can read and change your tasks, lists and plans when you ask it to, acting as

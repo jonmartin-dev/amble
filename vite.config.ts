@@ -64,6 +64,8 @@ function serviceWorker(): Plugin {
 
 export default defineConfig({
   root: 'web',
+  // .env sits beside package.json; only its VITE_ settings (the Google client for Drive sync) reach the app.
+  envDir: import.meta.dirname,
   // Relative asset URLs plus a server-injected <base href> let one build run under any path prefix.
   // A device build has no server to write that in, so it's built for its path.
   base: device ? (process.env.ALMANAC_BASE ?? '/') : './',

@@ -8,6 +8,7 @@ import History from '~icons/material-symbols/history-rounded';
 import Logout from '~icons/material-symbols/logout-rounded';
 import Neurology from '~icons/material-symbols/neurology-outline-rounded';
 import Bell from '~icons/material-symbols/notifications-outline-rounded';
+import CloudSync from '~icons/material-symbols/cloud-sync-outline-rounded';
 import Palette from '~icons/material-symbols/palette-outline-rounded';
 import Policy from '~icons/material-symbols/policy-outline-rounded';
 import Timer from '~icons/material-symbols/timer-outline-rounded';
@@ -15,6 +16,7 @@ import Trophy from '~icons/material-symbols/trophy-outline-rounded';
 import { ListGroup, SectionTitle, SubpageHeader, Switch, minutesLabel } from '../components/ui.tsx';
 import { type Member } from '../lib/api.ts';
 import { onDevice } from '../lib/device.ts';
+import { useDriveSync } from '../lib/drive-sync.ts';
 import { useSaveMe } from '../lib/mutations.ts';
 import { signOut } from '../lib/persist.ts';
 import { usePushState } from '../lib/push.ts';
@@ -40,6 +42,12 @@ export function Settings() {
   const { data: ai } = useAi();
   const { data: calendars } = useCalendars();
   const push = usePushState();
+  const drive = useDriveSync().status;
+  const syncSummary = !drive?.on
+    ? 'Off: everything stays on this device'
+    : drive.target?.kind === 'household'
+      ? `Household, through ${drive.account?.email ?? 'Google Drive'}`
+      : `Backed up to ${drive.account?.email ?? 'Google Drive'}`;
   const smartOn = me?.smartAdd ?? true;
   const counted = calendars?.accounts.flatMap((a) => a.calendars.filter((c) => c.counts)).length ?? 0;
   const calendarSummary = !calendars
@@ -71,6 +79,22 @@ export function Settings() {
           },
         ]}
       />
+
+      {onDevice ? (
+        <>
+          <SectionTitle>This device</SectionTitle>
+          <ListGroup rows={[{ icon: <CloudSync className="size-6" />, title: 'Sync and backup', subtitle: syncSummary, to: '/settings/sync' }]} />
+        </>
+      ) : (
+        me?.role === 'admin' && (
+          <>
+            <SectionTitle>Server</SectionTitle>
+            <ListGroup
+              rows={[{ icon: <CloudSync className="size-6" />, title: 'Sync with Google Drive', subtitle: 'Keep this server in step with your devices', to: '/settings/sync' }]}
+            />
+          </>
+        )
+      )}
 
       <SectionTitle>Household</SectionTitle>
       <ListGroup

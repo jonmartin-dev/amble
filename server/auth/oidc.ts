@@ -3,9 +3,11 @@ import type { Config } from '../config.ts';
 
 /** Read access to calendars and events, which is all phase 7 needs. */
 export const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.readonly';
+/** Almanac's own files in Google Drive, for keeping the server in step with a household's devices. */
+export const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/drive.file';
 
 interface PendingLogin {
-  kind: 'signin' | 'calendar';
+  kind: 'signin' | 'calendar' | 'drive';
   verifier: string;
   nonce: string;
   returnTo: string;
@@ -14,19 +16,22 @@ interface PendingLogin {
   expires: number;
 }
 
+/** Lasting access to part of someone's Google account: their calendars, or Almanac's files in their Drive. */
+export interface GoogleGrant {
+  memberId: string;
+  returnTo: string;
+  subject: string;
+  email: string;
+  refreshToken: string | undefined;
+  accessToken: string;
+  expiresIn: number | undefined;
+  scope: string;
+}
+
 export type Finished =
   | { kind: 'signin'; email: string; name?: string; avatarUrl?: string; returnTo: string }
-  | {
-      kind: 'calendar';
-      memberId: string;
-      returnTo: string;
-      subject: string;
-      email: string;
-      refreshToken: string | undefined;
-      accessToken: string;
-      expiresIn: number | undefined;
-      scope: string;
-    };
+  | ({ kind: 'calendar' } & GoogleGrant)
+  | ({ kind: 'drive' } & GoogleGrant);
 
 const FLOW_TTL_MS = 10 * 60 * 1000;
 const GOOGLE = 'https://accounts.google.com';
@@ -102,7 +107,7 @@ export function createOidc(config: Config) {
     const state = client.randomState();
     const nonce = client.randomNonce();
     pending.set(state, { ...flow, verifier, nonce, expires: now + FLOW_TTL_MS });
-    const url = client.buildAuthorizationUrl(await (flow.kind === 'calendar' ? google() : provider()), {
+    const url = client.buildAuthorizationUrl(await (flow.kind === 'signin' ? provider() : google()), {
       redirect_uri: redirectUri,
       code_challenge: await client.calculatePKCECodeChallenge(verifier),
       code_challenge_method: 'S256',
@@ -143,12 +148,23 @@ export function createOidc(config: Config) {
       );
     },
 
+    /**
+     * Asks Google to let the server keep Almanac's files in someone's Drive, offline so it syncs
+     * while nobody's using it.
+     */
+    beginDrive(memberId: string, loginHint: string, returnTo: string) {
+      return start(
+        { kind: 'drive', memberId, returnTo },
+        { scope: `openid email ${DRIVE_SCOPE}`, access_type: 'offline', prompt: 'consent', include_granted_scopes: 'true', login_hint: loginHint },
+      );
+    },
+
     /** Exchange the callback for verified claims (and, for a calendar, tokens). `query` is the raw callback query string. */
     async finish(state: string, query: string): Promise<Finished> {
       const flow = pending.get(state);
       pending.delete(state);
       if (!flow || flow.expires < Date.now()) throw new Error('Sign-in expired. Try again.');
-      const configuration = await (flow.kind === 'calendar' ? google() : provider());
+      const configuration = await (flow.kind === 'signin' ? provider() : google());
       const tokens = await client.authorizationCodeGrant(configuration, new URL(`${redirectUri}${query}`), {
         pkceCodeVerifier: flow.verifier,
         expectedState: state,
@@ -167,9 +183,8 @@ export function createOidc(config: Config) {
       if (claims.email_verified === false || claims.email_verified === 'false') {
         throw new SignInError('unverified', `The provider says ${claims.email} is not verified.`);
       }
-      if (flow.kind === 'calendar') {
-        return {
-          kind: 'calendar',
+      if (flow.kind !== 'signin') {
+        const grant: GoogleGrant = {
           memberId: flow.memberId!,
           returnTo: flow.returnTo,
           subject: claims.sub,
@@ -179,6 +194,7 @@ export function createOidc(config: Config) {
           expiresIn: tokens.expires_in,
           scope: tokens.scope ?? '',
         };
+        return flow.kind === 'drive' ? { kind: 'drive', ...grant } : { kind: 'calendar', ...grant };
       }
       return {
         kind: 'signin',
