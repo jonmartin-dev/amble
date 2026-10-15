@@ -115,6 +115,22 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+/*
+ * Behind the phone's status bar when the app draws under it (the Android app, or Almanac added to
+ * an iPhone's home screen): a strip of the page's own color, so the clock and icons never sit on
+ * what scrolls beneath them. Where there's no status bar to cover, the inset is 0 and so is the
+ * strip. Above the toolbars, under sheets and their scrim.
+ */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0 0 auto;
+  height: env(safe-area-inset-top);
+  background: var(--md-surface);
+  z-index: 15;
+  pointer-events: none;
+}
+
 /* Expressive headlines lean on the font's roundness axis. */
 .display {
   font-variation-settings: 'ROND' 100;
