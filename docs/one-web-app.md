@@ -1,6 +1,6 @@
 # One web app, with a server only for extras
 
-A plan, written 2026-10-15. None of it is built yet.
+A plan, written 2026-10-15. Steps 1 and 2 of the order below are built, and so is the phone's background check for reminders.
 
 Amble's web page comes two ways today, from the same React code:
 
@@ -24,6 +24,12 @@ Since the household moved into Drive, the server is just another copy that syncs
 
 The connector stands out. The others either have a device-side substitute or affect only people using a browser on a computer.
 
+## Decided
+
+- **The open-source app is the app.** What Jon runs is what anyone gets from the repository, with no setup that only works for him.
+- **Three ways to start.** On first open: use Amble on this device only, sync with Google (signing in with Google is how Drive sync works), or point it at your own server, on the home network or through Tailscale, sign in however that server does, and sync with the server instead of Drive. Apple and others can come later as more options on the same screen. This settles [households without Google](#households-without-google).
+- **Reminders never depend on an outside push service.** A reminder set on the phone is the phone's own alarm, as before. One set anywhere else (through Claude, or in a browser) reaches the phone through its background check: about every 15 minutes, the shortest Android allows, while the household syncs, the Android app reads the household's file and sets alarms for this person's coming reminders it hasn't scheduled itself (`android/.../ReminderCheck.java`). A reminder set elsewhere for less than about 15 minutes ahead may be late, and longer while the phone sits idle; nothing else in Amble is that time-sensitive. Firebase Cloud Messaging was tried and taken out again the same day: only the Firebase project an app was built with can send to it, so it works for whoever holds that project's key and nobody else, short of a relay the project would have to run for everyone.
+
 ## The proposal
 
 - **The web app is the device build, everywhere.** The page people open is the same app as the Android one: data on the device, offline from the start, no account, synced through Drive.
@@ -33,7 +39,7 @@ The connector stands out. The others either have a device-side substitute or aff
 Extras the server could add later, for people who run one:
 
 - **Push for browsers.** A browser subscribes with the server's VAPID key and registers once after signing in to the server (same origin, so the session cookie just works). The server already knows every reminder's time through sync.
-- **Sync without Google.** A state-file endpoint on the server, shaped like the Drive calls in `server/sync/drive.ts` (`server/sync/fake-drive.ts` shows how little that is), would let devices sync to the server instead of Drive. This is what keeps households that avoid Google working; see [Households without Google](#households-without-google).
+- **Sync without Google.** A state-file endpoint on the server, shaped like the Drive calls in `server/sync/drive.ts` (`server/sync/fake-drive.ts` shows how little that is), will let devices sync to the server instead of Drive: the "your own server" way to start. The phone's background check will read it the same way it reads Drive.
 
 ## What a browser user gains and loses
 
@@ -87,10 +93,9 @@ Roughly 1,500 to 2,500 lines out and 400 in, mostly deletions. A few focused day
 
 ## Households without Google
 
-Today a household can run entirely on a self-hosted server with another sign-in provider (Authelia, Keycloak and others; see [sign-in.md](sign-in.md)) and never touch Google. Dropping the server's page takes their app away unless devices can sync to the server itself. So decide one of:
+Today a household can run entirely on a self-hosted server with another sign-in provider (Authelia, Keycloak and others; see [sign-in.md](sign-in.md)) and never touch Google. Dropping the server's page would take their app away unless devices can sync to the server itself.
 
-- **Support it** by building sync to the server (the state-file endpoint above), before the server's page goes.
-- **Drop it**, say so in the README, and keep Google Drive as the only way to sync.
+Decided 2026-10-15: support it. Sync to the server (the state-file endpoint above) is one of the three ways to start, and it's built before the server's page goes.
 
 ## Risks
 
@@ -105,9 +110,9 @@ Today a household can run entirely on a self-hosted server with another sign-in 
 Do it, in this order, with the week in step 3 as the point to decide:
 
 1. Fix the connector's reminder note. Done.
-2. Make a browser renew Drive access on its own: the `prompt=none` bounce first, then the token endpoint. Done.
+2. Make a browser renew Drive access on its own: the `prompt=none` bounce first, then the token endpoint. Done. So is the phone's background check for reminders set elsewhere.
 3. Host the device build beside the server's page (at `/amble/app/`, say) and use it on a computer for a week.
 4. Settle calendar: devices read their own, or the server shares busy minutes.
-5. Decide on households without Google.
+5. Build sync to your own server, the third way to start (decided above).
 6. Point the app's address at the device build, turn the server's remaining pages into plain pages, and delete the server's app code.
 7. Update the docs.
