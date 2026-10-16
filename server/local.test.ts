@@ -1,8 +1,6 @@
 import sqlite3InitModule, { type Sqlite3Static } from '@sqlite.org/sqlite-wasm';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createAi } from './ai/client.ts';
-import { createGoogle } from './calendar/google.ts';
-import { createCalendarSync } from './calendar/sync.ts';
 import { openDatabase } from './db/index.ts';
 import { FileTooBig, type FileStore } from './domain/files.ts';
 import { createLocalApp, deviceConfig, isDeviceEmail } from './local.ts';
@@ -57,7 +55,6 @@ beforeEach(() => {
     db,
     config,
     ai: createAi(config, db, fetch, { seal: (k) => k, open: (k) => k }),
-    calendar: createCalendarSync({ db, config, google: createGoogle(config) }),
     push: createLocalPush(db, async (m) => {
       shown.push(m);
       return true;
@@ -124,5 +121,25 @@ describe('Amble on a device', () => {
 
     expect((await call('POST', `/tasks/${task.id}/complete`, { done: true })).json.task).toMatchObject({ status: 'done', completedAt: expect.any(String) });
     expect((await call('PATCH', '/me', { showStreaks: false })).json.member).toMatchObject({ id: me.id, showStreaks: false });
+  });
+
+  it("takes in the phone's calendars and their events, including ones Android leaves fields out of", async () => {
+    await call('POST', '/device/start', { name: 'Sam' });
+    expect((await call('GET', '/calendars')).json).toEqual({ on: false, calendars: [], sharedDays: 0 });
+    // Android leaves out what a calendar or event doesn't have, like a color or an event's id.
+    const listed = await call('PUT', '/calendars/phone', { calendars: [{ id: '7', name: 'Mine', primary: true, writable: true, visible: true }] });
+    expect(listed.json.counting).toEqual(['7']);
+    const today = (await call('GET', '/today')).json.today;
+    const at = (time: string) => Temporal.PlainDateTime.from(`${today}T${time}`).toZonedDateTime('America/Chicago').epochMilliseconds;
+    const saved = await call('PUT', '/calendars/phone/events', {
+      events: [{ id: '1:1', calendarId: '7', begin: at('09:00'), end: at('10:00'), allDay: false, busy: true }],
+    });
+    expect(saved.json).toEqual({ saved: 1 });
+    expect((await call('GET', `/events?start=${today}&end=${today}`)).json.events).toMatchObject([{ title: null, calendar: 'Mine' }]);
+    expect((await call('GET', `/load?start=${today}&end=${today}`)).json.days[0]).toMatchObject({ eventMinutes: 60, events: 1 });
+    const { calendars } = (await call('GET', '/calendars')).json;
+    expect((await call('PATCH', `/calendars/${calendars[0].id}`, { counts: false })).json.calendars[0]).toMatchObject({ counts: false });
+    expect((await call('DELETE', '/calendars/phone')).status).toBe(204);
+    expect((await call('GET', '/calendars')).json).toMatchObject({ on: false, calendars: [] });
   });
 });

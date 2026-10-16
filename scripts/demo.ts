@@ -5,7 +5,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { config } from '../server/config.ts';
 import { openDatabase } from '../server/db/index.ts';
-import { activity, calendarAccounts, calendarEvents, calendarSources, members, oauthClients, oauthGrants, tasks } from '../server/db/schema.ts';
+import { activity, members, oauthClients, oauthGrants, tasks } from '../server/db/schema.ts';
+import { savePhoneCalendars, savePhoneEvents, type PhoneEvent } from '../server/domain/calendars.ts';
 import { seedStarterGroups } from '../server/db/seed.ts';
 import { WEEKDAYS } from '../shared/templates.ts';
 import { createGroup, resolveGroup, type Actor } from '../server/domain/household.ts';
@@ -167,44 +168,33 @@ const packing = createGroup(db, asMe, { name: 'Lake weekend', kind: 'list', temp
 addListItems(db, asMe, packing, [{ name: 'Swimsuit', section: 'Clothes' }, { name: 'Paddleboard pump', section: 'Gear' }]);
 checkListItems(db, asMe, packing, ['Socks', 'Toothbrush', 'Phone charger']);
 
-// A calendar to plan around: a standing weekday standup (usual, so it leaves room alone), and a
-// dentist visit and a dinner today on top of it. It's never synced from Google; the account's last
-// sync is set far ahead so the server leaves it be.
-const account = db
-  .insert(calendarAccounts)
-  .values({ memberId: me.id, subject: 'demo', email: me.email, refreshToken: 'demo', scope: 'demo', syncedAt: new Date('2100-01-01') })
-  .returning()
-  .get();
-const source = db
-  .insert(calendarSources)
-  .values({ accountId: account.id, memberId: me.id, calendarId: me.email, name: me.name, color: '#4285f4', primary: true, counts: true, fullSyncAt: new Date('2100-01-01') })
-  .returning()
-  .get();
-const at = (date: string, time: string) => new Date(Temporal.PlainDateTime.from(`${date}T${time}`).toZonedDateTime(me.timezone).epochMilliseconds);
-const event = (id: string, title: string, date: string, from: string, to: string, busy = true) => ({
-  sourceId: source.id,
-  memberId: me.id,
-  eventId: id,
+// A calendar to plan around, as a phone would hand it over: a standing weekday standup (usual, so
+// it leaves room alone), and a dentist visit and a dinner today on top of it.
+savePhoneCalendars(db, me, [{ id: '1', account: me.email, name: me.name, color: '#4285f4', primary: true, writable: true, visible: true }]);
+const at = (date: string, time: string) => Temporal.PlainDateTime.from(`${date}T${time}`).toZonedDateTime(me.timezone).epochMilliseconds;
+const event = (id: string, title: string, date: string, from: string, to: string, busy = true): PhoneEvent => ({
+  id,
+  calendarId: '1',
   uid: id,
   title,
-  startAt: at(date, from),
-  endAt: at(date, to),
+  begin: at(date, from),
+  end: at(date, to),
+  allDay: false,
   busy,
 });
-const allDay = (id: string, title: string, date: string, days: number, busy: boolean) => ({
-  sourceId: source.id,
-  memberId: me.id,
-  eventId: id,
+// The phone keeps all-day events at midnight UTC.
+const utc = (date: string) => Date.parse(`${date}T00:00:00Z`);
+const allDay = (id: string, title: string, date: string, days: number, busy: boolean): PhoneEvent => ({
+  id,
+  calendarId: '1',
   uid: id,
   title,
+  begin: utc(date),
+  end: utc(addDays(date, days)),
   allDay: true,
-  startAt: at(date, '00:00'),
-  endAt: at(addDays(date, days), '00:00'),
-  startDate: date,
-  endDate: addDays(date, days),
   busy,
 });
-const events = [];
+const events: PhoneEvent[] = [];
 for (let d = -56; d <= 21; d++) {
   const date = addDays(today, d);
   if (Temporal.PlainDate.from(date).dayOfWeek <= 5) events.push(event(`standup-${d}`, 'Team standup', date, '09:30', '10:00'));
@@ -216,7 +206,7 @@ events.push(
   event('soccer', 'Soccer practice pickup', addDays(today, 2), '17:00', '18:00'),
   allDay('trip', 'Lake weekend', addDays(today, 5), 2, true),
 );
-db.insert(calendarEvents).values(events).run();
+savePhoneEvents(db, me, events);
 
 // Claude and ChatGPT connected through the connector, as their Activity entries say. Their client
 // documents are fetched the first time either signs in again.

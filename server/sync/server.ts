@@ -3,7 +3,7 @@
 // sealed like calendar tokens, and syncs every minute and soon after each change, whoever made it:
 // the app, Claude or ChatGPT through the connector, or a background job.
 import { eq } from 'drizzle-orm';
-import type { GoogleApi } from '../calendar/google.ts';
+import type { GoogleApi } from '../lib/google.ts';
 import type { Config } from '../config.ts';
 import type { Db } from '../db/open.ts';
 import { serverSettings } from '../db/schema.ts';
@@ -45,7 +45,7 @@ export function createServerSync({ db, config, google, schema, fetchImpl = fetch
 
   const server = {
     service,
-    enabled: Boolean(config.calendar.clientId && config.calendar.clientSecret),
+    enabled: Boolean(config.google.clientId && config.google.clientSecret),
 
     /** The Google account the server syncs as, once an admin connected one. */
     account: () => {

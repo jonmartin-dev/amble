@@ -1,6 +1,6 @@
 // What syncs between a household's devices: the household's data, field by field. Sign-ins,
-// connector grants, calendars (each device reads its own), AI spending and push devices stay on
-// the device or server that has them.
+// connector grants, calendars (each phone reads its own; only how busy each day is syncs), AI
+// spending and push devices stay on the device or server that has them.
 
 export interface SyncedTable {
   name: string;
@@ -23,6 +23,7 @@ export const SYNCED: SyncedTable[] = [
   // Each device shows a reminder itself when there's no server, so whether it went out here is its own.
   { name: 'reminders', pk: ['id'], local: ['sent_at', 'outcome'] },
   { name: 'day_records', pk: ['member_id', 'date'] },
+  { name: 'busy_days', pk: ['member_id', 'date'] },
 ];
 
 export const syncedTable = (name: string) => SYNCED.find((t) => t.name === name);

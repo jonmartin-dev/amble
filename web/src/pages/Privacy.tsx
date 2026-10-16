@@ -58,12 +58,21 @@ function DevicePrivacy() {
             ? 'A reminder you set is handed to your phone, which shows it at its time. With sync on, the phone also checks your household’s file in Drive about every 15 minutes for reminders you set elsewhere. Nothing goes through a push service.'
             : 'A reminder you set shows as a notification from this browser while Amble is open. Nothing goes through a push service.'}
         </p>
+        <h2>Calendars</h2>
+        <p>
+          If you turn on Calendars in the Android app, Amble reads the calendars on your phone that you choose, through Android's own
+          calendar permission, to work out how busy your days are and plan around them. Their events stay on the phone, from twelve
+          weeks back to six months ahead, read again whenever Amble opens. Only how many minutes of each day are busy goes into the
+          household's copy, so everyone else, and any Amble server, sees that a day is busier but never what's on it. Amble only reads:
+          it never adds, edits or deletes events. Turning Calendars off removes the events from Amble.
+        </p>
         <h2>AI features</h2>
         {auth?.ai ? (
           <p>
             This copy uses an AI model from {aiName}, with a key you entered that stays on this device. Task titles and related details
             go straight from this device to {aiName}'s API to turn what you type into tasks, estimate how long tasks take, word the
-            morning's suggestions, plan your week and suggest tidying the backlog.{' '}
+            morning's suggestions, plan your week and suggest tidying the backlog. With Calendars on, the titles and times of your
+            own events that day or week go along for the morning's suggestions and planning your week.{' '}
             {AI_TRAINING[auth.ai.provider] ?? `${aiName}'s own terms say what it keeps and whether it learns from it.`}
           </p>
         ) : (
@@ -110,20 +119,17 @@ function ServerPrivacy() {
           notes travel encrypted for your device, so the push service passes them along without being able to read them. Signing out
           or turning notifications off in Settings stops them on that device.
         </p>
-        <h2>Google Calendar</h2>
+        <h2>Calendars</h2>
         <p>
-          If you connect Google Calendar, Amble reads the calendars you choose, to work out how busy your days are and plan around them.
-          It keeps a copy of their events from twelve weeks back to six months ahead on the household's server, refreshed every few
-          minutes. Only you see your events; everyone else in the household only sees that a day is busier. Amble only reads: it never
-          adds, edits or deletes events. Disconnecting a calendar in Settings deletes the copy and tells Google to end Amble's access.
+          Calendars are read on each person's own phone by the Amble app, through Android's calendar permission. Only how many minutes
+          of each day are busy reaches this server, never what the events are.
         </p>
         <h2>AI features</h2>
         {auth?.ai ? (
           <p>
             This copy uses an AI model from {aiName}. Task titles and related details are sent to {aiName}'s API to turn what you type
-            into tasks, estimate how long tasks take, word the morning's suggestions, plan your week and suggest tidying the backlog. For
-            the morning suggestions and planning your week, the titles and times of your own calendar events that day or week are sent
-            too. {AI_TRAINING[auth.ai.provider] ?? `${aiName}'s own terms say what it keeps and whether it learns from it.`}
+            into tasks, estimate how long tasks take, word the morning's suggestions, plan your week and suggest tidying the backlog.{' '}
+            {AI_TRAINING[auth.ai.provider] ?? `${aiName}'s own terms say what it keeps and whether it learns from it.`}
           </p>
         ) : (
           <p>

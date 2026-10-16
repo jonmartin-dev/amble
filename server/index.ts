@@ -4,8 +4,7 @@ import { createEstimator } from './ai/estimate.ts';
 import { createBriefings } from './ai/plan.ts';
 import { createApp } from './app.ts';
 import { createOidc } from './auth/oidc.ts';
-import { createGoogle } from './calendar/google.ts';
-import { createCalendarSync } from './calendar/sync.ts';
+import { createGoogle } from './lib/google.ts';
 import { config } from './config.ts';
 import { openDatabase, SCHEMA } from './db/index.ts';
 import { seedStarterGroups } from './db/seed.ts';
@@ -21,11 +20,10 @@ seedStarterGroups(db);
 
 const ai = createAi(config, db);
 const google = createGoogle(config);
-const calendar = createCalendarSync({ db, config, google });
 const sync = createServerSync({ db, config, google, schema: SCHEMA });
 const push = createPush(db, config);
 const files = createFileStore(config.dataDir);
-const app = createApp({ db, config, oidc: createOidc(config), ai, calendar, push, files, sync });
+const app = createApp({ db, config, oidc: createOidc(config), ai, push, files, sync });
 
 const estimator = createEstimator(db, ai, config.timezone);
 const briefings = createBriefings(db, ai, config.timezone);
@@ -34,9 +32,8 @@ const reminders = createReminderSender(db, push, config.basePath);
 startJobs([
   // First, so a slow Google doesn't make a reminder late.
   { name: 'reminders', run: () => reminders.run() },
-  { name: 'calendar sync', run: () => calendar.syncDue() },
   { name: 'estimates', run: () => estimator.run() },
-  // After the calendar and estimates, so the morning's suggestions see both.
+  // After the estimates, so the morning's suggestions see them.
   { name: 'briefings', run: () => briefings.run() },
   { name: 'file cleanup', run: every(24 * 60 * 60 * 1000, () => sweepFiles(db, files)) },
   // Last, so what the jobs above changed goes out in the same round.

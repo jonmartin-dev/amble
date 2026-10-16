@@ -7,8 +7,7 @@ import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { csrf } from 'hono/csrf';
 import { secureHeaders } from 'hono/secure-headers';
 import { aiProviderFor, createAi, type Ai } from './ai/client.ts';
-import { createGoogle } from './calendar/google.ts';
-import { ConnectError, createCalendarSync, type CalendarSync } from './calendar/sync.ts';
+import { createGoogle } from './lib/google.ts';
 import type { FileStore } from './domain/files.ts';
 import { createFileStore } from './lib/disk-files.ts';
 import { createPush, type Push } from './notify/push.ts';
@@ -42,7 +41,6 @@ export function createApp({
   oidc,
   fetchImpl,
   ai = createAi(config, db),
-  calendar = createCalendarSync({ db, config, google: createGoogle(config) }),
   push = createPush(db, config),
   files = createFileStore(config.dataDir),
   sync = createServerSync({ db, config, google: createGoogle(config), schema: SCHEMA }),
@@ -52,8 +50,6 @@ export function createApp({
   oidc: Oidc;
   /** The AI model for smart add and planning help; tests pass their own. */
   ai?: Ai;
-  /** Google Calendar sync; tests pass one talking to a fake Google. */
-  calendar?: CalendarSync;
   /** Web push for reminders; tests pass one with a fake sender. */
   push?: Push;
   /** Where files on tasks are kept; tests pass a temporary folder. */
@@ -104,7 +100,7 @@ self.addEventListener('activate', (e) => e.waitUntil((async () => {
 
   // Keeps a web app running Amble with no server signed in to Drive: it adds the client secret to
   // Google's token calls (server/google-token.ts). Before the middleware below, since it changes nothing here.
-  const { clientId, clientSecret } = config.calendar;
+  const { clientId, clientSecret } = config.google;
   if (clientId && clientSecret) {
     app.on(['POST', 'OPTIONS'], '/google/token', (c) => googleToken(c.req.raw, { clientId, clientSecret, origins: config.googleTokenOrigins, fetchImpl }));
   }
@@ -162,17 +158,6 @@ self.addEventListener('activate', (e) => e.waitUntil((async () => {
     return c.redirect(url);
   });
 
-  // Connecting a Google Calendar: the same redirect URI as sign-in, so the OAuth client needs
-  // nothing new registered.
-  app.get('/auth/calendar', async (c) => {
-    const member = c.get('member');
-    if (!member) return c.redirect(appUrl('/signin?return=/settings/calendars'));
-    if (!oidc.calendarEnabled) return c.redirect(appUrl('/settings/calendars?error=off'));
-    const { url, state } = await oidc.beginCalendar(member.id, member.email, '/settings/calendars');
-    setCookie(c, STATE_COOKIE, state, { path: cookiePath, httpOnly: true, secure: config.secureCookies, sameSite: 'Lax', maxAge: 600 });
-    return c.redirect(url);
-  });
-
   // Connecting Google Drive, for syncing with a household's devices: an admin's choice, through
   // the same redirect as sign-in.
   app.get('/auth/drive', async (c) => {
@@ -195,7 +180,7 @@ self.addEventListener('activate', (e) => e.waitUntil((async () => {
       identity = await oidc.finish(state, new URL(c.req.url).search);
     } catch (err) {
       console.warn('Sign-in failed:', describeError(err));
-      if (c.get('member')) return c.redirect(appUrl(`/settings/calendars?error=${declined ? 'declined' : 'failed'}`));
+      if (c.get('member')) return c.redirect(appUrl(`/settings/sync?error=${declined ? 'declined' : 'failed'}`));
       return c.redirect(appUrl(`/signin?error=${err instanceof SignInError ? err.code : 'failed'}`));
     }
     if (identity.kind === 'drive') {
@@ -205,16 +190,6 @@ self.addEventListener('activate', (e) => e.waitUntil((async () => {
       } catch (err) {
         if (!(err instanceof SyncSetupError)) throw err;
         return c.redirect(appUrl(`/settings/sync?error=${encodeURIComponent(err.message)}`));
-      }
-      return c.redirect(appUrl(`${identity.returnTo}?connected=1`));
-    }
-    if (identity.kind === 'calendar') {
-      if (c.get('member')?.id !== identity.memberId) return c.redirect(appUrl('/signin?error=expired'));
-      try {
-        await calendar.connect(identity);
-      } catch (err) {
-        if (!(err instanceof ConnectError)) throw err;
-        return c.redirect(appUrl(`/settings/calendars?error=${encodeURIComponent(err.message)}`));
       }
       return c.redirect(appUrl(`${identity.returnTo}?connected=1`));
     }
@@ -265,7 +240,7 @@ self.addEventListener('activate', (e) => e.waitUntil((async () => {
   });
   app.use('/api/*', queuedWrites(db));
 
-  registerApi(app, { db, config, ai, calendar, push, files });
+  registerApi(app, { db, config, ai, push, files });
   registerServerSync(app, sync);
   registerConnectorApi(app);
 

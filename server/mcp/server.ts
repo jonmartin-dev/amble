@@ -23,7 +23,6 @@ import {
   type Assistant,
 } from '../domain/household.ts';
 import { addListItems, checkListItems, getListItems, openTrip, planTrip } from '../domain/lists.ts';
-import { listEvents, type EventView } from '../domain/events.ts';
 import { findGap, getLoad } from '../domain/load.ts';
 import { daySuggestions, planWeek } from '../domain/planner.ts';
 import { parseReminderTime } from '../domain/reminders.ts';
@@ -206,7 +205,7 @@ export function createMcpServer({
     {
       title: 'Today',
       description:
-        "Today's day list: tasks planned for today, ones carried over from earlier days that weren't done, anything due by today that isn't planned, and what's already done today, plus how full the day is and what's on your calendar.",
+        "Today's day list: tasks planned for today, ones carried over from earlier days that weren't done, anything due by today that isn't planned, and what's already done today, plus how full the day is, counting how busy your calendar is.",
       inputSchema: z.object({
         scope: z.enum(['mine', 'everyone']).optional().describe('"mine" (default) includes shared tasks; "everyone" adds other members\' tasks'),
       }),
@@ -219,7 +218,6 @@ export function createMcpServer({
         today: t.today,
         weekday: weekday(t.today),
         load: compact({ level: load!.level, plannedMinutes: load!.plannedMinutes, roomMinutes: load!.capacityMinutes, calendarMinutes: load!.eventMinutes || undefined }),
-        calendar: listEvents(db, member, t.today, t.today).map((e) => presentEvent(e, member.timezone)),
         planned: t.planned.map((x) => present(x)),
         carriedOver: t.carriedOver.map((x) => present(x)),
         dueNotPlanned: t.due.map((x) => present(x)),
@@ -623,23 +621,19 @@ export function createMcpServer({
     {
       title: 'Day load',
       description:
-        "How full each day is: planned task minutes against the room that day has for tasks (capacityMinutes). Room is learned per person and weekday from what they actually finish (about 3 hours on weekdays and 4 on weekends to start; anyone can pin their own in Settings), then their Google Calendar adjusts it: busy time beyond a usual day for that weekday (usualEventMinutes) takes half its length off, and a lighter calendar gives some back. Tasks without an estimate count as 30 minutes. With include_events, your own events are listed per day (other people's calendars count but stay private).",
+        "How full each day is: planned task minutes against the room that day has for tasks (capacityMinutes). Room is learned per person and weekday from what they actually finish (about 3 hours on weekdays and 4 on weekends to start; anyone can pin their own in Settings), then their calendar adjusts it: a day busier than a usual one for that weekday (eventMinutes against usualEventMinutes) has less room, and a lighter one gives some back. Amble knows only how busy each day is, from the person's phone, never what the events are. Tasks without an estimate count as 30 minutes.",
       inputSchema: z.object({
         start: dateArg.optional().describe('Default today'),
         end: dateArg.optional().describe('Default 6 days after start'),
         for: who.optional().describe('Whose days: "me" (the default) or a member\'s name'),
-        include_events: z.boolean().optional().describe('List your own calendar events on each day'),
       }),
       annotations: read,
     },
-    run((a: { start?: string; end?: string; for?: string; include_events?: boolean }) => {
+    run((a: { start?: string; end?: string; for?: string }) => {
       const person = (a.for && resolveMember(db, member, a.for)) || member;
       const start = a.start ?? today();
       const end = a.end ?? addDays(start, 6);
-      const days = getLoad(db, member, person, start, end);
-      if (!a.include_events || person.id !== member.id) return days;
-      const events = listEvents(db, member, start, end);
-      return days.map((d) => ({ ...d, calendar: events.filter((e) => onDate(e, d.date, member.timezone)).map((e) => presentEvent(e, member.timezone)) }));
+      return getLoad(db, member, person, start, end);
     }),
   );
 
@@ -756,7 +750,7 @@ How it fits together:
 - Amble's only notifications are reminders someone asks for ("remind me Thursday at 6"): set_reminder, or remind_at on add_tasks. One notification at that time, to ${me} only. Never add one they didn't ask for.
 - Tasks can have files (photos, receipts, manuals). get_task lists them; read_file shows you a photo or a text file.
 - Amble is deliberately calm. Don't schedule everything: keep each day light, check get_load before adding to a day, and use find_gap for things due later. suggest_day and plan_week give the planner's own picks with reasons.
-- Day load counts each person's Google Calendar once they've connected it in Settings: a day with more on the calendar than usual has less room for tasks.
+- Day load counts how busy each person's calendar is once the Amble app on their phone reads it: a day with more on the calendar than usual has less room for tasks. Amble doesn't know what the events are.
 - Ids in results are short prefixes. Pass them back exactly as given.`;
 }
 
@@ -769,24 +763,6 @@ function sniffImage(data: Buffer) {
   if (data.toString('ascii', 0, 4) === 'RIFF' && data.toString('ascii', 8, 12) === 'WEBP') return 'image/webp';
   if (data[0] === 0x89 && data.toString('ascii', 1, 4) === 'PNG') return 'image/png';
   return 'image/jpeg';
-}
-
-const localDate = (iso: string, timeZone: string) => Temporal.Instant.from(iso).toZonedDateTimeISO(timeZone).toPlainDate().toString();
-const localTime = (iso: string, timeZone: string) => Temporal.Instant.from(iso).toZonedDateTimeISO(timeZone).toPlainTime().toString({ smallestUnit: 'minute' });
-
-function onDate(e: EventView, date: string, timeZone: string) {
-  if (e.allDay) return e.startDate! <= date && date < e.endDate!;
-  return localDate(e.start, timeZone) <= date && date <= localDate(e.end, timeZone);
-}
-
-/** An event in local time, short: "09:00-10:00 Dentist", or all day. */
-function presentEvent(e: EventView, timeZone: string) {
-  return compact({
-    title: e.title ?? 'Busy',
-    when: e.allDay ? 'all day' : `${localTime(e.start, timeZone)}-${localTime(e.end, timeZone)}`,
-    free: e.busy ? undefined : true,
-    calendar: e.calendar,
-  });
 }
 
 /** Drops null, undefined and empty values so results stay short. */

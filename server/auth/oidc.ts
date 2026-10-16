@@ -1,22 +1,20 @@
 import * as client from 'openid-client';
 import type { Config } from '../config.ts';
 
-/** Read access to calendars and events, which is all phase 7 needs. */
-export const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.readonly';
 /** Amble's own files in Google Drive, for keeping the server in step with a household's devices. */
 export const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/drive.file';
 
 interface PendingLogin {
-  kind: 'signin' | 'calendar' | 'drive';
+  kind: 'signin' | 'drive';
   verifier: string;
   nonce: string;
   returnTo: string;
-  /** For connecting a calendar: who asked, so the callback can check it's still them. */
+  /** For connecting Drive: who asked, so the callback can check it's still them. */
   memberId?: string;
   expires: number;
 }
 
-/** Lasting access to part of someone's Google account: their calendars, or Amble's files in their Drive. */
+/** Lasting access to Amble's files in someone's Google Drive. */
 export interface GoogleGrant {
   memberId: string;
   returnTo: string;
@@ -30,7 +28,6 @@ export interface GoogleGrant {
 
 export type Finished =
   | { kind: 'signin'; email: string; name?: string; avatarUrl?: string; returnTo: string }
-  | ({ kind: 'calendar' } & GoogleGrant)
   | ({ kind: 'drive' } & GoogleGrant);
 
 const FLOW_TTL_MS = 10 * 60 * 1000;
@@ -94,7 +91,7 @@ export function createOidc(config: Config) {
     return found;
   }
   const provider = () => discover(config.oidc.issuer, config.oidc.clientId, config.oidc.clientSecret);
-  const google = () => discover(GOOGLE, config.calendar.clientId, config.calendar.clientSecret);
+  const google = () => discover(GOOGLE, config.google.clientId, config.google.clientSecret);
 
   function sweep(now: number) {
     for (const [state, flow] of pending) if (flow.expires < now) pending.delete(state);
@@ -120,7 +117,6 @@ export function createOidc(config: Config) {
 
   return {
     enabled: Boolean(config.oidc.clientId && config.oidc.clientSecret),
-    calendarEnabled: Boolean(config.calendar.clientId && config.calendar.clientSecret),
 
     async begin(returnTo: string) {
       // Google's account chooser helps on a phone signed in to several accounts. Other providers
@@ -132,25 +128,9 @@ export function createOidc(config: Config) {
     },
 
     /**
-     * Asks Google for read access to someone's calendars, offline so syncing works while they're
-     * away. `consent` makes Google hand over a refresh token even if they connected before.
-     */
-    beginCalendar(memberId: string, loginHint: string, returnTo: string) {
-      return start(
-        { kind: 'calendar', memberId, returnTo },
-        {
-          scope: `openid email ${CALENDAR_SCOPE}`,
-          access_type: 'offline',
-          prompt: 'consent',
-          include_granted_scopes: 'true',
-          login_hint: loginHint,
-        },
-      );
-    },
-
-    /**
      * Asks Google to let the server keep Amble's files in someone's Drive, offline so it syncs
-     * while nobody's using it.
+     * while nobody's using it. `consent` makes Google hand over a refresh token even if they
+     * connected before.
      */
     beginDrive(memberId: string, loginHint: string, returnTo: string) {
       return start(
@@ -159,7 +139,7 @@ export function createOidc(config: Config) {
       );
     },
 
-    /** Exchange the callback for verified claims (and, for a calendar, tokens). `query` is the raw callback query string. */
+    /** Exchange the callback for verified claims (and, for Drive, tokens). `query` is the raw callback query string. */
     async finish(state: string, query: string): Promise<Finished> {
       const flow = pending.get(state);
       pending.delete(state);
@@ -194,7 +174,7 @@ export function createOidc(config: Config) {
           expiresIn: tokens.expires_in,
           scope: tokens.scope ?? '',
         };
-        return flow.kind === 'drive' ? { kind: 'drive', ...grant } : { kind: 'calendar', ...grant };
+        return { kind: 'drive', ...grant };
       }
       return {
         kind: 'signin',

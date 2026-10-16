@@ -1,9 +1,11 @@
 // Calendar events as Amble uses them: what's on someone's calendar each day, and how much of the
-// day it takes up.
-import { and, asc, eq, gt, lt } from 'drizzle-orm';
+// day it takes up. The events themselves stay on the phone that read them (server/domain/calendars.ts);
+// how busy each day was syncs to the household as busy_days, so everyone's copy knows how full
+// someone's days are without seeing what's in them.
+import { and, asc, between, eq, gt, lt } from 'drizzle-orm';
 import type { Db } from '../db/index.ts';
-import { calendarEvents, calendarSources, type Member } from '../db/schema.ts';
-import { addDays, dateRange } from '../lib/dates.ts';
+import { busyDays, calendarEvents, calendars, type Member } from '../db/schema.ts';
+import { addDays, dateRange, planningDate } from '../lib/dates.ts';
 
 // Busy time counts within waking hours, so an overnight flight or a late party doesn't eat a whole
 // day's room.
@@ -14,19 +16,21 @@ export const WAKING_MINUTES = (DAY_ENDS - DAY_STARTS) * 60;
 // The usual busy time for a weekday is the median over this many weeks before today.
 const USUAL_WEEKS = 8;
 
+/** The days a phone reads events for: twelve weeks back, for learning, and six months ahead. */
+export const CALENDAR_WINDOW = { past: 84, future: 180 };
+
 export interface EventView {
   id: string;
   title: string | null;
   allDay: boolean;
   start: string;
   end: string;
-  /** All-day events: the first date, and the day after the last (as Google gives them). */
+  /** All-day events: the first date, and the day after the last. */
   startDate: string | null;
   endDate: string | null;
   busy: boolean;
   calendar: string;
   color: string | null;
-  url: string | null;
 }
 
 interface Row {
@@ -40,7 +44,6 @@ interface Row {
   startDate: string | null;
   endDate: string | null;
   busy: boolean;
-  url: string | null;
   calendar: string;
   color: string | null;
 }
@@ -67,13 +70,12 @@ function rows(db: Db, member: Pick<Member, 'id' | 'timezone'>, start: string, en
       startDate: calendarEvents.startDate,
       endDate: calendarEvents.endDate,
       busy: calendarEvents.busy,
-      url: calendarEvents.url,
-      calendar: calendarSources.name,
-      color: calendarSources.color,
+      calendar: calendars.name,
+      color: calendars.color,
     })
     .from(calendarEvents)
-    .innerJoin(calendarSources, eq(calendarEvents.sourceId, calendarSources.id))
-    .where(and(eq(calendarEvents.memberId, member.id), eq(calendarSources.counts, true), lt(calendarEvents.startAt, to), gt(calendarEvents.endAt, from)))
+    .innerJoin(calendars, eq(calendarEvents.calendarId, calendars.id))
+    .where(and(eq(calendarEvents.memberId, member.id), eq(calendars.counts, true), lt(calendarEvents.startAt, to), gt(calendarEvents.endAt, from)))
     .orderBy(asc(calendarEvents.startAt))
     .all();
   // The same meeting on two calendars (a shared one and your own) shows once.
@@ -86,7 +88,7 @@ function rows(db: Db, member: Pick<Member, 'id' | 'timezone'>, start: string, en
   });
 }
 
-/** Someone's own events between two dates, all-day ones first. */
+/** Someone's own events between two dates, all-day ones first. Only the phone that reads them has any. */
 export function listEvents(db: Db, member: Member, start: string, end: string): EventView[] {
   return rows(db, member, start, end)
     .sort((a, b) => Number(b.allDay) - Number(a.allDay) || a.startAt.getTime() - b.startAt.getTime())
@@ -101,7 +103,6 @@ export function listEvents(db: Db, member: Member, start: string, end: string): 
       busy: r.busy,
       calendar: r.calendar,
       color: r.color,
-      url: r.url,
     }));
 }
 
@@ -112,8 +113,8 @@ export interface DayBusy {
   events: number;
 }
 
-/** How much of each day between two dates someone's calendar takes up. */
-export function busyByDay(db: Db, member: Pick<Member, 'id' | 'timezone'>, start: string, end: string): Map<string, DayBusy> {
+/** Busy time from the events this copy has. */
+function busyFromEvents(db: Db, member: Pick<Member, 'id' | 'timezone'>, start: string, end: string): Map<string, DayBusy> {
   const busy = rows(db, member, start, end).filter((r) => r.busy);
   const out = new Map<string, DayBusy>();
   for (const date of dateRange(start, end)) {
@@ -149,6 +150,54 @@ export function busyByDay(db: Db, member: Pick<Member, 'id' | 'timezone'>, start
   return out;
 }
 
+/** Busy time as someone's phone shared it. */
+function busyFromHousehold(db: Db, memberId: string, start: string, end: string): Map<string, DayBusy> {
+  const shared = db
+    .select()
+    .from(busyDays)
+    .where(and(eq(busyDays.memberId, memberId), between(busyDays.date, start, end)))
+    .all();
+  const byDate = new Map(shared.map((d) => [d.date, { minutes: d.minutes, events: d.events }]));
+  return new Map(dateRange(start, end).map((date) => [date, byDate.get(date) ?? { minutes: 0, events: 0 }]));
+}
+
+/**
+ * How much of each day between two dates someone's calendar takes up: from their events on the
+ * phone that reads them, or from what that phone shared everywhere else.
+ */
+export function busyByDay(db: Db, member: Pick<Member, 'id' | 'timezone'>, start: string, end: string): Map<string, DayBusy> {
+  return hasCalendar(db, member.id) ? busyFromEvents(db, member, start, end) : busyFromHousehold(db, member.id, start, end);
+}
+
+/**
+ * Shares how busy each day in the window is, after this phone read someone's events. Only days
+ * that changed are written, so a sync carries just those.
+ */
+export function shareBusyDays(db: Db, member: Pick<Member, 'id' | 'timezone' | 'dayCutoffHour'>, today = planningDate(member)) {
+  const start = addDays(today, -CALENDAR_WINDOW.past);
+  const end = addDays(today, CALENDAR_WINDOW.future);
+  const now = hasCalendar(db, member.id) ? busyFromEvents(db, member, start, end) : new Map<string, DayBusy>();
+  const before = new Map(
+    db
+      .select()
+      .from(busyDays)
+      .where(and(eq(busyDays.memberId, member.id), between(busyDays.date, start, end)))
+      .all()
+      .map((d) => [d.date, d]),
+  );
+  db.transaction(() => {
+    for (const date of dateRange(start, end)) {
+      const day = now.get(date) ?? { minutes: 0, events: 0 };
+      const was = before.get(date);
+      if (was ? was.minutes === day.minutes && was.events === day.events : day.minutes === 0 && day.events === 0) continue;
+      db.insert(busyDays)
+        .values({ memberId: member.id, date, ...day })
+        .onConflictDoUpdate({ target: [busyDays.memberId, busyDays.date], set: day })
+        .run();
+    }
+  });
+}
+
 function median(values: number[]) {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);
@@ -170,11 +219,11 @@ export function usualBusy(db: Db, member: Pick<Member, 'id' | 'timezone'>, today
   return new Map([1, 2, 3, 4, 5, 6, 7].map((dow) => [dow, median(byWeekday.get(dow) ?? [])]));
 }
 
-/** Whether this person has any calendar counting toward their load. */
+/** Whether this copy reads any calendar counting toward this person's load (their phone does). */
 export function hasCalendar(db: Db, memberId: string) {
   return !!db
-    .select({ id: calendarSources.id })
-    .from(calendarSources)
-    .where(and(eq(calendarSources.memberId, memberId), eq(calendarSources.counts, true)))
+    .select({ id: calendars.id })
+    .from(calendars)
+    .where(and(eq(calendars.memberId, memberId), eq(calendars.counts, true)))
     .get();
 }

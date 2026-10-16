@@ -9,13 +9,13 @@ import { applyOrganize, applyProposals } from './ai/apply.ts';
 import { organizeBacklog, planMyWeek, type OrganizeSuggestion } from './ai/plan.ts';
 import { AiUnavailable, checkSetup, fromEnvironment, modelName, monthSpendUsd, type Ai } from './ai/client.ts';
 import { smartAdd } from './ai/smartAdd.ts';
-import type { CalendarSync } from './calendar/sync.ts';
 import { inviteMember } from './auth/members.ts';
 import type { Config } from './config.ts';
 import type { Db } from './db/index.ts';
 import { listItems, members, tasks, type Attachment, type Member } from './db/schema.ts';
 import type { Env } from './env.ts';
 import { listActivity } from './domain/activity.ts';
+import { listPhoneCalendars, savePhoneCalendars, savePhoneEvents, setCalendarCounts, sharedBusyDays, stopPhoneCalendars } from './domain/calendars.ts';
 import { listEvents } from './domain/events.ts';
 import {
   addAttachment,
@@ -215,22 +215,30 @@ const listItemFields = {
   parts: z.array(z.string().max(200)).max(50).nullable().optional(),
 };
 
-// Opening the app syncs calendars that haven't been for this long, waiting at most a few seconds.
-const SYNC_ON_OPEN_MS = 2 * 60 * 1000;
-const SYNC_WAIT_MS = 6000;
-
-/** Waits for some work, but at most `ms`; the work carries on either way. */
-function within<T>(ms: number, work: Promise<T>, fallback: T): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const late = new Promise<T>((resolve) => {
-    timer = setTimeout(() => resolve(fallback), ms);
-  });
-  return Promise.race([work, late]).finally(() => clearTimeout(timer));
-}
+// The phone's calendars and their events, as the Android app reads them.
+const phoneCalendar = z.object({
+  id: z.string().min(1).max(200),
+  account: z.string().max(300).nullish().default(null),
+  name: z.string().max(300),
+  color: z.string().max(20).nullish().default(null),
+  primary: z.boolean(),
+  writable: z.boolean(),
+  visible: z.boolean(),
+});
+const phoneEvent = z.object({
+  id: z.string().min(1).max(300),
+  calendarId: z.string().min(1).max(200),
+  uid: z.string().max(500).nullish().default(null),
+  title: z.string().max(1000).nullish().default(null),
+  begin: z.number(),
+  end: z.number(),
+  allDay: z.boolean(),
+  busy: z.boolean(),
+});
 
 export function registerApi(
   app: Hono<Env>,
-  { db, config, ai, calendar, push, files }: { db: Db; config: Config; ai: Ai; calendar: CalendarSync; push: Push; files: FileStore },
+  { db, config, ai, push, files }: { db: Db; config: Config; ai: Ai; push: Push; files: FileStore },
 ) {
   const me = (c: Context<Env>) => c.get('member')!;
   // A change the app queued offline says how long ago it was made.
@@ -703,24 +711,30 @@ export function registerApi(
 
   // ---- calendars ----------------------------------------------------------------------------
 
-  app.get('/api/calendars', (c) => c.json({ enabled: calendar.enabled, accounts: calendar.accounts(me(c)) }));
+  // This phone's calendars, or where there are none, how many busy days the person's phone shared.
+  app.get('/api/calendars', (c) => c.json({ ...listPhoneCalendars(db, me(c)), sharedDays: sharedBusyDays(db, me(c)) }));
 
-  app.patch('/api/calendars/:id', async (c) => {
-    const { counts } = await body(c, z.object({ counts: z.boolean() }));
-    await within(SYNC_WAIT_MS, calendar.setCounts(me(c), c.req.param('id'), counts), undefined);
-    return c.json({ accounts: calendar.accounts(me(c)) });
+  // The phone's calendar list, when the app opens: answers which count and the window to read them for.
+  app.put('/api/calendars/phone', async (c) => {
+    const { calendars } = await body(c, z.object({ calendars: z.array(phoneCalendar).max(500) }));
+    return c.json(savePhoneCalendars(db, me(c), calendars));
   });
 
-  app.delete('/api/calendars/accounts/:id', async (c) => {
-    await calendar.disconnect(me(c), c.req.param('id'));
+  // Then the events of the ones that count, for that whole window.
+  app.put('/api/calendars/phone/events', async (c) => {
+    const { events } = await body(c, z.object({ events: z.array(phoneEvent).max(20_000) }));
+    return c.json({ saved: savePhoneEvents(db, me(c), events) });
+  });
+
+  app.delete('/api/calendars/phone', (c) => {
+    stopPhoneCalendars(db, me(c));
     return c.body(null, 204);
   });
 
-  // The app calls this when it opens or comes back to the front; it answers once calendars are
-  // fresh, or after a few seconds with the sync still going.
-  app.post('/api/calendars/sync', async (c) => {
-    const synced = await within(SYNC_WAIT_MS, calendar.syncMember(me(c), SYNC_ON_OPEN_MS), 0);
-    return c.json({ synced });
+  app.patch('/api/calendars/:id', async (c) => {
+    const { counts } = await body(c, z.object({ counts: z.boolean() }));
+    setCalendarCounts(db, me(c), c.req.param('id'), counts);
+    return c.json(listPhoneCalendars(db, me(c)));
   });
 
   app.get('/api/events', (c) => {

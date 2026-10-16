@@ -12,6 +12,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(TodayWidgetPlugin.class);
         registerPlugin(ReminderCheckPlugin.class);
         registerPlugin(SystemColorsPlugin.class);
+        registerPlugin(PhoneCalendarPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

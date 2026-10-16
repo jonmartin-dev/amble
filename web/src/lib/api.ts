@@ -197,16 +197,15 @@ export interface CalendarEvent {
   busy: boolean;
   calendar: string;
   color: string | null;
-  url: string | null;
 }
 
-export interface CalendarAccount {
-  id: string;
-  email: string;
-  status: 'ok' | 'reconnect';
-  error: string | null;
-  syncedAt: string | null;
-  calendars: { id: string; name: string; color: string | null; primary: boolean; counts: boolean }[];
+/** Settings, Calendars: this phone's calendars, or how many busy days the person's phone shared. */
+export interface Calendars {
+  /** This phone reads its calendars. */
+  on: boolean;
+  calendars: { id: string; account: string | null; name: string; color: string | null; primary: boolean; counts: boolean }[];
+  /** Days from today on that the person's phone shared as busy. */
+  sharedDays: number;
 }
 
 export interface Suggestion {

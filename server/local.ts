@@ -6,7 +6,6 @@ import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import { aiProviderFor, type Ai } from './ai/client.ts';
 import { registerApi } from './api.ts';
-import type { CalendarSync } from './calendar/sync.ts';
 import type { Config } from './config.ts';
 import type { Db } from './db/index.ts';
 import { members, serverSettings, type Member } from './db/schema.ts';
@@ -88,7 +87,6 @@ export function createLocalApp({
   db,
   config,
   ai,
-  calendar,
   push,
   files,
   sync,
@@ -96,7 +94,6 @@ export function createLocalApp({
   db: Db;
   config: Config;
   ai: Ai;
-  calendar: CalendarSync;
   push: Push;
   files: FileStore;
   sync?: SyncService;
@@ -133,7 +130,7 @@ export function createLocalApp({
   });
   app.use('/api/*', queuedWrites(db));
 
-  registerApi(app, { db, config, ai, calendar, push, files });
+  registerApi(app, { db, config, ai, push, files });
 
   app.all('/api/*', (c) => c.json({ error: 'Not found.' }, 404));
   return app;
@@ -235,7 +232,7 @@ export function deviceConfig(origin: string, basePath: string, timezone: string)
     adminEmails: [],
     allowedEmails: [],
     oidc: { issuer: '', providerName: '', clientId: '', clientSecret: '' },
-    calendar: { clientId: '', clientSecret: '' },
+    google: { clientId: '', clientSecret: '' },
     googleTokenOrigins: [],
     maxFileBytes: 25 * 1024 * 1024,
     devLogin: false,

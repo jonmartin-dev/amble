@@ -51,16 +51,16 @@ export function Settings() {
       ? `Household, through ${drive.account?.email ?? 'Google Drive'}`
       : `Backed up to ${drive.account?.email ?? 'Google Drive'}`;
   const smartOn = me?.smartAdd ?? true;
-  const counted = calendars?.accounts.flatMap((a) => a.calendars.filter((c) => c.counts)).length ?? 0;
+  const counted = calendars?.calendars.filter((c) => c.counts).length ?? 0;
   const calendarSummary = !calendars
     ? undefined
-    : !calendars.enabled
-      ? 'Not set up on this server'
-      : calendars.accounts.some((a) => a.status === 'reconnect')
-        ? 'Needs connecting again'
-        : calendars.accounts.length === 0
-          ? 'Connect Google Calendar so busy days have less room'
-          : `${counted} ${counted === 1 ? 'calendar counts' : 'calendars count'} toward your days`;
+    : calendars.on
+      ? `${counted} ${counted === 1 ? 'calendar counts' : 'calendars count'} toward your days`
+      : native
+        ? "Use this phone's calendars so busy days have less room"
+        : calendars.sharedDays
+          ? 'Busy days come from your phone'
+          : 'Busy days come from the Amble app on your phone';
 
   return (
     <>

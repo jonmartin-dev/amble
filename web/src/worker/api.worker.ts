@@ -6,8 +6,6 @@ import wasmUrl from '@sqlite.org/sqlite-wasm/sqlite3.wasm?url';
 import { createEstimator } from '../../../server/ai/estimate.ts';
 import { createBriefings } from '../../../server/ai/plan.ts';
 import { createAi } from '../../../server/ai/client.ts';
-import { createGoogle } from '../../../server/calendar/google.ts';
-import { createCalendarSync } from '../../../server/calendar/sync.ts';
 import { applyMigrations, drizzleOn, migrationsFrom, type Db } from '../../../server/db/open.ts';
 import { asBetterSqlite, WasmClient } from '../../../server/db/wasm.ts';
 import { sweepFiles } from '../../../server/domain/files.ts';
@@ -83,11 +81,10 @@ async function start() {
   const ai = createAi(config, db, (input, init) => fetch(input, init), { seal: (key) => key, open: (key) => key });
   const push = createLocalPush(db, showNotification);
   const files = await createOpfsFiles();
-  const calendar = createCalendarSync({ db, config, google: createGoogle(config) });
   // The newest migration this build has: another device's copy from a newer one can't be merged.
   const schema = journal.entries.at(-1)!.tag;
   const sync = createSyncService({ db, schema, adopt: deviceAdopt(db, config) });
-  const app = createLocalApp({ db, config, ai, calendar, push, files, sync });
+  const app = createLocalApp({ db, config, ai, push, files, sync });
 
   const estimator = createEstimator(db, ai, timezone);
   const briefings = createBriefings(db, ai, timezone);

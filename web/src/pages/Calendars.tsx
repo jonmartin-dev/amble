@@ -1,92 +1,82 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useSearch } from '@tanstack/react-router';
-import { AnimatePresence, motion } from 'motion/react';
-import { useEffect } from 'react';
-import Add from '~icons/material-symbols/add-rounded';
+import { useEffect, useState } from 'react';
 import CalendarMonth from '~icons/material-symbols/calendar-month-outline-rounded';
 import Warning from '~icons/material-symbols/warning-outline-rounded';
 import { ListGroup, SectionTitle, SubpageHeader, Switch } from '../components/ui.tsx';
-import { api, appUrl, type CalendarAccount } from '../lib/api.ts';
-import { expressive } from '../lib/motion.ts';
+import { api, type Calendars } from '../lib/api.ts';
+import { allowCalendar, calendarAllowed, readPhoneCalendars } from '../lib/calendar.ts';
+import { native } from '../lib/native.ts';
 import { useCalendars } from '../lib/queries.ts';
 import { useSnackbar } from '../lib/snackbar.tsx';
-import { useSyncState } from '../lib/sync.ts';
 
-type Calendars = { enabled: boolean; accounts: CalendarAccount[] };
+const DAY_VIEWS = ['load', 'events', 'today', 'briefing', 'gaps', 'capacity'];
 
-const ERRORS: Record<string, string> = {
-  off: "Calendar sync isn't set up on this server yet.",
-  declined: 'Nothing changed: Google said no, or the window was closed.',
-  failed: "Google didn't finish connecting. Try again.",
-};
+const button = 'rounded-full bg-primary px-5 py-3 font-medium text-on-primary transition-opacity disabled:opacity-40';
+const quiet = 'rounded-full px-4 py-2.5 text-sm font-medium text-primary hover:bg-surface-high disabled:opacity-40';
 
-function synced(account: CalendarAccount) {
-  if (account.status === 'reconnect') return 'Google stopped sharing this calendar. Connect it again to pick up where it left off.';
-  if (account.error) return account.error;
-  if (!account.syncedAt) return 'Reading your calendars…';
-  const minutes = Math.round((Date.now() - new Date(account.syncedAt).getTime()) / 60_000);
-  if (minutes < 1) return 'Up to date';
-  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
-  return minutes < 60 ? `Synced ${rtf.format(-minutes, 'minute')}` : `Synced ${rtf.format(-Math.round(minutes / 60), 'hour')}`;
-}
-
-/** Settings → Calendars: connect Google accounts and choose which calendars count toward how full a day is. */
+/** Settings → Calendars: the phone's own calendars, and which of them count toward how full a day is. */
 export function CalendarsPage() {
   const qc = useQueryClient();
   const snack = useSnackbar();
-  const navigate = useNavigate();
-  const { online } = useSyncState();
   const { data } = useCalendars();
-  const search = useSearch({ strict: false }) as { connected?: string; error?: string };
-
-  // Coming back from Google: say how it went once, then tidy the address.
+  const [busy, setBusy] = useState(false);
+  // Android can take the permission back from its own settings.
+  const [allowed, setAllowed] = useState<boolean | null>(null);
   useEffect(() => {
-    if (!search.connected && !search.error) return;
-    snack({ message: search.connected ? 'Connected. Your events are on their way in.' : (ERRORS[search.error!] ?? search.error!) });
-    void qc.invalidateQueries({ queryKey: ['calendars'] });
-    void navigate({ to: '/settings/calendars', search: {}, replace: true });
-  }, [search.connected, search.error, snack, qc, navigate]);
-
-  // While a new account is still reading, check back until it's done.
-  const reading = data?.accounts.some((a) => a.status === 'ok' && !a.syncedAt);
-  useEffect(() => {
-    if (!reading) return;
-    const t = setInterval(() => void qc.invalidateQueries({ queryKey: ['calendars'] }), 2000);
-    return () => clearInterval(t);
-  }, [reading, qc]);
+    void calendarAllowed().then(setAllowed, () => setAllowed(false));
+  }, []);
 
   const refreshDays = () => {
-    for (const key of ['load', 'events', 'today', 'briefing', 'gaps', 'capacity']) void qc.invalidateQueries({ queryKey: [key] });
+    for (const key of DAY_VIEWS) void qc.invalidateQueries({ queryKey: [key] });
   };
 
-  const setCounts = async (calendarId: string, counts: boolean) => {
-    const before = qc.getQueryData<Calendars>(['calendars']);
-    qc.setQueryData<Calendars>(['calendars'], (d) =>
-      d && { ...d, accounts: d.accounts.map((a) => ({ ...a, calendars: a.calendars.map((c) => (c.id === calendarId ? { ...c, counts } : c)) })) },
-    );
+  const start = async () => {
+    setBusy(true);
     try {
-      const { accounts } = await api<{ accounts: CalendarAccount[] }>(`/calendars/${calendarId}`, { method: 'PATCH', body: JSON.stringify({ counts }) });
-      qc.setQueryData<Calendars>(['calendars'], (d) => d && { ...d, accounts });
+      if (!(await allowCalendar())) {
+        snack({ message: "Android didn't allow it. You can allow it in the phone's settings, under Apps, Amble, Permissions." });
+        return;
+      }
+      setAllowed(true);
+      if (!(await readPhoneCalendars(qc, { start: true }))) snack({ message: "Amble couldn't read this phone's calendars. Try again." });
+    } finally {
+      setBusy(false);
+      void qc.invalidateQueries({ queryKey: ['calendars'] });
+    }
+  };
+
+  const setCounts = async (id: string, counts: boolean) => {
+    const before = qc.getQueryData<Calendars>(['calendars']);
+    qc.setQueryData<Calendars>(['calendars'], (d) => d && { ...d, calendars: d.calendars.map((c) => (c.id === id ? { ...c, counts } : c)) });
+    try {
+      await api(`/calendars/${id}`, { method: 'PATCH', body: JSON.stringify({ counts }) });
+      // A calendar that counts now gets its events read.
+      if (counts) await readPhoneCalendars(qc, { force: true });
       refreshDays();
     } catch (e) {
       qc.setQueryData(['calendars'], before);
       snack({ message: (e as Error).message });
     }
+    void qc.invalidateQueries({ queryKey: ['calendars'] });
   };
 
-  const disconnect = async (account: CalendarAccount) => {
-    if (!confirm(`Disconnect ${account.email}? Its events leave Amble, and Google stops sharing them.`)) return;
+  const stop = async () => {
+    if (!confirm("Stop using this phone's calendars? Their events leave Amble, and days count as free again.")) return;
+    setBusy(true);
     try {
-      await api(`/calendars/accounts/${account.id}`, { method: 'DELETE' });
-      snack({ message: `Disconnected ${account.email}.` });
+      await api('/calendars/phone', { method: 'DELETE' });
+      refreshDays();
     } catch (e) {
       snack({ message: (e as Error).message });
+    } finally {
+      setBusy(false);
+      void qc.invalidateQueries({ queryKey: ['calendars'] });
     }
-    void qc.invalidateQueries({ queryKey: ['calendars'] });
-    refreshDays();
   };
 
-  const connect = () => window.location.assign(appUrl('/auth/calendar'));
+  // Grouped by the account each belongs to, as the phone's calendar app shows them.
+  const accounts = new Map<string, Calendars['calendars']>();
+  for (const c of data?.calendars ?? []) accounts.set(c.account ?? 'This phone', [...(accounts.get(c.account ?? 'This phone') ?? []), c]);
 
   return (
     <>
@@ -98,67 +88,59 @@ export function CalendarsPage() {
           <h2 className="display text-xl font-medium">Plan around your calendar</h2>
         </div>
         <p className="mt-2">
-          Amble reads your Google Calendar so a day with more on it than usual has less room for tasks, and suggestions steer around it.
-          It only reads, and only you see your events. Everyone else just sees that a day is busier.
+          {native
+            ? "Amble reads the calendars on this phone, so a day with more on it than usual has less room for tasks and suggestions steer around it. It only reads, and your events stay on this phone. Everyone else just sees that a day is busier."
+            : 'A day with more on your calendar than usual has less room for tasks. The Amble app on your phone reads your calendars and shares how busy each day is, never what the events are.'}
         </p>
       </section>
 
-      {data && !data.enabled && (
-        <p className="mt-6 flex gap-3 rounded-3xl bg-surface-low p-5 text-on-surface-variant">
-          <Warning className="size-6 shrink-0" aria-hidden />
-          Calendar sync isn't set up on this server. It needs a Google sign-in client with the Google Calendar API turned on.
+      {!native ? (
+        <p className="mt-6 px-1 text-on-surface-variant">
+          {data?.sharedDays
+            ? `Your phone has shared how busy your days are, so ${data.sharedDays === 1 ? 'a busy day coming up counts' : `${data.sharedDays} busy days coming up count`} here too.`
+            : "Turn on Calendars in the Amble app on your Android phone. Once it syncs, how busy each day is counts here too."}
         </p>
-      )}
-
-      <AnimatePresence initial={false}>
-        {data?.accounts.map((account) => (
-          <motion.section key={account.id} layout exit={{ opacity: 0, height: 0 }} transition={expressive.defaultSpatial}>
-            <SectionTitle
-              action={
-                <button type="button" onClick={() => void disconnect(account)} className="rounded-full px-3 py-1 text-sm font-medium text-primary hover:bg-surface-high">
-                  Disconnect
-                </button>
-              }
-            >
-              {account.email}
-            </SectionTitle>
-            <p className={`mb-3 px-1 text-sm ${account.status === 'reconnect' || account.error ? 'text-warm' : 'text-on-surface-variant'}`}>{synced(account)}</p>
-            {account.status === 'reconnect' && (
-              <button type="button" onClick={connect} disabled={!online} className="mb-3 rounded-full bg-primary px-5 py-2.5 text-sm font-medium text-on-primary disabled:opacity-40">
-                Connect again
+      ) : !data?.on ? (
+        <div className="mt-6 flex flex-col items-start gap-3">
+          <button type="button" disabled={busy || !data} onClick={() => void start()} className={button}>
+            Use this phone's calendars
+          </button>
+          <p className="px-1 text-sm text-on-surface-variant">Android asks once whether Amble can see your calendars.</p>
+        </div>
+      ) : (
+        <>
+          {allowed === false && (
+            <div className="mt-6 flex flex-col items-start gap-3 rounded-3xl bg-warm-container p-5 text-on-warm-container">
+              <p className="flex gap-3">
+                <Warning className="size-6 shrink-0" aria-hidden />
+                Android stopped letting Amble see your calendars, so these aren't up to date.
+              </p>
+              <button type="button" disabled={busy} onClick={() => void start()} className={button}>
+                Allow again
               </button>
-            )}
-            {account.calendars.length > 0 && (
+            </div>
+          )}
+          {[...accounts].map(([account, list]) => (
+            <section key={account}>
+              <SectionTitle>{account}</SectionTitle>
               <ListGroup
-                label={`Calendars in ${account.email}`}
-                rows={account.calendars.map((c) => ({
+                label={`Calendars in ${account}`}
+                rows={list.map((c) => ({
                   icon: <span className="size-4 rounded-full" style={{ background: c.color ?? 'var(--color-primary)' }} />,
                   title: c.name,
-                  subtitle: c.primary ? 'Your main calendar' : c.counts ? 'Counts toward your days' : "Doesn't count",
+                  subtitle: c.counts ? 'Counts toward your days' : "Doesn't count",
                   trailing: <Switch checked={c.counts} onChange={(v) => void setCounts(c.id, v)} label={`Count ${c.name}`} />,
                 }))}
               />
-            )}
-          </motion.section>
-        ))}
-      </AnimatePresence>
-
-      {data?.enabled && (
-        <button
-          type="button"
-          onClick={connect}
-          disabled={!online}
-          className="mt-6 flex items-center gap-2 rounded-full bg-primary px-5 py-3 font-medium text-on-primary transition-opacity disabled:opacity-40"
-        >
-          <Add className="size-5" aria-hidden />
-          {data.accounts.length ? 'Connect another Google account' : 'Connect Google Calendar'}
-        </button>
-      )}
-      {data?.enabled && !online && <p className="mt-2 px-1 text-sm text-on-surface-variant">Connecting needs a connection.</p>}
-      {data?.enabled && data.accounts.length === 0 && (
-        <p className="mt-3 px-1 text-sm text-on-surface-variant">
-          Google will warn that it hasn't verified Amble. That's expected for an app you run yourself: choose Advanced, then continue.
-        </p>
+            </section>
+          ))}
+          {data.calendars.length === 0 && <p className="mt-6 px-1 text-on-surface-variant">This phone has no calendars yet.</p>}
+          <p className="mt-3 px-1 text-sm text-on-surface-variant">Amble reads them again whenever it opens.</p>
+          <SectionTitle>Stop</SectionTitle>
+          <button type="button" disabled={busy} onClick={() => void stop()} className={quiet}>
+            Stop using this phone's calendars
+          </button>
+        </>
       )}
     </>
   );

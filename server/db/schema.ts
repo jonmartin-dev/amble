@@ -210,63 +210,37 @@ export const appliedRequests = sqliteTable(
   (t) => [primaryKey({ columns: [t.memberId, t.key] }), index('applied_requests_created_idx').on(t.createdAt)],
 );
 
-// A Google account someone connected so Amble can read their calendars. The refresh token is
-// encrypted with a key derived from the OAuth client secret (server/calendar/google.ts).
-export const calendarAccounts = sqliteTable(
-  'calendar_accounts',
+// A calendar on this phone (Android's calendars: Google accounts, Samsung's, Outlook and the rest).
+// Only the ones that count are read; their events show in Amble and take up room in the day.
+export const calendars = sqliteTable(
+  'calendars',
   {
     id: id(),
     memberId: text('member_id')
       .notNull()
       .references(() => members.id, { onDelete: 'cascade' }),
-    // Google's stable id for the account, and its address to show.
-    subject: text('subject').notNull(),
-    email: text('email').notNull(),
-    refreshToken: text('refresh_token').notNull(),
-    scope: text('scope').notNull(),
-    // "reconnect" once Google turns the token down (access removed, password changed).
-    status: text('status', { enum: ['ok', 'reconnect'] }).notNull().default('ok'),
-    error: text('error'),
-    syncedAt: integer('synced_at', { mode: 'timestamp_ms' }),
-    createdAt: createdAt(),
-  },
-  (t) => [uniqueIndex('calendar_accounts_member_subject_idx').on(t.memberId, t.subject)],
-);
-
-// One calendar in a connected account. Only the ones that count are synced; their events show in
-// Amble and take up room in the day.
-export const calendarSources = sqliteTable(
-  'calendar_sources',
-  {
-    id: id(),
-    accountId: text('account_id')
-      .notNull()
-      .references(() => calendarAccounts.id, { onDelete: 'cascade' }),
-    memberId: text('member_id')
-      .notNull()
-      .references(() => members.id, { onDelete: 'cascade' }),
+    // The phone's own id for it.
     calendarId: text('calendar_id').notNull(),
+    // The account it belongs to, to group them by.
+    account: text('account'),
     name: text('name').notNull(),
     color: text('color'),
     primary: integer('primary', { mode: 'boolean' }).notNull().default(false),
     counts: integer('counts', { mode: 'boolean' }).notNull().default(false),
-    syncToken: text('sync_token'),
-    // The last full read of the window; a daily one moves the window along.
-    fullSyncAt: integer('full_sync_at', { mode: 'timestamp_ms' }),
     createdAt: createdAt(),
   },
-  (t) => [uniqueIndex('calendar_sources_account_calendar_idx').on(t.accountId, t.calendarId)],
+  (t) => [uniqueIndex('calendars_member_calendar_idx').on(t.memberId, t.calendarId)],
 );
 
 // Events copied from the calendars that count. Timed events keep their exact times; all-day ones
-// keep their dates too (the end date is the day after, as Google gives it).
+// keep their dates too (the end date is the day after the last).
 export const calendarEvents = sqliteTable(
   'calendar_events',
   {
     id: id(),
-    sourceId: text('source_id')
+    calendarId: text('calendar_id')
       .notNull()
-      .references(() => calendarSources.id, { onDelete: 'cascade' }),
+      .references(() => calendars.id, { onDelete: 'cascade' }),
     memberId: text('member_id')
       .notNull()
       .references(() => members.id, { onDelete: 'cascade' }),
@@ -281,9 +255,24 @@ export const calendarEvents = sqliteTable(
     endDate: text('end_date'),
     // Shown as busy, and not declined.
     busy: integer('busy', { mode: 'boolean' }).notNull().default(true),
-    url: text('url'),
   },
-  (t) => [uniqueIndex('calendar_events_source_event_idx').on(t.sourceId, t.eventId), index('calendar_events_member_start_idx').on(t.memberId, t.startAt)],
+  (t) => [uniqueIndex('calendar_events_calendar_event_idx').on(t.calendarId, t.eventId), index('calendar_events_member_start_idx').on(t.memberId, t.startAt)],
+);
+
+// How much of each day someone's calendar takes up, worked out on the phone that reads it and
+// synced to the household: how full their days are, with no titles or times.
+export const busyDays = sqliteTable(
+  'busy_days',
+  {
+    memberId: text('member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade' }),
+    date: text('date').notNull(),
+    // Busy minutes between 7am and 10pm, overlaps counted once, and how many busy events.
+    minutes: integer('minutes').notNull(),
+    events: integer('events').notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.memberId, t.date] })],
 );
 
 // Settings Amble makes for itself on first start, like its web push keys.
@@ -481,8 +470,7 @@ export type ListItem = typeof listItems.$inferSelect;
 export type Series = typeof series.$inferSelect;
 
 export type OAuthClient = typeof oauthClients.$inferSelect;
-export type CalendarAccount = typeof calendarAccounts.$inferSelect;
-export type CalendarSource = typeof calendarSources.$inferSelect;
+export type PhoneCalendarRow = typeof calendars.$inferSelect;
 export type CalendarEvent = typeof calendarEvents.$inferSelect;
 export type DayRecord = typeof dayRecords.$inferSelect;
 export type PushSubscription = typeof pushSubscriptions.$inferSelect;

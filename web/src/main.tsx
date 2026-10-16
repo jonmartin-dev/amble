@@ -20,7 +20,7 @@ import { FloatingToolbar } from './components/FloatingToolbar.tsx';
 import { NavRail } from './components/NavRail.tsx';
 import { StatusPill } from './components/StatusPill.tsx';
 import { basePath } from './lib/api.ts';
-import { syncCalendarsWhileOpen } from './lib/calendar.ts';
+import { readCalendarsWhileOpen } from './lib/calendar.ts';
 import { EXPANDED, InPane, isDetail, useMedia } from './lib/layout.ts';
 import { refreshViews } from './lib/mutations.ts';
 import { CACHE_MAX_AGE_MS, CACHE_VERSION, claimDevice, idbPersister, prefetchForOffline, shouldSave } from './lib/persist.ts';
@@ -204,7 +204,7 @@ function Root() {
     // Whatever should open offline gets loaded now, while there's a connection.
     void claimDevice(qc, memberId).then(() => navigator.onLine && prefetchForOffline(qc, get));
   }, [qc, memberId]);
-  useEffect(() => (memberId ? syncCalendarsWhileOpen(qc) : undefined), [qc, memberId]);
+  useEffect(() => (memberId ? readCalendarsWhileOpen(qc) : undefined), [qc, memberId]);
 
   if (pathname === '/privacy') return <Privacy />;
   if (onDevice && deviceState !== 'ready' && deviceState !== 'starting') return <DeviceBlocked state={deviceState} />;

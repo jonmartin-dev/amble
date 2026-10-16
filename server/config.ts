@@ -54,7 +54,7 @@ if (production && !process.env.AMBLE_PUBLIC_URL) {
 const adminEmails = list(process.env.AMBLE_ADMIN_EMAILS);
 const oidcIssuer = process.env.OIDC_ISSUER ?? 'https://accounts.google.com';
 const oidcClientSecret = secret('OIDC_CLIENT_SECRET');
-// Signing in with Google means the same OAuth client can read calendars too.
+// Signing in with Google means the same OAuth client can reach Google Drive too.
 const signInIsGoogle = new URL(oidcIssuer).hostname === 'accounts.google.com';
 
 export const config = {
@@ -81,10 +81,10 @@ export const config = {
     clientId: process.env.OIDC_CLIENT_ID ?? '',
     clientSecret: oidcClientSecret,
   },
-  // Google Calendar: read each person's calendars so busy days have less room. With Google sign-in
-  // it uses that client; with another provider, set a Google OAuth client of its own. Either way
-  // the client needs <public URL>/auth/callback as a redirect URI and the Calendar API enabled.
-  calendar: {
+  // Google, for syncing the server through Google Drive and renewing browsers' Drive access. With
+  // Google sign-in it uses that client; with another provider, set a Google OAuth client of its
+  // own. Either way the client needs <public URL>/auth/callback as a redirect URI.
+  google: {
     clientId: process.env.GOOGLE_CLIENT_ID || (signInIsGoogle ? (process.env.OIDC_CLIENT_ID ?? '') : ''),
     clientSecret: secret('GOOGLE_CLIENT_SECRET', { optional: true }) || (signInIsGoogle ? oidcClientSecret : ''),
   },

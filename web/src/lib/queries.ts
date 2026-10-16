@@ -4,7 +4,7 @@ import {
   type ActivityPage,
   type AiStatus,
   type Briefing,
-  type CalendarAccount,
+  type Calendars,
   type CalendarEvent,
   type CapacityDay,
   type DayPick,
@@ -160,7 +160,7 @@ export function useEvents(start: string, end: string, enabled = true) {
 }
 
 export function useCalendars() {
-  return useQuery({ queryKey: ['calendars'], queryFn: () => get<{ enabled: boolean; accounts: CalendarAccount[] }>('/calendars') });
+  return useQuery({ queryKey: ['calendars'], queryFn: () => get<Calendars>('/calendars') });
 }
 
 export function useBriefing() {

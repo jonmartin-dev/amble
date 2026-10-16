@@ -1,7 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { createAi } from '../ai/client.ts';
-import { createGoogle } from '../calendar/google.ts';
-import { createCalendarSync } from '../calendar/sync.ts';
 import { openDatabase } from '../db/index.ts';
 import type { FileStore } from '../domain/files.ts';
 import { createLocalApp, deviceAdopt, deviceConfig } from '../local.ts';
@@ -27,7 +25,6 @@ function device(drive: FakeDrive, token: string) {
     db,
     config,
     ai: createAi(config, db, fetch, { seal: (k) => k, open: (k) => k }),
-    calendar: createCalendarSync({ db, config, google: createGoogle(config) }),
     push: createLocalPush(db, async () => true),
     files: noFiles,
     sync,
