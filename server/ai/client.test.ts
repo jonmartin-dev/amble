@@ -148,7 +148,7 @@ describe('calling an OpenAI-style provider', () => {
 });
 
 describe('calling Anthropic for a device', () => {
-  it("sends the device's schema the way Anthropic takes it, with the enums it refuses moved into descriptions", async () => {
+  it("sends the device's schema with its repeated parts shared and its enums kept, so answers fit the device's check", async () => {
     const sent: { output_config: { format: { schema: unknown } } }[] = [];
     const fetchImpl = (async (_url: string, init: RequestInit) => {
       sent.push(JSON.parse(init.body as string));
@@ -169,9 +169,8 @@ describe('calling Anthropic for a device', () => {
     // What the server's /sync/ai passes on: the device's schema, and nothing to check it against.
     const answer = await ai.complete(setup, { ...request, schema: z.unknown(), jsonSchema: strictSchema(Answer) });
     expect(answer.output).toEqual({ items: [{ kind: 'note', text: 'hi' }], unclear: '' });
-    const schema = JSON.stringify(sent[0]!.output_config.format.schema);
-    expect(schema).not.toContain('"enum"');
-    expect(schema).toContain('task');
+    expect(sent[0]!.output_config.format.schema).toEqual(shareRepeats(strictSchema(Answer)));
+    expect(JSON.stringify(sent[0]!.output_config.format.schema)).toContain('"enum":["task"]');
   });
 
   it('writes an object that appears more than once a single time, so the grammar stays small, keeping what each place says', () => {

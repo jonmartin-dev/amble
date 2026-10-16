@@ -5,7 +5,6 @@
 // with the household's own server, and has no model of its own, asks the server's
 // (server/sync/hub.ts), which keeps the key and the cap.
 import Anthropic from '@anthropic-ai/sdk';
-import { jsonSchemaOutputFormat } from '@anthropic-ai/sdk/helpers/json-schema';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { and, eq, gte, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -279,20 +278,19 @@ export function shareRepeats(schema: Record<string, unknown>): Record<string, un
 
 /**
  * A call with a JSON Schema that came from elsewhere (a device asking the server): the answer is
- * checked against `schema` afterwards. The schema is written for strict OpenAI-style APIs, so it
- * goes the way the Anthropic SDK sends one made from zod: repeated parts written once, and what
- * Anthropic refuses in a schema, such as enums, moved into the descriptions.
+ * checked against `schema` afterwards, on the device too. Repeated parts go once, to keep the
+ * grammar small; enums stay, so the model can only answer with what the check allows (the SDK's
+ * own transform turns them into descriptions, and then the model made up values that failed it).
  */
 async function anthropicRawCall<T extends z.ZodType>(
   setup: AiSetup,
   req: AiRequest<T> & { jsonSchema: Record<string, unknown> },
   fetchImpl: typeof fetch,
 ): Promise<AiAnswer<z.output<T>>> {
-  const { type, schema } = jsonSchemaOutputFormat(shareRepeats(req.jsonSchema) as Parameters<typeof jsonSchemaOutputFormat>[0]);
   const response = await anthropicFor(setup, fetchImpl).messages.create({
     model: setup.model,
     max_tokens: req.maxTokens,
-    output_config: { ...(req.effort && { effort: req.effort }), format: { type, schema } },
+    output_config: { ...(req.effort && { effort: req.effort }), format: { type: 'json_schema', schema: shareRepeats(req.jsonSchema) } },
     system: req.system,
     messages: [{ role: 'user', content: req.content }],
   });
