@@ -11,7 +11,7 @@ import { MoveSheet } from '../components/MoveSheet.tsx';
 import { GroupSheet } from '../components/GroupSheet.tsx';
 import { PageHeader } from '../components/PageHeader.tsx';
 import { TaskRow } from '../components/TaskRow.tsx';
-import { Chip, ListLink, SectionTitle } from '../components/ui.tsx';
+import { Chip, ListLink, ScrollRow, SectionTitle } from '../components/ui.tsx';
 import type { Group, Task } from '../lib/api.ts';
 import { todayIso } from '../lib/dates.ts';
 import { expressive } from '../lib/motion.ts';
@@ -107,7 +107,7 @@ export function Backlog() {
           className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-on-surface-variant"
         />
       </label>
-      <div className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4">
+      <ScrollRow className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4">
         <Chip selected={mine} onClick={() => setMine((v) => !v)}>
           Just mine
         </Chip>
@@ -115,11 +115,11 @@ export function Backlog() {
           Not planned yet
         </Chip>
         {ai?.available && online && (tasks?.length ?? 0) > 1 && !filtering && (
-          <Chip onClick={() => setTidying(true)} icon={<Sparkle className="size-4" aria-hidden />}>
+          <Chip onClick={() => setTidying(true)} icon={<Sparkle aria-hidden />}>
             Tidy up
           </Chip>
         )}
-      </div>
+      </ScrollRow>
 
       {lists.length > 0 && !filtering && (
         <>

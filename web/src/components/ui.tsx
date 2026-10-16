@@ -1,6 +1,6 @@
 import { Link, useRouter, useRouterState } from '@tanstack/react-router';
 import { AnimatePresence, motion, useDragControls, usePresence, type DragControls, type PanInfo } from 'motion/react';
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type HTMLAttributes, type ReactNode } from 'react';
 import ArrowBack from '~icons/material-symbols/arrow-back-rounded';
 import Check from '~icons/material-symbols/check-rounded';
 import ChevronRight from '~icons/material-symbols/chevron-right-rounded';
@@ -423,7 +423,7 @@ function Burst({ size }: { size: number }) {
   );
 }
 
-/** A selectable pill: tonal when selected. */
+/** A selectable M3 chip (`.chip` in styles.css): outlined until picked, then tonal and round. */
 export function Chip({
   selected,
   onClick,
@@ -436,17 +436,44 @@ export function Chip({
   icon?: ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      aria-pressed={selected}
-      onClick={onClick}
-      className={`press flex h-9 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-sm ${
-        selected ? 'bg-secondary-container text-on-secondary-container' : 'border border-outline-variant text-on-surface-variant'
-      } ${icon ? 'pl-2.5' : ''}`}
-    >
+    <button type="button" aria-pressed={selected ?? false} onClick={onClick} className="chip">
       {icon}
       {children}
     </button>
+  );
+}
+
+/**
+ * A row that scrolls sideways. Whatever runs past an edge fades out there, so a chip cut off at
+ * the side reads as "more this way" rather than as a mistake.
+ */
+export function ScrollRow({ className = '', children, ...rest }: HTMLAttributes<HTMLDivElement>) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const row = ref.current;
+    if (!row) return;
+    const update = () => {
+      const start = row.scrollLeft > 1;
+      const end = row.scrollLeft + row.clientWidth < row.scrollWidth - 1;
+      row.dataset.fade = start && end ? 'both' : start ? 'start' : end ? 'end' : '';
+    };
+    update();
+    row.addEventListener('scroll', update, { passive: true });
+    // Its size, and what's in it (a chip's label growing, chips coming and going).
+    const resized = new ResizeObserver(update);
+    resized.observe(row);
+    const changed = new MutationObserver(update);
+    changed.observe(row, { childList: true, subtree: true, characterData: true });
+    return () => {
+      row.removeEventListener('scroll', update);
+      resized.disconnect();
+      changed.disconnect();
+    };
+  }, []);
+  return (
+    <div ref={ref} className={`scroll-row ${className}`} {...rest}>
+      {children}
+    </div>
   );
 }
 

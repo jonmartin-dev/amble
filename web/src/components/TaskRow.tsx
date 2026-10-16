@@ -179,7 +179,7 @@ export function TaskRow({ task, today, meId, onMove, showDay = false, showGroup 
         }}
         onContextMenu={(e) => e.preventDefault()}
         aria-current={open || undefined}
-        className={`relative flex cursor-pointer touch-pan-y items-start gap-3 px-4 py-3.5 select-none ${open ? 'bg-secondary-container' : surface}`}
+        className={`state-layer relative flex cursor-pointer touch-pan-y items-start gap-3 px-4 py-3.5 select-none ${open ? 'bg-secondary-container' : surface}`}
       >
         <div className="pt-0.5">
           <Checkbox checked={checked} onChange={toggle} label={checked ? `Mark ${task.title} not done` : `Complete ${task.title}`} />

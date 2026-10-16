@@ -42,7 +42,7 @@ export function NavRail({ current, settings, onAdd, label }: { current: string |
 
 function RailItem({ to, label, active, Icon }: { to: string; label: string; active: boolean; Icon: (typeof NAV_ITEMS)[number]['Icon'] }) {
   return (
-    <Link to={to} aria-current={active ? 'page' : undefined} className="group flex w-20 flex-col items-center gap-1 py-1 text-on-surface-variant">
+    <Link to={to} aria-current={active ? 'page' : undefined} className="group flex w-20 flex-col items-center gap-1 bg-none py-1 text-on-surface-variant">
       <span className="relative grid h-8 w-14 place-items-center">
         {/* The indicator grows out from the middle as a page is picked (CSS, so it's quick to start). */}
         <span aria-hidden className={`rail-pill absolute inset-0 rounded-full bg-secondary-container ${active ? '' : 'rail-pill-off'}`} />

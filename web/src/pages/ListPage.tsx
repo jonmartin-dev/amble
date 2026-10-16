@@ -19,7 +19,7 @@ import { GroupSheet } from '../components/GroupSheet.tsx';
 import { GroupIcon, tone } from '../components/icons.tsx';
 import { ItemSheet, ListMenu, SectionsSheet } from '../components/ListSheets.tsx';
 import { DaySheet } from '../components/MoveSheet.tsx';
-import { BackButton, Checkbox, Chip, useBack } from '../components/ui.tsx';
+import { BackButton, Checkbox, Chip, ScrollRow, useBack } from '../components/ui.tsx';
 import { ApiError, type ListItem } from '../lib/api.ts';
 import { dayLabel, todayIso } from '../lib/dates.ts';
 import { addListItem, checkListItem, editListItem, resetListItems } from '../lib/local.ts';
@@ -96,7 +96,7 @@ function ItemRow({ item, template, showStore, onCheck, onOpen }: { item: ListIte
           e.preventDefault();
           if (!press.current.held) open();
         }}
-        className="press-soft flex min-h-14 cursor-pointer touch-pan-y items-center gap-3 rounded-3xl bg-surface-low px-4 py-2.5 select-none"
+        className="press-soft state-layer flex min-h-14 cursor-pointer touch-pan-y items-center gap-3 rounded-3xl bg-surface-low px-4 py-2.5 select-none"
       >
         <Checkbox checked={ticked} label={`Check off ${item.name}`} onChange={() => !press.current.held && tick()} />
         <span className="min-w-0 flex-1">
@@ -295,33 +295,33 @@ export function ListPage({ groupId }: { groupId: string }) {
       </header>
 
       {group && (title || template.resettable || stores.length > 0) && (
-        <div className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 [scrollbar-width:none]" aria-label="List actions">
+        <ScrollRow className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4" aria-label="List actions">
           {title &&
             (trip ? (
               <Link
                 to="/task/$taskId"
                 params={{ taskId: trip.id }}
-                className="press flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-tertiary-container pr-3.5 pl-2.5 text-sm font-medium text-on-tertiary-container"
+                className="chip chip-on border-transparent bg-tertiary-container text-on-tertiary-container"
               >
-                <Event className="size-4" aria-hidden />
+                <Event aria-hidden />
                 {trip.title} · {trip.plannedDate ? dayLabel(trip.plannedDate, today) : 'no day yet'}
               </Link>
             ) : (
-              <Chip onClick={() => setSheet('trip')} icon={<Event className="size-4" />}>
+              <Chip onClick={() => setSheet('trip')} icon={<Event />}>
                 Plan the {title.toLowerCase()}
               </Chip>
             ))}
           {template.resettable && (
-            <Chip onClick={reset} icon={<RestartAlt className="size-4" />}>
+            <Chip onClick={reset} icon={<RestartAlt />}>
               Start over
             </Chip>
           )}
           {stores.map((s) => (
-            <Chip key={s} selected={store === s} onClick={() => setStore(store === s ? null : s)} icon={<Store className="size-4" />}>
+            <Chip key={s} selected={store === s} onClick={() => setStore(store === s ? null : s)} icon={<Store />}>
               {s}
             </Chip>
           ))}
-        </div>
+        </ScrollRow>
       )}
 
       <form
@@ -375,13 +375,13 @@ export function ListPage({ groupId }: { groupId: string }) {
       <AnimatePresence initial={false}>
         {suggestions.length > 0 && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
-            <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pt-2.5 [scrollbar-width:none]" aria-label="Had before">
+            <ScrollRow className="-mx-4 flex gap-2 overflow-x-auto px-4 pt-2.5" aria-label="Had before">
               {suggestions.map((s) => (
-                <Chip key={s.name} onClick={() => addItem({ name: s.name, quantity: quantity.trim() || s.quantity })} icon={<History className="size-4" />}>
+                <Chip key={s.name} onClick={() => addItem({ name: s.name, quantity: quantity.trim() || s.quantity })} icon={<History />}>
                   {s.name}
                 </Chip>
               ))}
-            </div>
+            </ScrollRow>
           </motion.div>
         )}
       </AnimatePresence>
@@ -472,7 +472,7 @@ export function ListPage({ groupId }: { groupId: string }) {
                     key={item.id}
                     type="button"
                     onClick={() => check(item, false)}
-                    className="press rounded-full border border-outline-variant px-4 py-2 text-sm text-on-surface-variant"
+                    className="chip"
                   >
                     {item.name}
                   </button>

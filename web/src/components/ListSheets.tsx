@@ -144,7 +144,7 @@ export function ItemSheet({
           ))}
           {!template.sections?.days &&
             (newSection == null ? (
-              <Chip onClick={() => setNewSection('')} icon={<Add className="size-4" />}>
+              <Chip onClick={() => setNewSection('')} icon={<Add />}>
                 New
               </Chip>
             ) : (
@@ -174,7 +174,7 @@ export function ItemSheet({
             </Chip>
           ))}
           {newStore == null ? (
-            <Chip onClick={() => setNewStore('')} icon={<Add className="size-4" />}>
+            <Chip onClick={() => setNewStore('')} icon={<Add />}>
               {allStores.length ? 'Another' : 'Add a store'}
             </Chip>
           ) : (

@@ -187,6 +187,9 @@ for (const v of variants) {
   }
 
   if (v === variants.at(-1)) {
+    // Back in the app from the server's consent page, to put the theme back.
+    await page.goto(`${base}/`);
+    await page.waitForFunction(() => window.__ambleFetch !== undefined);
     await local(page).patch(`/me`, { data: { theme: originalTheme } });
     await syncNow(page);
   }

@@ -10,7 +10,7 @@ import { PlanWeekSheet } from '../components/PlanWeekSheet.tsx';
 import { MoveSheet } from '../components/MoveSheet.tsx';
 import { PageHeader } from '../components/PageHeader.tsx';
 import { TaskRow } from '../components/TaskRow.tsx';
-import { ButtonGroup, Chip, loadRatio, loadWord, minutesLabel } from '../components/ui.tsx';
+import { ButtonGroup, Chip, loadRatio, loadWord, minutesLabel, ScrollRow } from '../components/ui.tsx';
 import type { CalendarEvent, DayLoad, DayPick, Task } from '../lib/api.ts';
 import {
   addDays,
@@ -327,7 +327,7 @@ export function Calendar() {
       <PageHeader eyebrow={title} title="Calendar" />
 
       {others.length > 0 && (
-        <div className="-mx-4 mb-4 flex gap-2 overflow-x-auto px-4" aria-label="Whose calendar">
+        <ScrollRow className="-mx-4 mb-4 flex gap-2 overflow-x-auto px-4" aria-label="Whose calendar">
           <Chip selected={who === 'me'} onClick={() => setWho('me')}>
             Mine
           </Chip>
@@ -339,7 +339,7 @@ export function Calendar() {
           <Chip selected={who === 'everyone'} onClick={() => setWho('everyone')}>
             Everyone
           </Chip>
-        </div>
+        </ScrollRow>
       )}
 
       {who === 'me' && (

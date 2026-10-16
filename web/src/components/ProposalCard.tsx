@@ -141,14 +141,14 @@ function TaskEditor({ draft, ctx, onChange }: { draft: Draft & { proposal: { kin
       </ChipRow>
       {t.remindAt && (
         <ChipRow tight label="Reminder">
-          <Chip selected onClick={() => set({ remindAt: null })} icon={<Close className="size-4" />}>
+          <Chip selected onClick={() => set({ remindAt: null })} icon={<Close />}>
             Remind me {reminderPhrase(t.remindAt)}
           </Chip>
         </ChipRow>
       )}
       {t.repeat && (
         <ChipRow tight label="Repeats">
-          <Chip selected onClick={() => set({ repeat: null })} icon={<Close className="size-4" />}>
+          <Chip selected onClick={() => set({ repeat: null })} icon={<Close />}>
             {describeRepeat(t.repeat, repeatOn(t.repeat) === 'due' ? t.dueDate : t.plannedDate)}
           </Chip>
         </ChipRow>

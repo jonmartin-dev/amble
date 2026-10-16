@@ -5,14 +5,14 @@ import Flag from '~icons/material-symbols/flag-rounded';
 import type { Group, HouseholdMember, TimeOfDay } from '../lib/api.ts';
 import { addDays, dayLabel, firstName } from '../lib/dates.ts';
 import { GroupIcon } from './icons.tsx';
-import { Chip } from './ui.tsx';
+import { Chip, ScrollRow } from './ui.tsx';
 
 /** A row of chips that scrolls sideways, edge to edge inside a sheet (or a card, with `tight`). */
 export function ChipRow({ label, children, tight }: { label?: string; children: ReactNode; tight?: boolean }) {
   return (
     <div className="mt-2.5">
       {label && <p className="mb-1.5 px-1 text-xs text-on-surface-variant">{label}</p>}
-      <div className={`flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] ${tight ? '-mx-3 px-3' : '-mx-5 px-5'}`}>{children}</div>
+      <ScrollRow className={`flex gap-2 overflow-x-auto pb-1 ${tight ? '-mx-3 px-3' : '-mx-5 px-5'}`}>{children}</ScrollRow>
     </div>
   );
 }
@@ -34,11 +34,9 @@ export function DateChip({
   return (
     <label
       onPointerDown={keepFocus ? (e) => e.preventDefault() : undefined}
-      className={`relative flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-full pr-3.5 pl-2.5 text-sm ${
-        value ? 'bg-secondary-container text-on-secondary-container' : 'border border-outline-variant text-on-surface-variant'
-      }`}
+      className={`chip cursor-pointer ${value ? 'chip-on' : ''}`}
     >
-      <Event className="size-4" aria-hidden />
+      <Event aria-hidden />
       {label}
       <input
         type="date"
@@ -136,7 +134,7 @@ export function TimeChips({ value, onChange }: { value: TimeOfDay | null; onChan
 
 export function MustDoChip({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
   return (
-    <Chip selected={value} onClick={() => onChange(!value)} icon={<Flag className="size-4" />}>
+    <Chip selected={value} onClick={() => onChange(!value)} icon={<Flag />}>
       Must do
     </Chip>
   );

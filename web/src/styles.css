@@ -279,6 +279,119 @@ body::before {
   }
 }
 
+/*
+ * M3 Expressive chips (Compose's chip tokens, 2026): 32dp tall, a rounded rectangle (12dp) with an
+ * outline until it's picked, then fully round on the secondary container; the corners tighten to
+ * 8dp while it's pressed. Round is exactly half the height, so the change animates the whole way.
+ * In the components layer, so a utility on the same element still wins.
+ */
+@layer components {
+  .chip {
+    position: relative;
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 0.5rem;
+    height: 2rem;
+    padding-inline: 1rem;
+    border: 1px solid var(--md-outline-variant);
+    border-radius: 12px;
+    color: var(--md-on-surface-variant);
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-weight: 500;
+    white-space: nowrap;
+    transition:
+      border-radius 300ms var(--spring-fast),
+      background-color 150ms,
+      color 150ms,
+      border-color 150ms;
+  }
+  /* A leading icon sits closer to the edge. */
+  .chip:has(> svg:first-child) {
+    padding-inline-start: 0.5rem;
+  }
+  .chip > svg {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+  }
+  .chip[aria-pressed='true'],
+  .chip[aria-checked='true'],
+  .chip.chip-on {
+    border-color: transparent;
+    border-radius: 16px;
+    background-color: var(--md-secondary-container);
+    color: var(--md-on-secondary-container);
+  }
+  .chip:active:not(:disabled) {
+    border-radius: 8px;
+  }
+}
+
+/*
+ * M3 state layers: the control's own content color laid over it, 8% while the pointer is on it,
+ * 10% pressed or focused from the keyboard, so anything you can click says so on a computer. A
+ * background image, so it sits over whatever color the control has; :where() keeps it the weakest
+ * rule, so anything that sets its own background image (a swatch) keeps it. In the base layer, so
+ * a utility such as bg-none (a control that draws its own) still wins.
+ */
+@layer base {
+  @media (hover: hover) {
+    :where(
+        button:not(:disabled),
+        a[href],
+        [role='button']:not([aria-disabled='true']),
+        [role='radio'],
+        [role='checkbox'],
+        [role='switch'],
+        [role='tab'],
+        [role='menuitem'],
+        [role='option'],
+        summary,
+        label:has(> input:is([type='checkbox'], [type='radio'], [type='file'], [type='date'])),
+        .state-layer
+      ):hover {
+      background-image: linear-gradient(color-mix(in srgb, currentColor 8%, transparent), color-mix(in srgb, currentColor 8%, transparent));
+    }
+  }
+  :where(
+      button:not(:disabled),
+      a[href],
+      [role='button']:not([aria-disabled='true']),
+      [role='radio'],
+      [role='checkbox'],
+      [role='switch'],
+      [role='tab'],
+      [role='menuitem'],
+      [role='option'],
+      summary,
+      label:has(> input:is([type='checkbox'], [type='radio'], [type='file'], [type='date'])),
+      .state-layer
+    ):is(:active, :focus-visible) {
+    background-image: linear-gradient(color-mix(in srgb, currentColor 10%, transparent), color-mix(in srgb, currentColor 10%, transparent));
+  }
+  /* Text in a paragraph is a link, not a control: it underlines instead. */
+  :where(p) > a[href]:hover {
+    background-image: none;
+    text-decoration: underline;
+  }
+}
+
+/* A row that scrolls sideways (ScrollRow): whatever runs past an edge fades out there. */
+.scroll-row {
+  scrollbar-width: none;
+}
+.scroll-row[data-fade='end'] {
+  mask-image: linear-gradient(to right, black calc(100% - 2rem), transparent);
+}
+.scroll-row[data-fade='start'] {
+  mask-image: linear-gradient(to right, transparent, black 2rem);
+}
+.scroll-row[data-fade='both'] {
+  mask-image: linear-gradient(to right, transparent, black 2rem, black calc(100% - 2rem), transparent);
+}
+
 /* A button that gives a little while it's pressed. */
 .press {
   transition:

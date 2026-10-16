@@ -4,7 +4,7 @@ import Minus from '~icons/material-symbols/remove-rounded';
 import Plus from '~icons/material-symbols/add-rounded';
 import { describeRepeat, MONTHS, monthName, ordinal, repeatOn, type Repeat, type RepeatUnit } from '../../../shared/repeat.ts';
 import { isoWeekday, weekdayName, weekStartDay } from '../lib/dates.ts';
-import { ButtonGroup, Chip, Sheet, Switch } from './ui.tsx';
+import { ButtonGroup, Chip, ScrollRow, Sheet, Switch } from './ui.tsx';
 
 const UNITS: { value: RepeatUnit; one: string; many: string }[] = [
   { value: 'day', one: 'Day', many: 'Days' },
@@ -100,7 +100,7 @@ export function RepeatSheet({
             <Plus className="size-5" aria-hidden />
           </button>
         </div>
-        <div className="-mr-5 flex gap-2 overflow-x-auto pr-5 [scrollbar-width:none]">
+        <ScrollRow className="-mr-5 flex gap-2 overflow-x-auto pr-5">
           {UNITS.filter((u) => r.mode === 'schedule' || u.value !== 'year').map((u) => (
             <Chip
               key={u.value}
@@ -119,7 +119,7 @@ export function RepeatSheet({
               {r.every === 1 ? u.one : u.many}
             </Chip>
           ))}
-        </div>
+        </ScrollRow>
       </div>
 
       {r.mode === 'schedule' && r.unit === 'week' && (

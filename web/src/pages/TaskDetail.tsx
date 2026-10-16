@@ -23,7 +23,7 @@ import { RepeatSheet } from '../components/RepeatSheet.tsx';
 import { TaskFiles } from '../components/TaskFiles.tsx';
 import { TripCard } from '../components/TripList.tsx';
 import { describeRepeat, repeatOn } from '../../../shared/repeat.ts';
-import { BackButton, Checkbox, Chip, minutesLabel, SectionTitle } from '../components/ui.tsx';
+import { BackButton, Checkbox, Chip, minutesLabel, ScrollRow, SectionTitle } from '../components/ui.tsx';
 import type { Task, TimeOfDay } from '../lib/api.ts';
 import { dayLabel, firstName, todayIso } from '../lib/dates.ts';
 import { expressive } from '../lib/motion.ts';
@@ -43,7 +43,7 @@ function Field({ icon, label, children }: { icon: ReactNode; label: string; chil
 }
 
 function ChipRow({ children }: { children: ReactNode }) {
-  return <div className="-mr-4 flex gap-2 overflow-x-auto pr-4 pb-1">{children}</div>;
+  return <ScrollRow className="-mr-4 flex gap-2 overflow-x-auto pr-4 pb-1">{children}</ScrollRow>;
 }
 
 /** Saves free text when the field loses focus, so typing never waits on the network. */
@@ -212,7 +212,7 @@ function Detail({ task }: { task: Task }) {
                   Skip next
                 </button>
                 {task.pausedUntil && task.pausedUntil > today ? (
-                  <Chip selected onClick={() => patch({ pausedUntil: null })} icon={<Close className="size-4" />}>
+                  <Chip selected onClick={() => patch({ pausedUntil: null })} icon={<Close />}>
                     Paused until {dayLabel(task.pausedUntil, today, true)}
                   </Chip>
                 ) : (

@@ -25,7 +25,7 @@ import { useSyncState } from '../lib/sync.ts';
 import { DateChip, GroupChips, PersonChips, TimeChips, WhenChips } from './fields.tsx';
 import { GroupIcon } from './icons.tsx';
 import { ProposalCard, type Draft } from './ProposalCard.tsx';
-import { Sheet } from './ui.tsx';
+import { ScrollRow, Sheet } from './ui.tsx';
 
 type Phase = 'compose' | 'thinking' | 'review' | 'done';
 type Picker = 'when' | 'group' | 'for' | 'time' | null;
@@ -69,9 +69,8 @@ function OptionChip({ on, icon, onClick, children, label }: { on?: boolean; icon
       type="button"
       onClick={onClick}
       aria-label={label}
-      className={`press flex h-9 shrink-0 items-center gap-1.5 rounded-full pr-3.5 pl-2.5 text-sm ${
-        on ? 'bg-secondary-container text-on-secondary-container' : 'border border-outline-variant text-on-surface-variant'
-      }`}
+      aria-pressed={on ?? false}
+      className="chip"
     >
       {icon}
       {children}
@@ -354,7 +353,7 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
 
   // The row under the text: the options, or one option's choices in their place.
   const chips = (
-    <div className="flex gap-1.5 overflow-x-auto pr-6 [scrollbar-width:none] [mask-image:linear-gradient(to_right,black_calc(100%-1.5rem),transparent)]">
+    <ScrollRow className="flex gap-1.5 overflow-x-auto pr-6">
       <OptionChip on={planned !== null} icon={<TodayIcon className={icon} aria-hidden />} onClick={toggle('when')}>
         {planned ? dayLabel(planned, today) : 'Someday'}
       </OptionChip>
@@ -373,10 +372,10 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
         Must do
       </OptionChip>
       <DateChip keepFocus value={due} min={today} label={due ? `Due ${dayLabel(due, today, true)}` : 'Due'} onPick={pick('dueDate', setDue)} />
-    </div>
+    </ScrollRow>
   );
   const choices = picker && (
-    <div className="flex gap-1.5 overflow-x-auto pr-6 [scrollbar-width:none] [mask-image:linear-gradient(to_right,black_calc(100%-1.5rem),transparent)]">
+    <ScrollRow className="flex gap-1.5 overflow-x-auto pr-6">
       <button
         type="button"
         onClick={() => setPicker(null)}
@@ -396,7 +395,7 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
         />
       )}
       {picker === 'time' && <TimeChips value={time} onChange={pick('timeOfDay', setTime)} />}
-    </div>
+    </ScrollRow>
   );
 
   const thinking = phase === 'thinking';

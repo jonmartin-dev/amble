@@ -9,7 +9,7 @@ import { native } from '../lib/native.ts';
 import { useTaskActions } from '../lib/mutations.ts';
 import { enablePush, usePushState, type PushState } from '../lib/push.ts';
 import { useSnackbar } from '../lib/snackbar.tsx';
-import { Chip, Sheet } from './ui.tsx';
+import { Chip, ScrollRow, Sheet } from './ui.tsx';
 
 export interface ReminderChoice {
   label: string;
@@ -185,7 +185,7 @@ export function ReminderField({ task, onMore }: { task: Task; onMore: () => void
           </button>
         </div>
       ) : (
-        <div className="-mr-4 flex gap-2 overflow-x-auto pr-4 pb-1">
+        <ScrollRow className="-mr-4 flex gap-2 overflow-x-auto pr-4 pb-1">
           {reminderChoices(task)
             .slice(0, 2)
             .map((c) => (
@@ -194,7 +194,7 @@ export function ReminderField({ task, onMore }: { task: Task; onMore: () => void
               </Chip>
             ))}
           <Chip onClick={onMore}>Other time</Chip>
-        </div>
+        </ScrollRow>
       )}
       {sent && <p className="mt-2 text-xs text-on-surface-variant">Reminded you {reminderPhrase(sent.at)}</p>}
       {hint && (
