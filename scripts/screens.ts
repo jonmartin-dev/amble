@@ -153,7 +153,7 @@ for (const v of variants) {
   await page.getByRole('radio', { name: 'Month' }).click();
   await page.waitForTimeout(700);
   await shoot('calendar-month');
-  await page.getByRole('button', { name: /, (Light|Steady|Full|Too much|Wide open)/ }).filter({ hasText: /\d/ }).nth(15).click();
+  await page.getByRole('button', { name: /, (Light|Steady|Full|Too much|Wide open|No room|Day off)/ }).filter({ hasText: /\d/ }).nth(15).click();
   await page.waitForTimeout(900);
   await shoot('day', false);
   await closeSheet();

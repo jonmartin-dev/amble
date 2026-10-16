@@ -494,7 +494,9 @@ export function SectionTitle({ children, action }: { children: ReactNode; action
 
 const loadWords: Record<DayLoad['level'], string> = { light: 'Light', moderate: 'Steady', full: 'Full', over: 'Too much' };
 
+/** A day's load in a word. A day with no room for tasks is a day off when it was set to none, and has no room when its calendar fills it. */
 export function loadWord(load: DayLoad) {
+  if (load.capacityMinutes === 0 && !load.tasks) return load.baseCapacityMinutes === 0 ? 'Day off' : 'No room';
   return load.tasks === 0 ? 'Wide open' : loadWords[load.level];
 }
 

@@ -81,7 +81,7 @@ export function DaySheet({
             <div className="mt-4 rounded-3xl bg-secondary-container p-4 text-on-secondary-container">
               <div className="flex items-baseline justify-between">
                 <span className="text-sm">Load</span>
-                <span className="display text-xl font-medium">{dayLoad.capacityMinutes === 0 && !dayLoad.tasks ? 'Day off' : loadWord(dayLoad)}</span>
+                <span className="display text-xl font-medium">{loadWord(dayLoad)}</span>
               </div>
               <LoadBar load={dayLoad} className="mt-2" track="bg-on-secondary-container/15" fill="bg-on-secondary-container" />
               <p className="mt-2 text-sm">

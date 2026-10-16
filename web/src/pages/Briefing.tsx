@@ -131,12 +131,14 @@ export function Briefing() {
         <section className="rounded-[2rem] bg-primary-container p-5 text-on-primary-container">
           <div className="flex items-baseline justify-between">
             <h2 className="text-sm">Your day</h2>
-            <p className="display text-2xl font-medium">{data.load.capacityMinutes === 0 && !data.load.tasks ? 'Day off' : loadWord(data.load)}</p>
+            <p className="display text-2xl font-medium">{loadWord(data.load)}</p>
           </div>
           <LoadBar load={data.load} className="mt-3" fill="bg-on-primary-container" />
           <p className="mt-3 text-sm">
             {data.load.tasks === 0
-              ? `Nothing planned yet, with room for about ${minutesLabel(data.load.capacityMinutes)}.`
+              ? data.load.capacityMinutes
+                ? `Nothing planned yet, with room for about ${minutesLabel(data.load.capacityMinutes)}.`
+                : 'Nothing planned, and no task time set aside today.'
               : data.load.capacityMinutes === 0
                 ? `${data.load.tasks} planned, about ${minutesLabel(data.load.plannedMinutes)}, on a day with no room set aside.`
                 : `${data.load.tasks} planned, about ${minutesLabel(data.load.plannedMinutes)} of ${minutesLabel(data.load.capacityMinutes)}.`}
