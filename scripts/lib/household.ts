@@ -6,7 +6,9 @@ import type { Page } from 'playwright-core';
 /** Opens Amble at `base` and brings the household down from that server, signed in as `email`. */
 export async function joinHousehold(page: Page, base: string, email: string) {
   await page.goto(base);
-  await page.getByRole('button', { name: 'Use my own server' }).click();
+  await page.getByRole('button', { name: 'Get started' }).click();
+  // "Join through <server>" when the server serves the page, "Use my own server" anywhere else.
+  await page.getByRole('button', { name: /^Join through |^Use my own server$/ }).click();
   // Served by the server, the address is filled in; under `pnpm dev` it's Vite's, which passes the server's routes on.
   const address = page.getByLabel("Your server's address");
   if (!(await address.inputValue())) await address.fill(base);
