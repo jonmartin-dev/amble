@@ -7,6 +7,9 @@ import type { Page } from 'playwright-core';
 export async function joinHousehold(page: Page, base: string, email: string) {
   await page.goto(base);
   await page.getByRole('button', { name: 'Use my own server' }).click();
+  // Served by the server, the address is filled in; under `pnpm dev` it's Vite's, which passes the server's routes on.
+  const address = page.getByLabel("Your server's address");
+  if (!(await address.inputValue())) await address.fill(base);
   await page.getByRole('button', { name: 'Continue' }).click();
   const dev = page.getByRole('link', { name: `Dev sign-in as ${email}` });
   if (!(await dev.waitFor({ timeout: 10_000 }).then(() => true, () => false))) throw new Error(`No dev sign-in for ${email} at ${base}. Is AMBLE_DEV_LOGIN=1, and is it on the allowlist?`);

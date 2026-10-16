@@ -57,7 +57,7 @@ const scope = new URL(sw.registration.scope);
 const base = scope.pathname.replace(/\/$/, '');
 const shell = new URL('./', scope).href;
 // Paths an Amble server serving the app answers itself, never the app shell.
-const SERVER_PATHS = ['/api/', '/auth/', '/oauth/', '/sync/', '/server', '/google/', '/mcp', '/.well-known/', '/healthz'];
+const SERVER_PATHS = ['/api/', '/auth/', '/oauth/', '/sync/', '/server/', '/google/', '/mcp', '/.well-known/', '/healthz'];
 
 sw.addEventListener('install', (event) => {
   event.waitUntil(

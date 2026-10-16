@@ -12,7 +12,7 @@ declare global {
       basePath: string;
       server?: { url: string; signIn: string; privacyContact: string; ai: { provider: string; name: string } | null };
       google?: { clientId: string; apiKey: string; appId: string; tokenUrl: string } | null;
-      /** Set by a server with dev sign-in on, for scripts that drive the app (scripts/lib/household.ts). */
+      /** Set by a server with dev sign-in on, for scripts that drive the app (scripts/lib/household.ts); `pnpm dev` has it too. */
       test?: boolean;
     };
     /** The device's API, for those scripts. */
@@ -138,7 +138,7 @@ if (typeof Worker !== 'undefined') {
   // Asks the browser not to clear Amble's storage to make room; installed apps usually get this.
   void navigator.storage?.persist?.().catch(() => {});
 }
-if (window.__AMBLE__?.test) window.__ambleFetch = deviceFetch;
+if (window.__AMBLE__?.test || import.meta.env.DEV) window.__ambleFetch = deviceFetch;
 
 /** fetch() for the device's own API: `path` is under /api. */
 export async function deviceFetch(path: string, init: RequestInit = {}): Promise<Response> {

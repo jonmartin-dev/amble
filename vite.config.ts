@@ -106,6 +106,7 @@ export default defineConfig({
     port: 5174,
     host: '127.0.0.1',
     strictPort: true,
-    proxy: Object.fromEntries(['/auth', '/sync', '/server', '/healthz', '/oauth', '/mcp', '/.well-known', '/google'].map((p) => [p, server])),
+    // The server's page is /server, and nothing past it: /server-return is the app's.
+    proxy: Object.fromEntries(['/auth', '/sync', '^/server([/?]|$)', '/healthz', '/oauth', '/mcp', '/.well-known', '/google'].map((p) => [p, server])),
   },
 });
