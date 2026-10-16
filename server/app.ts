@@ -22,6 +22,7 @@ import type { FileStore } from './domain/files.ts';
 import { createFileStore } from './lib/disk-files.ts';
 import { createGoogle } from './lib/google.ts';
 import { registerSite, safeReturnTo } from './site.ts';
+import { registerServerSettings } from './settings.ts';
 import { registerSyncHub } from './sync/hub.ts';
 import { createServerSync, type ServerSync } from './sync/server.ts';
 import { SyncSetupError } from './sync/service.ts';
@@ -218,6 +219,8 @@ self.addEventListener('activate', (e) => e.waitUntil((async () => {
   const connector = registerConnector(app, { db, config, fetchImpl });
 
   registerSite(app, { db, config, oidc, sync, ai, connector });
+  // The same, for the app on a device that syncs here (Settings, Your server).
+  registerServerSettings(app, { db, config, ai, sync, connector });
 
   // What the app asked this server for before the app moved to the device.
   app.all('/api/*', (c) => c.json({ error: 'Amble runs on your device now. Reload to get the new version.' }, 410));

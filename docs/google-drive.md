@@ -11,7 +11,7 @@ Google Drive keeps a household's copies in step with nobody hosting anything. Ea
 | Where the copy lives | Amble's hidden folder in your Drive (`drive.appdata`), which only Amble can open | A file named like "Sam's Amble household" in the Drive of whoever made the household, shared with the others |
 | Your other devices | Choose "I already use Amble" on first open and sign in with the same Google account | The same |
 | Adding someone | | Make the household and add them in Sync and backup. Google emails them a link; in Amble they choose "Join a household" and pick the file once in Google's picker |
-| A server | | An admin connects it on the server's page, and joins the household file or starts one from the server's data |
+| A server | | An admin connects it on the server's page and joins the household file; then each device moves to the server ([below](#a-server-in-the-household)) |
 
 Amble asks Google only for `drive.appdata` and `drive.file`: its hidden folder, and files it made or that someone picked for it. Google counts both as non-sensitive, so the consent screen needs no verification for them. The cost of that narrow access is why joining a household takes the picker: with `drive.file`, Amble can't open a file someone shared until they pick it.
 

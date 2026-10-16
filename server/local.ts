@@ -14,7 +14,7 @@ import type { FileStore } from './domain/files.ts';
 import type { Env } from './env.ts';
 import type { Push } from './notify/devices.ts';
 import { queuedWrites } from './requests.ts';
-import { adoptMember, foldDuplicateGroups, serverAddress, SyncSetupError, type Adopt, type SyncService } from './sync/service.ts';
+import { adoptMember, foldDuplicateGroups, serverAddress, ServerAuthError, SyncSetupError, type Adopt, type SyncService } from './sync/service.ts';
 
 /** Members made on a device have no email until they sign in with one; this stands in for it. */
 export const DEVICE_EMAIL_DOMAIN = 'device.invalid';
@@ -242,6 +242,24 @@ function registerSync(app: Hono<Env>, sync: SyncService, db: Db, fetchImpl: type
     '/api/sync/run',
     answer(async (c) => c.json(await sync.run((await parse(c, z.object({ token: z.string().min(10).max(4000).optional() }))).token))),
   );
+
+  // Settings, Your server: the server's own settings, asked with this device's sign-in there
+  // (server/settings.ts). /api/sync/server/settings/ai here is /sync/server/ai there.
+  const PREFIX = '/api/sync/server/settings';
+  const toServer = answer(async (c) => {
+    const path = new URL(c.req.url).pathname;
+    const rest = path.slice(path.indexOf(PREFIX) + PREFIX.length);
+    const body = c.req.method === 'GET' || c.req.method === 'DELETE' ? undefined : await c.req.text();
+    try {
+      const res = await sync.askServer(rest, { method: c.req.method, headers: body ? { 'content-type': 'application/json' } : {}, body });
+      return new Response(res.status === 204 ? null : await res.text(), { status: res.status, headers: { 'content-type': 'application/json' } });
+    } catch (err) {
+      if (err instanceof ServerAuthError) return c.json({ error: 'Your server needs you to sign in again.' }, 401);
+      throw err;
+    }
+  });
+  app.all(PREFIX, toServer);
+  app.all(`${PREFIX}/*`, toServer);
 
   app.post(
     '/api/sync/people',

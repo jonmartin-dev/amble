@@ -210,6 +210,33 @@ describe('syncing with the household’s own server', () => {
     expect(home.files.stored.has(sha256!)).toBe(false);
   });
 
+  it("lets the app show the server's own settings, and an admin set the household's AI model there", async () => {
+    const home = server();
+    const sams = phone(home);
+    await sams.call('POST', '/sync/server/connect', { url: HOME, ...(await signIn(home, home.sam.id)) });
+    const before = (await sams.call('GET', '/sync/server/settings')).json;
+    expect(before).toMatchObject({ url: HOME, me: { email: 'sam@example.com', role: 'admin' }, mcpUrl: `${HOME}/mcp`, connections: [], ai: { available: false } });
+
+    // Sam sets the household's model on the server, from the phone; the phone uses it from the next round.
+    const saved = await sams.call('PUT', '/sync/server/settings/ai', { provider: 'custom', model: 'qwen3:4b', baseUrl: 'http://ollama.lan:11434/v1', effort: 'default', monthlyCapUsd: 5, check: false });
+    expect(saved.json).toEqual({ ok: true, ms: null });
+    expect((await sams.call('GET', '/sync/server/settings')).json.ai).toMatchObject({ available: true, modelName: 'qwen3:4b', source: 'settings', settings: { baseUrl: 'http://ollama.lan:11434/v1' } });
+    await sams.call('POST', '/sync/run', {});
+    expect((await sams.call('GET', '/ai')).json).toMatchObject({ available: true, source: 'server' });
+
+    // Ali isn't an admin: Ali sees the model but can't change it, or see how it's set up.
+    const alis = phone(home);
+    await alis.call('POST', '/sync/server/connect', { url: HOME, ...(await signIn(home, home.ali.id)) });
+    expect((await alis.call('GET', '/sync/server/settings')).json).toMatchObject({ me: { role: 'member' }, ai: { available: true, settings: null }, drive: null });
+    expect((await alis.call('DELETE', '/sync/server/settings/ai')).json.error).toMatch(/Only an admin/);
+    expect((await alis.call('DELETE', '/sync/server/settings/connections/nope')).json.error).toMatch(/already gone/);
+
+    // Without a server, there's nothing to ask.
+    const alone = phone(home);
+    await alone.call('POST', '/device/start', { name: 'Kim' });
+    expect((await alone.call('GET', '/sync/server/settings')).json.error).toMatch(/doesn't sync with a server/);
+  });
+
   it("gives a phone with no AI model of its own the server's, which keeps the key and counts the cost", async () => {
     const home = server(fakeAi(() => ({ minutes: 10 })));
     const p = phone(home);

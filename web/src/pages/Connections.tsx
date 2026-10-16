@@ -6,6 +6,7 @@ import OpenInNew from '~icons/material-symbols/open-in-new-rounded';
 import { ButtonGroup, SectionTitle, SubpageHeader } from '../components/ui.tsx';
 import { servedBy } from '../lib/api.ts';
 import { useDriveSync } from '../lib/drive-sync.ts';
+import { Link } from '@tanstack/react-router';
 import { expressive } from '../lib/motion.ts';
 
 type Assistant = 'claude' | 'chatgpt';
@@ -110,12 +111,13 @@ function NeedsServer() {
 export function ConnectionsPage() {
   // The household's own server: the one this device syncs with, or the one that served the app.
   const status = useDriveSync().status;
-  const server = (status?.target?.kind === 'server' ? status.target.url : undefined) ?? servedBy?.url;
+  const synced = status?.target?.kind === 'server' ? status.target.url : undefined;
+  const server = synced ?? servedBy?.url;
   if (!server) return <NeedsServer />;
-  return <ServerConnections server={server} />;
+  return <ServerConnections server={server} synced={synced != null} />;
 }
 
-function ServerConnections({ server }: { server: string }) {
+function ServerConnections({ server, synced }: { server: string; synced: boolean }) {
   const [assistant, setAssistant] = useState<Assistant>('claude');
   return (
     <>
@@ -142,16 +144,28 @@ function ServerConnections({ server }: { server: string }) {
       </section>
 
       <SectionTitle>Connected</SectionTitle>
-      <p className="px-1 text-on-surface-variant">Your server keeps the list of what's connected, and that's where you disconnect one.</p>
-      <a
-        href={`${server}/server`}
-        target="_blank"
-        rel="noreferrer"
-        className="mt-3 inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-medium text-primary hover:bg-surface-high"
-      >
-        <OpenInNew className="size-5" aria-hidden />
-        Open your server's page
-      </a>
+      {synced ? (
+        <p className="px-1 text-on-surface-variant">
+          What's connected as you, and disconnecting one, is in{' '}
+          <Link to="/settings/server" className="font-medium text-primary underline">
+            Settings, Your server
+          </Link>
+          .
+        </p>
+      ) : (
+        <>
+          <p className="px-1 text-on-surface-variant">Your server keeps the list of what's connected, and that's where you disconnect one.</p>
+          <a
+            href={`${server}/server`}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-3 inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-medium text-primary hover:bg-surface-high"
+          >
+            <OpenInNew className="size-5" aria-hidden />
+            Open your server's page
+          </a>
+        </>
+      )}
     </>
   );
 }

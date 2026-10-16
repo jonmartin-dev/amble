@@ -154,7 +154,7 @@ ${
   setup
     ? html`<p>${modelName(setup)}, from ${aiProvider(setup.provider)?.name ?? setup.provider}. Phones with no model of their own use it.</p>
 <p class="muted">${setup.prices ? `$${spent.toFixed(2)} of the $${setup.monthlyCapUsd} cap this month.` : 'Spending isn’t counted for this model.'}</p>`
-    : html`<p class="muted">No AI model is set up here. An admin sets one in the server's settings file (AMBLE_AI_PROVIDER and AMBLE_AI_API_KEY).</p>`
+    : html`<p class="muted">No AI model is set up here. An admin sets one in Amble, Settings, AI, on a device that syncs with this server.</p>`
 }
 
 <p class="muted" style="margin-top:2.5rem"><a href="${url('/privacy')}">Privacy</a></p>`,

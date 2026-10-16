@@ -316,6 +316,20 @@ export interface AiStatus {
   server: { providerName: string; modelName: string } | null;
 }
 
+/** The household's server's own settings, for Settings, Your server (server/settings.ts). */
+export interface ServerSettings {
+  url: string;
+  /** Who this device is signed in to the server as. */
+  me: { name: string; email: string; role: string };
+  mcpUrl: string;
+  /** Claude or ChatGPT, connected as this person. */
+  connections: { id: string; clientName: string; createdAt: string; lastUsedAt: string | null }[];
+  /** The household's model, kept on the server. */
+  ai: AiStatus;
+  /** Bringing a household over from Google Drive; for an admin, when the server can. */
+  drive: { account: string | null; on: boolean; name: string | null; syncedAt: string | null; error: string | null } | null;
+}
+
 export type SmartAddResponse =
   | { proposals: Proposal[]; unclear: string | null; usage: { inputTokens: number; outputTokens: number; ms: number } }
   | { fallback: string };

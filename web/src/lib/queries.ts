@@ -15,6 +15,7 @@ import {
   type ListHistoryItem,
   type ListItem,
   type PushDevice,
+  type ServerSettings,
   type Session,
   type Stats,
   type Task,
@@ -146,6 +147,11 @@ export function useListHistory(groupId: string | null) {
 
 export function useAi() {
   return useQuery({ queryKey: ['ai'], queryFn: () => get<AiStatus>('/ai'), staleTime: 60_000 });
+}
+
+/** The household's server's own settings, on a device that syncs with one. */
+export function useServerSettings(enabled = true) {
+  return useQuery({ queryKey: ['server-settings'], queryFn: () => get<ServerSettings>('/sync/server/settings'), enabled, staleTime: 30_000, retry: false });
 }
 
 /** Your own calendar events between two dates. */

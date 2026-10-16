@@ -73,7 +73,7 @@ export interface SyncStatus {
 export class SyncSetupError extends Error {}
 
 /** The household's server turned this device's sign-in down (it signed out there, or was removed). */
-class ServerAuthError extends Error {}
+export class ServerAuthError extends Error {}
 
 /** An address someone typed, as Amble keeps it: no trailing slash, and https unless they said http. */
 export function serverAddress(input: string): string {
@@ -447,6 +447,14 @@ export function createSyncService({
       if (target?.kind !== 'server' || !target.url || !token) return null;
       const res = await fetchImpl(`${target.url}/sync/files/${sha256}`, { headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(5 * 60_000) }).catch(() => null);
       return res?.ok && res.body ? res.body : null;
+    },
+
+    /** Asks the household's server about its own settings (server/settings.ts), as this device's person. */
+    async askServer(path: string, init: RequestInit = {}) {
+      const target = settings?.target;
+      const token = settings?.serverToken;
+      if (target?.kind !== 'server' || !target.url || !token) throw new SyncSetupError("This device doesn't sync with a server.");
+      return serverCall(target.url, token, `/sync/server${path}`, init);
     },
 
     /** The household's server's AI model, for a device with none of its own: where to ask, and what it is. */

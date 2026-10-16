@@ -84,7 +84,7 @@ Both connect to the same address, `<AMBLE_PUBLIC_URL>/mcp`. The server's own pag
 
 **ChatGPT (on the web, in Developer mode).** In ChatGPT, turn on Developer mode under Settings, Apps, Advanced settings. Then choose Create in Apps, paste the address, pick OAuth, and Allow on the Amble page that opens. Developer mode is a beta: as of October 2026 ChatGPT can use every tool on Business, Enterprise and Edu plans, and only the read-only ones on Pro. ChatGPT identifies itself with its client metadata document (`https://chatgpt.com/oauth/client.json`) and comes back to `https://chatgpt.com/connector_platform_oauth_redirect`; dynamic registration works too, if it's picked in the app's OAuth settings. Nobody has connected a real ChatGPT account yet, so if you do, [say how it went](CONTRIBUTING.md#help-wanted).
 
-Amble is its own OAuth 2.1 server: the assistant identifies itself, you sign in with your normal account on the server, and you can disconnect it on the server's page. It needs a public HTTPS URL the assistant can reach, and if Amble runs under a path prefix your proxy must also send `/.well-known/oauth-protected-resource<prefix>` and `/.well-known/oauth-authorization-server<prefix>` to it. Only apps on `AMBLE_OAUTH_CLIENT_HOSTS` (default `claude.ai,claude.com,chatgpt.com`) and local loopback apps can connect. If your `.env` sets that list from an older `.env.example`, add `chatgpt.com` to it.
+Amble is its own OAuth 2.1 server: the assistant identifies itself, you sign in with your normal account on the server, and you can disconnect it in Settings, Your server (or on the server's page). It needs a public HTTPS URL the assistant can reach, and if Amble runs under a path prefix your proxy must also send `/.well-known/oauth-protected-resource<prefix>` and `/.well-known/oauth-authorization-server<prefix>` to it. Only apps on `AMBLE_OAUTH_CLIENT_HOSTS` (default `claude.ai,claude.com,chatgpt.com`) and local loopback apps can connect. If your `.env` sets that list from an older `.env.example`, add `chatgpt.com` to it.
 
 **Local (same machine as the database).** ChatGPT only connects to remote servers, but Claude can also run Amble locally. `server/mcp-stdio.ts` talks to Claude over stdio and opens the server's database file directly, with no sign-in and nothing exposed to the network. It acts as the member named by `AMBLE_MEMBER`, who must have signed in once:
 
@@ -98,13 +98,13 @@ For the Claude desktop app, add the same command under `mcpServers` in its confi
 
 ## Self-host a server
 
-A server is one more copy of the household, on a computer you keep. It serves the web app at its own address, keeps the household in step for devices that choose Use my own server, shares photos and files on tasks between them, hosts the connector for Claude and ChatGPT, and lends its AI model to phones without one. A household that started in Google Drive can move onto it: the server joins the Drive file, and each device is offered a move to the server. Once a household has a server, the server is how it syncs.
+A server is one more copy of the household, on a computer you keep. It serves the web app at its own address, keeps the household in step for devices that choose Use my own server, shares photos and files on tasks between them, hosts the connector for Claude and ChatGPT, and keeps the household's AI model, which everyone's devices use. A household that started in Google Drive can move onto it: the server joins the Drive file, and each device is offered a move to the server. Once a household has a server, the server is how it syncs. What the server has to set (the household's AI model, connected assistants, the code to add a phone) is in the app, under Settings, Your server, on any device that syncs with it; the server's own page at `<AMBLE_PUBLIC_URL>/server` has the same, for a browser.
 
 ```sh
 cp .env.example .env    # set AMBLE_PUBLIC_URL, the emails, OIDC_CLIENT_ID, and AMBLE_DEV_LOGIN=0
 mkdir -p data secrets
 printf '%s' 'your-client-secret' > secrets/oidc_client_secret
-printf '%s' 'your-ai-key' > secrets/ai_api_key   # optional, for the AMBLE_AI_PROVIDER model (Anthropic by default), phones included
+printf '%s' 'your-ai-key' > secrets/ai_api_key   # optional: or set the model later in the app, Settings, AI
 docker compose up -d --build
 ```
 
@@ -112,11 +112,11 @@ The server listens on `127.0.0.1:18085` (change with `AMBLE_PORT`); put your rev
 
 The server signs people in, and only people on its list: devices that sync with it, the connector, and its own page. For Google sign-in, create an OAuth client of type "Web application" with the redirect URI `<AMBLE_PUBLIC_URL>/auth/callback`, and set the consent screen's publishing status to "In production" so the server's Google Drive connection doesn't expire after 7 days. Any other OpenID Connect provider works too; [docs/sign-in.md](docs/sign-in.md) has the steps for Authelia, Authentik and Keycloak, and what to check when sign-in fails. Set `AMBLE_PRIVACY_CONTACT` to put a contact on the app's `/privacy` page, which Google's consent screen links to.
 
-To add a phone, open the server's page (`<AMBLE_PUBLIC_URL>/server`, or Settings, Sync and backup on a device already in step with it) and scan its code: in the Android app under Use my own server, Scan the code, or with the phone's camera to open the web app ready to join. To use the web app at the server's address, open `<AMBLE_PUBLIC_URL>` and choose Join through it; the address is already filled in. Google Drive sync in that browser needs the server's address in your Google Cloud setup ([docs/google-drive.md](docs/google-drive.md#google-cloud-setup)) and `AMBLE_GOOGLE_API_KEY` for the file picker. A web app hosted somewhere else can sync with the server too, once its address is in `AMBLE_APP_ORIGINS`.
+To add a phone, show the code in Settings, Your server on a device already in step with the server (or on the server's page) and scan it: in the Android app under Use my own server, Scan the code, or with the phone's camera to open the web app ready to join. To use the web app at the server's address, open `<AMBLE_PUBLIC_URL>` and choose Join through it; the address is already filled in. Google Drive sync in that browser needs the server's address in your Google Cloud setup ([docs/google-drive.md](docs/google-drive.md#google-cloud-setup)) and `AMBLE_GOOGLE_API_KEY` for the file picker. A web app hosted somewhere else can sync with the server too, once its address is in `AMBLE_APP_ORIGINS`.
 
 Back up `data/`: it holds the database. `node server/backup.ts` inside the container writes a consistent copy of the database to `data/snapshots/almanac-latest.db` for file-level backups.
 
-A household that syncs through Google Drive can have the server as one more copy, so the connector sees and changes the same things as everyone's phones: an admin connects it on the server's page ([docs/google-drive.md](docs/google-drive.md#a-server-in-the-household)).
+A household that syncs through Google Drive moves onto the server through the same file: an admin connects the server to Drive on its page, and each device then offers a move ([docs/google-drive.md](docs/google-drive.md#a-server-in-the-household)).
 
 The server sends no notifications. A reminder set through Claude reaches the Android app through its background check of the household, about every 15 minutes.
 

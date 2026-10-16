@@ -43,6 +43,7 @@ import { Privacy } from './pages/Privacy.tsx';
 import { TaskDetail } from './pages/TaskDetail.tsx';
 import { Calendar } from './pages/Calendar.tsx';
 import { AiSettings } from './pages/AiSettings.tsx';
+import { ServerSettingsPage } from './pages/ServerSettings.tsx';
 import { Capacity } from './pages/Capacity.tsx';
 import { ConnectionsPage } from './pages/Connections.tsx';
 import { GroupsSettings } from './pages/GroupsSettings.tsx';
@@ -274,6 +275,7 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/calendars', component: CalendarsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/notifications', component: Notifications }),
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/sync', component: SyncSettings }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/settings/server', component: ServerSettingsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/briefing', component: Briefing }),
   createRoute({ getParentRoute: () => rootRoute, path: '/activity', component: Activity }),
   createRoute({
