@@ -1,5 +1,11 @@
+import { useNavigate } from '@tanstack/react-router';
+import { useState } from 'react';
+import AddTask from '~icons/material-symbols/add-task-rounded';
+import TaskAlt from '~icons/material-symbols/task-alt-rounded';
 import type { CalendarEvent, DayLoad } from '../lib/api.ts';
-import { isoDate, timeLabel, weekdayName, isoWeekday } from '../lib/dates.ts';
+import { addDays, dayLabel, isoDate, isoWeekday, timeLabel, todayIso, weekdayName } from '../lib/dates.ts';
+import { useTaskActions } from '../lib/mutations.ts';
+import { useSnackbar } from '../lib/snackbar.tsx';
 import { minutesLabel } from './ui.tsx';
 
 /** The events that touch a date, in this device's timezone. */
@@ -22,9 +28,54 @@ function when(e: CalendarEvent, date: string): [string, string | null] {
   return ['All day', null];
 }
 
-/** A day's calendar events: a colored edge per calendar, times, and titles. Free time is quieter. */
+// Which events this device already made a prep task for, so the button turns into a check.
+const PREPPED_KEY = 'amble-prepped';
+function readPrepped(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem(PREPPED_KEY) ?? '[]') as string[];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * A task to get ready for an event: the day before it (today, for one today or tomorrow), due the
+ * day of it. Lots of things on a calendar need something done first.
+ */
+function usePrep() {
+  const actions = useTaskActions();
+  const snack = useSnackbar();
+  const navigate = useNavigate();
+  const [prepped, setPrepped] = useState(readPrepped);
+  const key = (e: CalendarEvent, date: string) => `${e.id}:${date}`;
+  const add = (e: CalendarEvent, date: string) => {
+    const today = todayIso();
+    const day = date > addDays(today, 1) ? addDays(date, -1) : today;
+    const at = e.allDay ? weekdayName(isoWeekday(date), 'long') : `${weekdayName(isoWeekday(date), 'long')} at ${timeLabel(e.start)}`;
+    const task = actions.create({ title: `Get ready for ${e.title}`, notes: `${e.title} is ${at}.`, plannedDate: day, dueDate: date });
+    const next = [...prepped.slice(-200), key(e, date)];
+    setPrepped(next);
+    try {
+      localStorage.setItem(PREPPED_KEY, JSON.stringify(next));
+    } catch {
+      // Private browsing: the check just won't last.
+    }
+    snack({
+      message: `Added "${task.title}" for ${dayLabel(day, today).replace(/^(Today|Tomorrow)/, (w) => w.toLowerCase())}`,
+      action: { label: 'Open', run: () => void navigate({ to: '/task/$taskId', params: { taskId: task.id } }) },
+    });
+  };
+  return { add, done: (e: CalendarEvent, date: string) => prepped.includes(key(e, date)) };
+}
+
+/**
+ * A day's calendar events: a colored edge per calendar, times, and titles. Free time is quieter.
+ * An event still to come can get a prep task.
+ */
 export function EventList({ events, date, surface = 'bg-surface-low' }: { events: CalendarEvent[]; date: string; surface?: string }) {
+  const prep = usePrep();
   if (events.length === 0) return null;
+  const upcoming = date >= todayIso();
   return (
     <ul className="flex flex-col gap-1" aria-label="On your calendar">
       {events.map((e) => {
@@ -40,6 +91,23 @@ export function EventList({ events, date, surface = 'bg-surface-low' }: { events
               {e.title ?? 'Busy'}
               {!e.busy && <span className="text-on-surface-variant"> · free</span>}
             </span>
+            {upcoming &&
+              e.title &&
+              (prep.done(e, date) ? (
+                <span className="grid size-9 shrink-0 place-items-center text-primary" title="Prep task added">
+                  <TaskAlt className="size-5" aria-label="Prep task added" />
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => prep.add(e, date)}
+                  aria-label={`Add a task to get ready for ${e.title}`}
+                  title="Add a task to get ready for it"
+                  className="-my-1 grid size-9 shrink-0 place-items-center rounded-full text-on-surface-variant"
+                >
+                  <AddTask className="size-5" aria-hidden />
+                </button>
+              ))}
           </li>
         );
       })}

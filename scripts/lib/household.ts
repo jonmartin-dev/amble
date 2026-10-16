@@ -47,7 +47,7 @@ export function local(page: Page) {
       );
       return { ok: () => status < 300, status: () => status, json: async () => JSON.parse(body) };
     };
-  return { get: call('GET'), post: call('POST'), patch: call('PATCH'), delete: call('DELETE') };
+  return { get: call('GET'), post: call('POST'), put: call('PUT'), patch: call('PATCH'), delete: call('DELETE') };
 }
 
 /** Sends this device's changes to the server now, before the browser closes. */
