@@ -95,7 +95,8 @@ export function ItemSheet({
       const known = targetHistory.find((h) => h.name.toLowerCase() === name.toLowerCase());
       const section = known?.section ?? guessAisle(name, aisles);
       const id = crypto.randomUUID();
-      if (addListItem(qc, sendTo.id, { id, name, section }) === 'added') added++;
+      // One checked off before comes back on the list, so it counts as added too.
+      if (addListItem(qc, sendTo.id, { id, name, section }) !== 'already on the list') added++;
       send('POST', `/lists/${sendTo.id}/items`, { id, name, section }, `Add ${name}`);
     }
     const already = names.length - added;
