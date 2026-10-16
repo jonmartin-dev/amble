@@ -1,9 +1,11 @@
 # The Android app
 
-The Android app is the device build ([Amble with no server](google-drive.md)) inside [Capacitor](https://capacitorjs.com): Amble's API runs in a worker in the app, on SQLite kept on the phone, with nothing to sign up for. What the app adds over the same build in a browser:
+The Android app is the web app inside [Capacitor](https://capacitorjs.com): Amble's API runs in a worker in the app, on SQLite kept on the phone, with nothing to sign up for. What the app adds over the same app in a browser:
 
 - **Reminders with the app closed.** The app hands Android each coming reminder, and the phone shows it at its time with Done and Snooze on it. Android can hold a reminder back a few minutes while the phone is idle unless Amble is allowed "Alarms and reminders"; Settings, Notifications offers that.
-- **Reminders set elsewhere, with the app closed.** While the household syncs through Drive, the phone reads its file about every 15 minutes in the background and sets alarms for your coming reminders it didn't have yet, such as one Claude set through the server. A reminder set elsewhere for the next few minutes can be late; one set on the phone never is. No push service is involved.
+- **Reminders set elsewhere, with the app closed.** While the household syncs, through Drive or your own server, the phone reads the household about every 15 minutes in the background and sets alarms for your coming reminders it didn't have yet, such as one Claude set through the server. A reminder set elsewhere for the next few minutes can be late; one set on the phone never is. No push service is involved.
+- **Your calendars.** Settings, Calendars asks Android once for permission to read the phone's calendars, and you pick which count (your own account's are on to start with). A day with more on it than usual has less room for tasks. The events stay on the phone; the household's copy only gets how many minutes of each day are busy. Amble reads them again whenever it opens, and never changes them.
+- **Your own server, on plain http.** On the home network or through Tailscale, the app can sync with a server that has no certificate, which a browser on an https page can't.
 - **Sync without the hourly tap.** Google sign-in goes through Google Play services, which renews Drive access by itself, so the app keeps syncing for as long as Amble is allowed.
 - **Joining a household with Google's own picker,** which Google Play services shows over the app.
 - **A home-screen widget** with today's tasks and how full the day is. The app hands it a copy whenever something changes; after the day ends (4am) it asks you to open Amble until you do.
@@ -17,9 +19,11 @@ node scripts/android.ts build   # a debug APK in android/app/build/outputs/apk/d
 node scripts/android.ts run     # also installs it on the phone or emulator adb sees, and opens it
 ```
 
-The script builds the device app, copies it into `android/` (Capacitor's project) and runs Gradle. `ANDROID_HOME` defaults to where Android Studio puts the SDK; a `JAVA_HOME` that points at an uninstalled JDK is ignored for the `java` on your PATH. To open the project in Android Studio instead, run `pnpm exec cap open android` after a build.
+The script builds the app, copies it into `android/` (Capacitor's project) and runs Gradle. `ANDROID_HOME` defaults to where Android Studio puts the SDK; a `JAVA_HOME` that points at an uninstalled JDK is ignored for the `java` on your PATH. To open the project in Android Studio instead, run `pnpm exec cap open android` after a build.
 
 A debug build has WebView debugging on: with the phone plugged in, `chrome://inspect` on your computer shows the app's page.
+
+To check layouts at more than one size, use emulators from Android Studio's Device Manager: a phone, a foldable (Pixel Fold, folded and open), and a tablet. The emulator's Google Play images can sign in to Google for Drive sync.
 
 ## Google sign-in
 

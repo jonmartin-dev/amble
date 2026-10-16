@@ -1,8 +1,8 @@
 # One web app, with a server only for extras
 
-A plan, written 2026-10-15. Steps 1 and 2 of the order below are built, and so is the phone's background check for reminders.
+A plan, written and carried out on 2026-10-15. Every step in the [order below](#recommendation-and-order-of-work) is done: the web app is the device app everywhere, an Amble server serves it beside a few plain pages of its own, devices can sync with the server itself instead of Drive, and calendars are read on the phone. The rest of this page is the plan as written, kept for the reasoning; where it and the code differ, the code and the other docs are right.
 
-Amble's web page comes two ways today, from the same React code:
+Amble's web page came two ways before this, from the same React code:
 
 - **The server's page.** The Docker container serves it, signs people in, and keeps the household in the server's database.
 - **The device build** (`pnpm build:device`). The same app with its API running in a worker on SQLite in the browser, synced through a Google Drive file. The Android app is this build in Capacitor.
@@ -65,6 +65,8 @@ Calendar events don't sync through the household file (each copy reads its own c
 
 Settle this before the server's page goes, since it's the last feature computers would visibly lose.
 
+Decided and built 2026-10-15, a third way: the Android app reads the phone's calendars through Android's own calendar permission, so no Google scope or verification is involved, and only your own calendars count unless you pick others. The events stay on the phone; each person's busy minutes per day go into a synced table (`busy_days`), so every copy, a browser or the server included, sees how busy a day is and never what's on it. The server's Google Calendar code is gone.
+
 ## Hosting the web app
 
 | Where | Notes |
@@ -111,8 +113,8 @@ Do it, in this order, with the week in step 3 as the point to decide:
 
 1. Fix the connector's reminder note. Done.
 2. Make a browser renew Drive access on its own: the `prompt=none` bounce first, then the token endpoint. Done. So is the phone's background check for reminders set elsewhere.
-3. Host the device build beside the server's page (at `/amble/app/`, say) and use it on a computer for a week.
-4. Settle calendar: devices read their own, or the server shares busy minutes.
-5. Build sync to your own server, the third way to start (decided above).
-6. Point the app's address at the device build, turn the server's remaining pages into plain pages, and delete the server's app code.
-7. Update the docs.
+3. Host the device build beside the server's page (at `/amble/app/`, say) and use it on a computer for a week. Skipped: the device build was already in daily use on the phone.
+4. Settle calendar: devices read their own, or the server shares busy minutes. Done, the phone reads its own ([Calendar](#calendar)).
+5. Build sync to your own server, the third way to start (decided above). Done (`server/sync/hub.ts`). A phone without an AI key uses the server's model through it.
+6. Point the app's address at the device build, turn the server's remaining pages into plain pages, and delete the server's app code. Done.
+7. Update the docs. Done.

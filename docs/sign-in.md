@@ -1,6 +1,8 @@
 # Sign-in
 
-Amble signs people in through an OpenID Connect provider and lets in only the emails on its list. Google is the default. Any provider that speaks OpenID Connect works, including the ones people self-host: Authelia, Authentik, Keycloak, Pocket ID, Zitadel and Kanidm.
+An Amble server signs people in through an OpenID Connect provider and lets in only the emails on its list. The app itself has no account: on a phone or in a browser it keeps everything on the device. Signing in to a server is how a device syncs with it (Use my own server), how Claude or ChatGPT connect, and how an admin reaches the server's own page.
+
+The server signs people in Google is the default. Any provider that speaks OpenID Connect works, including the ones people self-host: Authelia, Authentik, Keycloak, Pocket ID, Zitadel and Kanidm.
 
 The steps below were checked against Google, Authelia 4.39 and Keycloak 26.8, signing in through each from a fresh Docker setup. The Authentik notes follow its documentation.
 
@@ -31,13 +33,13 @@ What Amble expects back:
 - **An email that isn't marked unverified.** If the provider sends `email_verified: false`, Amble refuses the sign-in, since anyone who could put an allowed address on an account would otherwise get in. A provider that doesn't send `email_verified` at all is trusted.
 - **Client secret** sent with HTTP Basic, the standard default. Amble switches to sending it in the request body only when the provider's discovery document says it can't take Basic.
 
-Admins and allowed emails can sign in the first time without anything else. Admins can add more people later from Settings, Household.
+Admins and allowed emails can sign in the first time without anything else. People added to the household in the app (People, on a device that syncs with the server) can sign in too.
 
 ## Google
 
 1. In [Google Cloud](https://console.cloud.google.com/), create a project, then an OAuth client of type **Web application** with the redirect URI above.
-2. On the OAuth consent screen, set the publishing status to **In production**. In testing mode, sessions with Calendar access expire after 7 days.
-3. To use Google Calendar, turn on the **Google Calendar API** in the same project.
+2. On the OAuth consent screen, set the publishing status to **In production**. In testing mode, Google lets the server's Google Drive connection lapse after 7 days.
+3. To keep the server in step with a household that syncs through Google Drive, turn on the **Google Drive API** in the same project ([google-drive.md](google-drive.md#a-server-in-the-household)).
 
 ```sh
 OIDC_ISSUER=https://accounts.google.com
@@ -116,16 +118,16 @@ The checklist under [What every provider needs](#what-every-provider-needs) is a
 - **Email marked unverified.** Most providers keep a verified flag per person. In Pocket ID, turn on **Emails Verified** in its application configuration and verify each person's address.
 - **Issuer mismatch.** Copy the issuer from the provider's discovery document rather than typing it.
 
-## Google Calendar with another provider
+## Google Drive with another provider
 
-Calendars always come from Google, so with any other sign-in provider Amble needs a Google OAuth client of its own for them: a **Web application** client with the same redirect URI, and the Google Calendar API turned on in its project.
+To join a household that syncs through Google Drive, a server signed in through another provider needs a Google OAuth client of its own: a **Web application** client with the same redirect URI, and the Google Drive API turned on in its project.
 
 ```sh
 GOOGLE_CLIENT_ID=1234567890-abc.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=...          # or GOOGLE_CLIENT_SECRET_FILE
 ```
 
-Without it, everything else works and Settings, Calendars says calendar sync isn't set up on this server.
+Without it, everything else works; devices sync with the server itself.
 
 ## When sign-in fails
 
@@ -134,7 +136,7 @@ The sign-in page says why when it can, and the server logs a line starting with 
 | The page says | What to check |
 |---|---|
 | Amble couldn't reach the sign-in provider | Amble couldn't read the provider's discovery document. `discovered metadata issuer does not match the expected issuer` means `OIDC_ISSUER` differs from the issuer the provider reports (often a trailing slash). `unexpected HTTP response status code` means nothing is at that address. `fetch failed: unable to verify the first certificate` means Node doesn't trust the provider's certificate; see `NODE_EXTRA_CA_CERTS` above. |
-| That account isn't on this household's list | Add the email to `AMBLE_ALLOWED_EMAILS`, or have an admin add the person in Settings, Household. |
+| That account isn't on this household's list | Add the email to `AMBLE_ALLOWED_EMAILS`, or add the person in People on a device that syncs with the server. |
 | Your sign-in provider says this email address isn't verified | Mark the address verified in the provider (see your provider above). |
 | Your sign-in provider didn't share an email address | Give the client the `email` scope, and make sure the person has an email in the provider. |
 | Sign-in didn't go through | Read the server log. `invalid_client` or `unauthorized_client` means the client ID or secret is wrong, or the provider wants another way of sending the secret. If the provider shows its own error page instead of coming back, the redirect URI it has doesn't match `<AMBLE_PUBLIC_URL>/auth/callback`. |
