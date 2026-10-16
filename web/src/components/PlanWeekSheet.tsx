@@ -35,8 +35,8 @@ export function PlanWeekSheet({ open, onClose, today }: { open: boolean; onClose
 
   // Without the model there's nothing to say to it, so go straight to the plan.
   useEffect(() => {
-    if (open && ai && !ai.available && online && plan.isIdle) plan.mutate('');
-  }, [open, ai, online, plan]);
+    if (open && ai && !ai.available && plan.isIdle) plan.mutate('');
+  }, [open, ai, plan]);
 
   const week = plan.data;
   const chosen = week?.picks.filter((p) => !skipped.has(p.task.id)) ?? [];

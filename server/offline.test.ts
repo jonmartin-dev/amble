@@ -115,6 +115,16 @@ describe('queued writes', () => {
     expect(res.status).toBe(409);
     expect(res.json.code).toBe('in-progress');
   });
+
+  it('runs a change again that was cut off before Amble last stopped', async () => {
+    const { appliedRequests } = await import('./db/schema.ts');
+    db.insert(appliedRequests).values({ memberId: jon.id, key: 'cut-off' }).run();
+    // Starting again, as the device's worker does when the page opens.
+    app = apiApp({ db, config: testConfig, ai: createAi(testConfig) });
+    const res = await as(jon)('POST', '/tasks', { title: 'Saved after all' }, { 'idempotency-key': 'cut-off' });
+    expect(res.status).toBe(201);
+    expect(res.json.task.title).toBe('Saved after all');
+  });
 });
 
 describe('the later change wins', () => {

@@ -6,7 +6,6 @@ import { addDays, dayLabel, dayOfMonth, weekdayShort } from '../lib/dates.ts';
 import { expressive } from '../lib/motion.ts';
 import { useTaskActions } from '../lib/mutations.ts';
 import { useLoad, useTaskGap } from '../lib/queries.ts';
-import { useSyncState } from '../lib/sync.ts';
 import { LoadBar, loadWord, Sheet } from './ui.tsx';
 
 /** Pick a day for a task, seeing how full each of the next two weeks already is. */
@@ -53,9 +52,8 @@ export function DaySheet({
 }) {
   const end = addDays(today, 13);
   const { data: days } = useLoad(today, end, open);
-  const { online } = useSyncState();
   // For a task with a deadline, the day with the most room before it.
-  const { data: gap } = useTaskGap(task?.id ?? '', open && task != null && task.status === 'open' && !!task.dueDate && task.dueDate >= today && online);
+  const { data: gap } = useTaskGap(task?.id ?? '', open && task != null && task.status === 'open' && !!task.dueDate && task.dueDate >= today);
 
   const pick = (date: string | null) => {
     onPick(date);

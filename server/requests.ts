@@ -1,7 +1,7 @@
 // Writes from the app's outbox. The app keeps changes made offline and sends them in order once
 // it's back online, each with a key. If an answer gets lost and the app sends a change again, the
 // first answer is replayed instead of applying it twice.
-import { and, eq, lt } from 'drizzle-orm';
+import { and, eq, isNull, lt } from 'drizzle-orm';
 import type { MiddlewareHandler } from 'hono';
 import type { Db } from './db/index.ts';
 import { appliedRequests } from './db/schema.ts';
@@ -26,6 +26,10 @@ export function madeAt(header: string | undefined, now = Date.now()): Date | und
 }
 
 export function queuedWrites(db: Db): MiddlewareHandler<Env> {
+  // Nothing is still being saved when Amble starts. A change marked so was cut off part way (on a
+  // device, the page closed mid-save), and would otherwise be turned away as in progress forever,
+  // holding up every change queued after it. Sent again, it runs again.
+  db.delete(appliedRequests).where(isNull(appliedRequests.status)).run();
   let prunedAt = 0;
   return async (c, next) => {
     if (c.req.method === 'GET' || c.req.method === 'HEAD') return next();

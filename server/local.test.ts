@@ -73,6 +73,14 @@ const call = async (method: string, path: string, body?: unknown) => {
 };
 
 describe('Amble on a device', () => {
+  it('answers under the path the app is served at', async () => {
+    const config = deviceConfig('https://amble.example', '/amble', 'America/Chicago');
+    const served = createLocalApp({ db, config, ai: createAi(config, db, fetch, { seal: (k) => k, open: (k) => k }), push: createLocalPush(db, async () => true), files: memoryFiles() });
+    const res = await served.request('https://amble.example/amble/api/session');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ member: null });
+  });
+
   it('starts with nobody, then sets up its person with the starter groups', async () => {
     expect((await call('GET', '/session')).json).toMatchObject({ member: null, auth: { mode: 'device' } });
     expect((await call('GET', '/groups')).status).toBe(401);

@@ -29,7 +29,6 @@ import { dayLabel, firstName, todayIso } from '../lib/dates.ts';
 import { expressive } from '../lib/motion.ts';
 import { useTaskActions, type TaskPatch } from '../lib/mutations.ts';
 import { useGroups, useMe, useMembers, useTask, useTaskActivity, useTaskGap } from '../lib/queries.ts';
-import { useSyncState } from '../lib/sync.ts';
 
 function Field({ icon, label, children }: { icon: ReactNode; label: string; children: ReactNode }) {
   return (
@@ -75,10 +74,9 @@ function Detail({ task }: { task: Task }) {
   const back = () => (window.history.length > 1 ? router.history.back() : void navigate({ to: '/' }));
   const others = household?.members.filter((m) => m.id !== me?.id) ?? [];
   const done = task.status === 'done';
-  const { online } = useSyncState();
   // Due later and not on a day yet: the day with the most room before the deadline.
   const wantsDay = task.status === 'open' && !task.plannedDate && !!task.dueDate && task.dueDate >= today;
-  const { data: gap } = useTaskGap(task.id, wantsDay && online);
+  const { data: gap } = useTaskGap(task.id, wantsDay);
 
   return (
     <>

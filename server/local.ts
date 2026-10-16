@@ -101,7 +101,14 @@ export function createLocalApp({
   /** For finding the household's server; tests pass their own. */
   fetchImpl?: typeof fetch;
 }) {
-  const app = new Hono<Env>();
+  // The worker asks for paths under the address the app is served at, like /amble/api/today.
+  const base = config.basePath;
+  const app = new Hono<Env>({
+    getPath: (req) => {
+      const p = new URL(req.url).pathname;
+      return base && (p === base || p.startsWith(`${base}/`)) ? p.slice(base.length) || '/' : p;
+    },
+  });
 
   app.use('*', async (c, next) => {
     c.set('member', deviceMember(db));
