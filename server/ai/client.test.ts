@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { config, type Config } from '../config.ts';
 import { openDatabase, type Db } from '../db/index.ts';
 import { serverSettings } from '../db/schema.ts';
-import { ask, createAi, jsonIn, savedKeyState, strictSchema, type AiSetup } from './client.ts';
+import { ask, createAi, jsonIn, savedKeyState, shareRepeats, strictSchema, type AiSetup } from './client.ts';
 
 const testConfig: Config = {
   ...config,
@@ -172,6 +172,21 @@ describe('calling Anthropic for a device', () => {
     const schema = JSON.stringify(sent[0]!.output_config.format.schema);
     expect(schema).not.toContain('"enum"');
     expect(schema).toContain('task');
+  });
+
+  it('writes an object that appears more than once a single time, so the grammar stays small, keeping what each place says', () => {
+    const Repeat = z.object({ every: z.number().int(), unit: z.enum(['day', 'week']), weekdays: z.array(z.number().int()) });
+    const Twice = z.object({
+      add: z.object({ title: z.string(), repeat: Repeat }),
+      change: z.object({ task: z.string(), repeat: Repeat.describe('Mode none to keep') }),
+    });
+    const shared = shareRepeats(strictSchema(Twice));
+    expect(Object.keys(shared.$defs as object)).toEqual(['shared0']);
+    const text = JSON.stringify(shared);
+    expect(text.match(/"\$ref":"#\/\$defs\/shared0"/g)).toHaveLength(2);
+    expect(text).toContain('{"$ref":"#/$defs/shared0","description":"Mode none to keep"}');
+    // Nothing repeated, nothing changed.
+    expect(shareRepeats(strictSchema(Answer))).toEqual(strictSchema(Answer));
   });
 });
 

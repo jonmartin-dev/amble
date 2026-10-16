@@ -220,8 +220,10 @@ export function registerSyncHub(
       });
       return c.json({ output, usage });
     } catch (err) {
-      if (err instanceof AiUnavailable) return c.json({ error: err.message }, 503);
-      throw err;
+      if (!(err instanceof AiUnavailable)) throw err;
+      // The device falls back quietly, so this log is where the reason shows.
+      console.warn(`AI for a device (${req.feature}) failed:`, err.message);
+      return c.json({ error: err.message }, 503);
     }
   });
 

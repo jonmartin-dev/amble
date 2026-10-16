@@ -235,17 +235,60 @@ function anthropicFor(setup: AiSetup, fetchImpl: typeof fetch) {
 }
 
 /**
+ * Writes each object that appears more than once in a schema (but for its description) once,
+ * under $defs, and points to it from each place, which keeps its own description. Anthropic
+ * compiles a schema into a grammar with a size limit, and every copy counts: smart add's, with its
+ * repeat settings written out twice, went over ("The compiled grammar is too large").
+ */
+export function shareRepeats(schema: Record<string, unknown>): Record<string, unknown> {
+  type Node = Record<string, unknown>;
+  let root = structuredClone(schema);
+  const defs: Record<string, Node> = {};
+  const keyOf = (node: Node) => JSON.stringify({ ...node, description: undefined });
+  const isObject = (node: Node) => node.type === 'object' && node.properties != null;
+  for (let n = 0; ; n++) {
+    const counts = new Map<string, number>();
+    const walk = (node: unknown, top: boolean) => {
+      if (Array.isArray(node)) return node.forEach((x) => walk(x, false));
+      if (!node || typeof node !== 'object') return;
+      if (!top && isObject(node as Node)) counts.set(keyOf(node as Node), (counts.get(keyOf(node as Node)) ?? 0) + 1);
+      for (const [k, v] of Object.entries(node)) {
+        if (k === 'properties') for (const p of Object.values(v as Node)) walk(p, false);
+        else walk(v, false);
+      }
+    };
+    walk(root, true);
+    for (const d of Object.values(defs)) walk(d, false);
+    // The biggest first, so what's inside it is shared along with it.
+    const repeated = [...counts].filter(([, c]) => c > 1).sort((a, b) => b[0].length - a[0].length)[0]?.[0];
+    if (!repeated) break;
+    const name = `shared${n}`;
+    defs[name] = JSON.parse(repeated) as Node;
+    const swap = (node: unknown): unknown => {
+      if (Array.isArray(node)) return node.map(swap);
+      if (!node || typeof node !== 'object') return node;
+      const o = node as Node;
+      if (isObject(o) && keyOf(o) === repeated) return { $ref: `#/$defs/${name}`, ...(o.description != null && { description: o.description }) };
+      return Object.fromEntries(Object.entries(o).map(([k, v]) => [k, swap(v)]));
+    };
+    root = swap(root) as Node;
+    for (const k of Object.keys(defs)) if (k !== name) defs[k] = swap(defs[k]) as Node;
+  }
+  return Object.keys(defs).length ? { ...root, $defs: defs } : root;
+}
+
+/**
  * A call with a JSON Schema that came from elsewhere (a device asking the server): the answer is
  * checked against `schema` afterwards. The schema is written for strict OpenAI-style APIs, so it
- * goes the way the Anthropic SDK sends one made from zod: what Anthropic refuses in a schema, such
- * as enums, moves into the descriptions.
+ * goes the way the Anthropic SDK sends one made from zod: repeated parts written once, and what
+ * Anthropic refuses in a schema, such as enums, moved into the descriptions.
  */
 async function anthropicRawCall<T extends z.ZodType>(
   setup: AiSetup,
   req: AiRequest<T> & { jsonSchema: Record<string, unknown> },
   fetchImpl: typeof fetch,
 ): Promise<AiAnswer<z.output<T>>> {
-  const { type, schema } = jsonSchemaOutputFormat(req.jsonSchema as Parameters<typeof jsonSchemaOutputFormat>[0]);
+  const { type, schema } = jsonSchemaOutputFormat(shareRepeats(req.jsonSchema) as Parameters<typeof jsonSchemaOutputFormat>[0]);
   const response = await anthropicFor(setup, fetchImpl).messages.create({
     model: setup.model,
     max_tokens: req.maxTokens,
