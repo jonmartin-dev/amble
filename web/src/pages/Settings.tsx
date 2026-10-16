@@ -1,11 +1,9 @@
-import { useQueryClient } from '@tanstack/react-query';
 import Sparkle from '~icons/material-symbols/auto-awesome-outline-rounded';
 import Folder from '~icons/material-symbols/folder-outline-rounded';
 import CalendarMonth from '~icons/material-symbols/calendar-month-outline-rounded';
 import Forum from '~icons/material-symbols/forum-outline-rounded';
 import Group from '~icons/material-symbols/group-outline-rounded';
 import History from '~icons/material-symbols/history-rounded';
-import Logout from '~icons/material-symbols/logout-rounded';
 import Neurology from '~icons/material-symbols/neurology-outline-rounded';
 import Bell from '~icons/material-symbols/notifications-outline-rounded';
 import CloudSync from '~icons/material-symbols/cloud-sync-outline-rounded';
@@ -14,13 +12,11 @@ import Policy from '~icons/material-symbols/policy-outline-rounded';
 import Timer from '~icons/material-symbols/timer-outline-rounded';
 import Trophy from '~icons/material-symbols/trophy-outline-rounded';
 import Widgets from '~icons/material-symbols/widgets-outline-rounded';
-import { ListGroup, SectionTitle, SubpageHeader, Switch, minutesLabel } from '../components/ui.tsx';
+import { ListGroup, SectionTitle, SubpageHeader, Switch } from '../components/ui.tsx';
 import { type Member } from '../lib/api.ts';
-import { onDevice } from '../lib/device.ts';
 import { native, pinTodayWidget } from '../lib/native.ts';
 import { useDriveSync } from '../lib/drive-sync.ts';
 import { useSaveMe } from '../lib/mutations.ts';
-import { signOut } from '../lib/persist.ts';
 import { usePushState } from '../lib/push.ts';
 import { notificationSummary } from './Notifications.tsx';
 import { useAi, useCalendars, useGroups, useMe, useMembers } from '../lib/queries.ts';
@@ -33,7 +29,6 @@ export function capacitySummary(me: Member | null) {
 
 export function Settings() {
   const me = useMe();
-  const qc = useQueryClient();
   const saveMe = useSaveMe();
   const { data: household } = useMembers();
   const { data: groups } = useGroups();
@@ -84,28 +79,15 @@ export function Settings() {
         ]}
       />
 
-      {onDevice ? (
-        <>
-          <SectionTitle>This device</SectionTitle>
-          <ListGroup
-            rows={[
-              { icon: <CloudSync className="size-6" />, title: 'Sync and backup', subtitle: syncSummary, to: '/settings/sync' },
-              ...(native
-                ? [{ icon: <Widgets className="size-6" />, title: 'Today on your home screen', subtitle: "A widget with today's tasks", onClick: () => void pinTodayWidget() }]
-                : []),
-            ]}
-          />
-        </>
-      ) : (
-        me?.role === 'admin' && (
-          <>
-            <SectionTitle>Server</SectionTitle>
-            <ListGroup
-              rows={[{ icon: <CloudSync className="size-6" />, title: 'Sync with Google Drive', subtitle: 'Keep this server in step with your devices', to: '/settings/sync' }]}
-            />
-          </>
-        )
-      )}
+      <SectionTitle>This device</SectionTitle>
+      <ListGroup
+        rows={[
+          { icon: <CloudSync className="size-6" />, title: 'Sync and backup', subtitle: syncSummary, to: '/settings/sync' },
+          ...(native
+            ? [{ icon: <Widgets className="size-6" />, title: 'Today on your home screen', subtitle: "A widget with today's tasks", onClick: () => void pinTodayWidget() }]
+            : []),
+        ]}
+      />
 
       <SectionTitle>Household</SectionTitle>
       <ListGroup
@@ -135,7 +117,7 @@ export function Settings() {
             subtitle: !ai
               ? undefined
               : ai.available
-                ? `${ai.modelName}${ai.priced ? `, $${ai.monthSpendUsd.toFixed(2)} of $${ai.monthlyCapUsd} this month` : ''}`
+                ? `${ai.modelName}${ai.source === 'server' ? ', from your server' : ai.priced ? `, $${ai.monthSpendUsd.toFixed(2)} of $${ai.monthlyCapUsd} this month` : ''}`
                 : 'None yet, so quick add takes text as typed',
             to: '/settings/ai',
           },
@@ -153,7 +135,7 @@ export function Settings() {
           {
             icon: <Forum className="size-6" />,
             title: 'Connect an assistant',
-            subtitle: onDevice ? 'Plan from Claude or ChatGPT, with your own Amble server' : 'Plan from a Claude or ChatGPT chat',
+            subtitle: 'Plan from Claude or ChatGPT, with your own Amble server',
             to: '/connections',
           },
         ]}
@@ -163,8 +145,6 @@ export function Settings() {
       <ListGroup
         rows={[
           { icon: <Policy className="size-6" />, title: 'Privacy', subtitle: 'What Amble keeps and why', to: '/privacy' },
-          // On a device there's nobody to sign out; the data is this device's.
-          ...(onDevice ? [] : [{ icon: <Logout className="size-6" />, title: 'Sign out', onClick: () => void signOut(qc) }]),
         ]}
       />
     </>

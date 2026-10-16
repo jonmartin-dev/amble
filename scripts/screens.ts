@@ -1,12 +1,13 @@
 // Captures every screen at phone size for visual review.
-// Needs `pnpm dev` running with AMBLE_DEV_LOGIN=1, and Chrome installed.
+// Needs an Amble server with AMBLE_DEV_LOGIN=1 serving the built app, and Chrome installed.
 // Usage: node scripts/screens.ts [email] [variant,variant]   -> design/screens/*.png
 // AMBLE_VIEWPORT=820x1180 captures at another size (a tablet, a Fold opened), into files named for it.
 import fs from 'node:fs';
 import { chromium } from 'playwright-core';
+import { joinHousehold, local, syncNow } from './lib/household.ts';
 
-const base = process.env.AMBLE_URL ?? 'http://localhost:5173';
-const email = process.argv[2] ?? 'dev@amble.local';
+const base = process.env.AMBLE_URL ?? 'http://localhost:8787';
+const email = process.argv[2] ?? 'sam@example.com';
 const out = 'design/screens';
 const routes = [
   '/',
@@ -53,19 +54,19 @@ for (const v of variants) {
   page.on('pageerror', (e) => errors.push(`${v.name}: ${e.message}`));
   page.on('console', (m) => m.type() === 'error' && errors.push(`${v.name}: ${m.text()}`));
 
-  await page.goto(`${base}/auth/dev?email=${encodeURIComponent(email)}`);
-  const session = (await (await page.request.get(`${base}/api/session`)).json()) as { member: { theme: unknown } | null };
-  if (!session.member) throw new Error(`Dev sign-in failed for ${email}. Is it on the allowlist?`);
+  await joinHousehold(page, base, email);
+  const session = (await (await local(page).get(`/session`)).json()) as { member: { theme: unknown } | null };
+  if (!session.member) throw new Error(`Signing in as ${email} didn't set up this device.`);
   if (originalTheme === undefined) originalTheme = session.member.theme;
-  // Save the variant as this member's theme so the server copy doesn't override it.
+  // Save the variant as this member's theme so the household's copy doesn't override it.
   const theme = { mode: v.mode, seed: v.seed, style: v.style, contrast: 0 };
-  const res = await page.request.patch(`${base}/api/me`, { data: { theme } });
+  const res = await local(page).patch(`/me`, { data: { theme } });
   if (!res.ok()) throw new Error(`Saving theme failed: ${res.status()}`);
   await page.evaluate((t) => localStorage.setItem('almanac-theme', JSON.stringify(t)), theme);
 
   // A task with the most detail and the first list, when the data has them.
-  const { tasks } = (await (await page.request.get(`${base}/api/tasks`)).json()) as { tasks: { id: string; subtasks: unknown[]; links: unknown[] }[] };
-  const { groups } = (await (await page.request.get(`${base}/api/groups`)).json()) as { groups: { id: string; kind: string; template: string | null }[] };
+  const { tasks } = (await (await local(page).get(`/tasks`)).json()) as { tasks: { id: string; subtasks: unknown[]; links: unknown[] }[] };
+  const { groups } = (await (await local(page).get(`/groups`)).json()) as { groups: { id: string; kind: string; template: string | null }[] };
   const rich = [...tasks].sort((a, b) => b.subtasks.length + b.links.length - (a.subtasks.length + a.links.length))[0];
   const list = groups.find((g) => g.kind === 'list');
   const named: [string, string][] = routes.map((r) => [r === '/' ? 'today' : r.slice(1).replace('/', '-'), r]);
@@ -186,7 +187,8 @@ for (const v of variants) {
   }
 
   if (v === variants.at(-1)) {
-    await page.request.patch(`${base}/api/me`, { data: { theme: originalTheme } });
+    await local(page).patch(`/me`, { data: { theme: originalTheme } });
+    await syncNow(page);
   }
   await context.close();
 }

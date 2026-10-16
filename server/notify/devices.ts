@@ -1,5 +1,5 @@
-// What reminders are sent through, whatever does the sending: web push from a server
-// (./push.ts), or the app showing them itself on a device (./local-push.ts).
+// What reminders are shown through: the app itself, on the device (./local-push.ts). In the Android
+// app the phone shows them at their time even with Amble closed (web/src/lib/native.ts).
 import type { Member } from '../db/schema.ts';
 
 export interface PushMessage {

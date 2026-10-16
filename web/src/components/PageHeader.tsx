@@ -1,18 +1,14 @@
 import { Link } from '@tanstack/react-router';
 import { AnimatePresence, motion } from 'motion/react';
-import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import History from '~icons/material-symbols/history-rounded';
-import Logout from '~icons/material-symbols/logout-rounded';
 import SettingsIcon from '~icons/material-symbols/settings-outline-rounded';
 import { expressive } from '../lib/motion.ts';
-import { signOut } from '../lib/persist.ts';
 import { useMe } from '../lib/queries.ts';
 import { Avatar } from './Avatar.tsx';
 
 export function PageHeader({ eyebrow, title }: { eyebrow?: ReactNode; title: ReactNode }) {
   const me = useMe();
-  const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -72,14 +68,6 @@ export function PageHeader({ eyebrow, title }: { eyebrow?: ReactNode; title: Rea
                   <History className="size-5" aria-hidden />
                   Activity
                 </Link>
-                <button
-                  type="button"
-                  onClick={() => void signOut(qc)}
-                  className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left hover:bg-surface-highest"
-                >
-                  <Logout className="size-5" aria-hidden />
-                  Sign out
-                </button>
               </motion.div>
             )}
           </AnimatePresence>

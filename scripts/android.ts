@@ -32,7 +32,7 @@ function run(cmd: string, args: string[], cwd = root, extra: Record<string, stri
 }
 
 // The app is served from the root of its own origin inside the app.
-run('pnpm', ['build:device'], root, { AMBLE_BASE: '/' });
+run('pnpm', ['build'], root, { AMBLE_BASE: '/' });
 run('pnpm', ['exec', 'cap', 'sync', 'android']);
 const project = path.join(root, 'android');
 // By full path: Windows can be set not to run programs from the current folder.

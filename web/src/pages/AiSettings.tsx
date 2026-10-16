@@ -6,7 +6,6 @@ import OpenInNew from '~icons/material-symbols/open-in-new-rounded';
 import { AI_PROVIDERS, aiModel, aiProvider, type AiEffort, type AiModel, type AiProviderId } from '../../../shared/ai.ts';
 import { ButtonGroup, SectionTitle, segment, SubpageHeader } from '../components/ui.tsx';
 import { api, ApiError } from '../lib/api.ts';
-import { onDevice } from '../lib/device.ts';
 import { expressive } from '../lib/motion.ts';
 import { useAi, useMe } from '../lib/queries.ts';
 
@@ -195,7 +194,7 @@ export function AiSettings() {
             })}
           </div>
           {provider.note && <p className="mt-2 px-1 text-sm text-on-surface-variant">{provider.note}</p>}
-          {onDevice && provider.deviceNote && (
+          {provider.deviceNote && (
             <p className={`mt-2 px-1 text-sm ${provider.fromBrowser ? 'text-on-surface-variant' : 'text-error'}`}>{provider.deviceNote}</p>
           )}
 
@@ -281,7 +280,7 @@ export function AiSettings() {
             className={field}
           />
           <p className="mt-2 px-1 text-sm text-on-surface-variant">
-            {onDevice ? 'It stays on this device' : 'It stays on the server, sealed,'} and is only ever sent to {provider.id === 'custom' ? 'that address' : provider.name}.
+            It stays on this device, and is only ever sent to {provider.id === 'custom' ? 'that address' : provider.name}.
           </p>
 
           <SectionTitle>How hard it thinks</SectionTitle>

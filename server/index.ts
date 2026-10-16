@@ -11,8 +11,6 @@ import { seedStarterGroups } from './db/seed.ts';
 import { sweepFiles } from './domain/files.ts';
 import { createFileStore } from './lib/disk-files.ts';
 import { every, startJobs } from './jobs.ts';
-import { createPush } from './notify/push.ts';
-import { createReminderSender } from './notify/reminders.ts';
 import { createServerSync } from './sync/server.ts';
 
 const db = openDatabase();
@@ -21,17 +19,14 @@ seedStarterGroups(db);
 const ai = createAi(config, db);
 const google = createGoogle(config);
 const sync = createServerSync({ db, config, google, schema: SCHEMA });
-const push = createPush(db, config);
+// Bytes of files on tasks some older setups uploaded here; assistants can still read them.
 const files = createFileStore(config.dataDir);
-const app = createApp({ db, config, oidc: createOidc(config), ai, push, files, sync });
+const app = createApp({ db, config, oidc: createOidc(config), ai, sync });
 
 const estimator = createEstimator(db, ai, config.timezone);
 const briefings = createBriefings(db, ai, config.timezone);
-const reminders = createReminderSender(db, push, config.basePath);
 
 startJobs([
-  // First, so a slow Google doesn't make a reminder late.
-  { name: 'reminders', run: () => reminders.run() },
   { name: 'estimates', run: () => estimator.run() },
   // After the estimates, so the morning's suggestions see them.
   { name: 'briefings', run: () => briefings.run() },

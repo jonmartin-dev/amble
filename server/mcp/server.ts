@@ -6,7 +6,7 @@ import { describeRepeat, repeatOn } from '../../shared/repeat.ts';
 import { listSections, listTemplate, LIST_TEMPLATES } from '../../shared/templates.ts';
 import { config } from '../config.ts';
 import type { Db } from '../db/index.ts';
-import { attachments, listItems, pushSubscriptions, tasks, type Group, type ListItem, type Member } from '../db/schema.ts';
+import { attachments, listItems, sessions, tasks, type Group, type ListItem, type Member } from '../db/schema.ts';
 import type { FileStore } from '../domain/files.ts';
 import { createFileStore } from '../lib/disk-files.ts';
 import {
@@ -399,9 +399,9 @@ export function createMcpServer({
     },
     run((a: { id: string; at: string | null }) => {
       const task = updateTask(db, actor, a.id, { remindAt: a.at === null ? null : parseReminderTime(a.at, member.timezone) });
-      // This server pushes it to the browsers they turned notifications on in. Through Drive it also
-      // reaches their phone and other devices, which show reminders themselves.
-      const devices = db.select({ n: count() }).from(pushSubscriptions).where(eq(pushSubscriptions.memberId, member.id)).get()?.n ?? 0;
+      // Their devices show reminders themselves, once the reminder reaches them: through Drive, or
+      // straight from this server to a device signed in here.
+      const devices = db.select({ n: count() }).from(sessions).where(and(eq(sessions.memberId, member.id), like(sessions.userAgent, 'Amble app%'))).get()?.n ?? 0;
       const reaches = devices > 0 || syncsThroughDrive(db);
       return {
         ...present(task),

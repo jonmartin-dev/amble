@@ -1,5 +1,4 @@
-import { appUrl } from '../lib/api.ts';
-import { onDevice } from '../lib/device.ts';
+import { appUrl, servedBy } from '../lib/api.ts';
 import { tokenEndpointHost } from '../lib/google.ts';
 import { native } from '../lib/native.ts';
 import { useSession } from '../lib/queries.ts';
@@ -13,14 +12,14 @@ const AI_TRAINING: Record<string, string> = {
   openrouter: 'OpenRouter passes it on to the company behind the model, under that company’s terms.',
 };
 
+/**
+ * What stays on the device, and what goes to Google Drive, the household's own server or an AI
+ * provider when someone sets that up. Served by a server, it says what that server keeps too.
+ */
 export function Privacy() {
-  return onDevice ? <DevicePrivacy /> : <ServerPrivacy />;
-}
-
-/** Amble with no server: what stays on the device, and what goes to Google Drive or an AI provider when someone sets that up. */
-function DevicePrivacy() {
   const auth = useSession().data?.auth;
   const aiName = auth?.ai?.provider === 'custom' ? 'the service you chose' : (auth?.ai?.name ?? '');
+  const server = servedBy;
   return (
     <main className="mx-auto max-w-xl px-6 py-12 leading-relaxed">
       <a href={appUrl('/')} className="text-sm font-medium text-primary">
@@ -31,9 +30,9 @@ function DevicePrivacy() {
 
       <div className="mt-8 flex flex-col gap-5 [&_h2]:display [&_h2]:text-xl [&_h2]:font-medium">
         <p>
-          This copy of Amble runs on your device. Everything you put in it (tasks, lists, notes, links and files) is kept in this
-          browser's own storage for this site, and nothing goes anywhere unless you set up one of the things below. There's no
-          Amble server, account or analytics.
+          Amble runs on your device. Everything you put in it (tasks, lists, notes, links and files) is kept in its own storage on
+          this device, and nothing goes anywhere unless you set up one of the things below. There's no account to make, no ads and
+          no analytics.
         </p>
         <h2>Sync with Google Drive</h2>
         <p>
@@ -78,85 +77,31 @@ function DevicePrivacy() {
         ) : (
           <p>No AI model is set up, so nothing is sent to an AI service. If you set one up, this page will name it.</p>
         )}
-        <h2>Removing your data</h2>
+        <h2>Your household's own server</h2>
         <p>
-          Stop syncing in Settings, then clear this site's data in your browser to remove everything from this device. A household file
-          in Google Drive is removed like any other file there; Amble's hidden copy goes when you disconnect Amble at
-          myaccount.google.com/connections.
-        </p>
-      </div>
-    </main>
-  );
-}
-
-function ServerPrivacy() {
-  const auth = useSession().data?.auth;
-  const provider = auth?.provider ?? 'Google';
-  const aiName = auth?.ai?.provider === 'custom' ? 'the service the household admin chose' : (auth?.ai?.name ?? '');
-  return (
-    <main className="mx-auto max-w-xl px-6 py-12 leading-relaxed">
-      <a href={appUrl('/')} className="text-sm font-medium text-primary">
-        Amble
-      </a>
-      <h1 className="display mt-4 text-4xl font-medium">Privacy</h1>
-      <p className="mt-2 text-on-surface-variant">Last updated October 14, 2026</p>
-
-      <div className="mt-8 flex flex-col gap-5 [&_h2]:display [&_h2]:text-xl [&_h2]:font-medium">
-        <p>
-          Amble is a self-hosted planner. This copy runs on the household's own server, and only people the household admin has
-          added can sign in.
-        </p>
-        <h2>What Amble stores</h2>
-        <p>
-          Your name, email address and profile picture from your {provider} account, so you can sign in and so the household can see who
-          a task belongs to. Everything you put into Amble (tasks, lists, notes, links and files) is stored on the household's own
-          server. Files on a task are visible to everyone who can see that task.
-        </p>
-        <h2>Reminders</h2>
-        <p>
-          Amble only sends a notification for a reminder you set yourself. It goes to the devices where you turned notifications on,
-          through your browser's push service (Google's for Chrome and Android, Apple's for iPhone). The task's title and a line of its
-          notes travel encrypted for your device, so the push service passes them along without being able to read them. Signing out
-          or turning notifications off in Settings stops them on that device.
-        </p>
-        <h2>Calendars</h2>
-        <p>
-          Calendars are read on each person's own phone by the Amble app, through Android's calendar permission. Only how many minutes
-          of each day are busy reaches this server, never what the events are.
-        </p>
-        <h2>AI features</h2>
-        {auth?.ai ? (
-          <p>
-            This copy uses an AI model from {aiName}. Task titles and related details are sent to {aiName}'s API to turn what you type
-            into tasks, estimate how long tasks take, word the morning's suggestions, plan your week and suggest tidying the backlog.{' '}
-            {AI_TRAINING[auth.ai.provider] ?? `${aiName}'s own terms say what it keeps and whether it learns from it.`}
-          </p>
-        ) : (
-          <p>
-            This copy has no AI model set up, so nothing is sent to an AI service. If the household admin sets one up, task titles and
-            related details go to that provider to turn what you type into tasks, estimate how long tasks take and help with planning,
-            and this page will name it.
-          </p>
-        )}
-        <h2>Google Drive</h2>
-        <p>
-          If the household admin connects this server to Google Drive, so it keeps in step with the household's own devices, the
-          household's tasks and lists are also kept in a file in that admin's Google Drive, shared with the people in the household.
+          If your household runs an Amble server and you sync with it, it keeps a copy of the household's tasks and lists on that
+          computer, as a household file in Google Drive would. You sign in to it {server ? `with ${server.signIn}` : 'the way it lets you'}, and it keeps your
+          name, email address and when you last signed in. It's a computer someone in your household keeps, not Amble's: Amble has no
+          servers of its own.
+          {server?.ai
+            ? ` It has an AI model from ${server.ai.name}, which your device uses if it has none of its own. Then what you type for smart add and planning goes through the server to ${server.ai.name}.`
+            : ''}
         </p>
         <h2>Claude and ChatGPT</h2>
         <p>
-          If you connect Claude or ChatGPT to Amble, it can read and change your tasks, lists and plans when you ask it to, acting as
-          you, and look at photos and text files on tasks. What it reads becomes part of that conversation and is handled under your
-          Anthropic or OpenAI account's privacy settings. Changes it makes show in Activity as made through it. You can disconnect it at
-          any time from Connect an assistant in Amble.
+          With a server, you can connect Claude or ChatGPT to Amble. Then it can read and change your tasks, lists and plans when you
+          ask it to, acting as you, and look at photos and text files the server has. What it reads becomes part of that conversation
+          and is handled under your Anthropic or OpenAI account's privacy settings. Changes it makes show in Activity as made through
+          it. You can disconnect it any time on the server's page.
         </p>
         <h2>Sharing</h2>
         <p>Amble never sells your data or shares it with anyone besides the services named above. There are no ads or trackers.</p>
         <h2>Removing your data</h2>
         <p>
-          Ask the household admin to remove your account
-          {provider === 'Google' ? ', or disconnect Amble from your Google account at myaccount.google.com/connections' : ''}.
-          {auth?.privacyContact ? ` Questions: ${auth.privacyContact}.` : ''}
+          Stop syncing in Settings, then clear this site's data in your browser to remove everything from this device. A household file
+          in Google Drive is removed like any other file there; Amble's hidden copy goes when you disconnect Amble at
+          myaccount.google.com/connections. Whoever runs your household's server can remove your account and its copy there.
+          {server?.privacyContact ? ` Questions: ${server.privacyContact}.` : ''}
         </p>
       </div>
     </main>

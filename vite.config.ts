@@ -8,10 +8,10 @@ import { build, type Plugin } from 'vite';
 import { configDefaults, defineConfig } from 'vitest/config';
 
 const server = `http://localhost:${process.env.PORT ?? 8787}`;
-// VITE_AMBLE_DEVICE=1 builds the app that runs Amble on the device, with no server: static
-// files for any host, under AMBLE_BASE (default "/").
-const device = process.env.VITE_AMBLE_DEVICE === '1';
-const deviceBase = process.env.AMBLE_BASE ?? '/';
+// The app runs Amble on the device: its API in a worker, on SQLite in the browser. Built with
+// relative paths, an Amble server serves it under its own path and writes that into the page. For
+// any other host (a static site, the Android app), AMBLE_BASE says the path it's served under.
+const fixedBase = process.env.AMBLE_BASE;
 
 function filesIn(dir: string, prefix = ''): string[] {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
@@ -37,12 +37,9 @@ function serviceWorker(): Plugin {
       const files = filesIn(outDir).filter((f) => f !== 'sw.js');
       const hash = createHash('sha256');
       for (const f of files.sort()) hash.update(f).update(fs.readFileSync(path.join(outDir, f)));
-      // The page is fetched from the server, which fills in the base path. Fonts for other
+      // The page is fetched on its own, since a server fills in the base path. Fonts for other
       // scripts download only when a page needs them, so the worker keeps those as they come.
-      // A server build never starts the device's database worker, so phones don't fetch it.
-      const assets = files.filter(
-        (f) => f !== 'index.html' && (!f.endsWith('.woff2') || /-latin(-ext)?-/.test(f)) && (device || !/(api\.worker|sqlite3)/.test(f)),
-      );
+      const assets = files.filter((f) => f !== 'index.html' && (!f.endsWith('.woff2') || /-latin(-ext)?-/.test(f)));
       await build({
         configFile: false,
         logLevel: 'warn',
@@ -50,7 +47,6 @@ function serviceWorker(): Plugin {
         define: {
           __AMBLE_BUILD__: JSON.stringify(hash.digest('hex').slice(0, 12)),
           __AMBLE_ASSETS__: JSON.stringify(assets),
-          __AMBLE_DEVICE__: JSON.stringify(device),
         },
         build: {
           outDir,
@@ -64,12 +60,13 @@ function serviceWorker(): Plugin {
 }
 
 /**
- * The server writes a <base> into the page so its relative links work on any page; a device build
- * has no server, so it's written in here (otherwise /settings/sync asks for /settings/icon.svg).
+ * A server writes a <base> into the page so its relative links work on any page; elsewhere there's
+ * no server, so a build for a fixed path has it written in here (otherwise /settings/sync asks for
+ * /settings/icon.svg).
  */
-function baseTag(): Plugin {
+function baseTag(base: string): Plugin {
   return { name: 'amble-base-tag', transformIndexHtml: (html) => html.replace('<head>', `<head>
-    <base href="${deviceBase}" />`) };
+    <base href="${base}" />`) };
 }
 
 export default defineConfig({
@@ -77,10 +74,9 @@ export default defineConfig({
   // .env sits beside package.json; only its VITE_ settings (the Google client for Drive sync) reach the app.
   envDir: import.meta.dirname,
   // Relative asset URLs plus a server-injected <base href> let one build run under any path prefix.
-  // A device build has no server to write that in, so it's built for its path.
-  base: device ? deviceBase : './',
+  base: fixedBase ?? './',
   publicDir: 'public',
-  plugins: [react(), tailwindcss(), Icons({ compiler: 'jsx', jsx: 'react' }), serviceWorker(), ...(device ? [baseTag()] : [])],
+  plugins: [react(), tailwindcss(), Icons({ compiler: 'jsx', jsx: 'react' }), serviceWorker(), ...(fixedBase ? [baseTag(fixedBase)] : [])],
   resolve: {
     // drizzle's driver module names better-sqlite3, which the device's worker never uses.
     alias: process.env.VITEST ? {} : { 'better-sqlite3': path.join(import.meta.dirname, 'web/src/worker/no-native.ts') },
@@ -89,7 +85,7 @@ export default defineConfig({
   optimizeDeps: { exclude: ['@sqlite.org/sqlite-wasm'] },
   worker: { format: 'es' },
   build: {
-    outDir: device ? '../dist/device' : '../dist/web',
+    outDir: '../dist/web',
     emptyOutDir: true,
   },
   test: {
@@ -102,16 +98,14 @@ export default defineConfig({
     // material-color-utilities has extensionless ESM imports that only a bundler resolves.
     server: { deps: { inline: ['@material/material-color-utilities'] } },
   },
+  // On 127.0.0.1:5174, the address Google Drive sign-in is set up for, so http://127.0.0.1:5174
+  // and http://localhost:5174 both work: two addresses are two separate sites to the browser,
+  // which is handy for trying sync between two "devices". The server's own routes go to `pnpm
+  // dev:server`, so the app can sync with it as its own server.
   server: {
-    port: 5173,
+    port: 5174,
+    host: '127.0.0.1',
     strictPort: true,
-    proxy: {
-      '/api': server,
-      '/auth': server,
-      '/healthz': server,
-      '/oauth': server,
-      '/mcp': server,
-      '/.well-known': server,
-    },
+    proxy: Object.fromEntries(['/auth', '/sync', '/server', '/healthz', '/oauth', '/mcp', '/.well-known', '/google'].map((p) => [p, server])),
   },
 });

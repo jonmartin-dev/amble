@@ -5,7 +5,6 @@
 // tap only if that trip needed the person.
 import { useSyncExternalStore } from 'react';
 import { api } from './api.ts';
-import { onDevice } from './device.ts';
 import { canRenewQuietly, forgetToken, googleConfigured, renewQuietly, resumeAfterGoogle, syncToken } from './google.ts';
 import { native } from './native.ts';
 
@@ -120,14 +119,13 @@ export function syncNow({ tap = false } = {}): Promise<void> {
 
 /** After a change here, a round a few seconds later picks it up (several changes share one round). */
 export function syncSoon() {
-  if (!onDevice || !state.status?.on) return;
+  if (!state.status?.on) return;
   clearTimeout(soon);
   soon = setTimeout(() => void syncNow().catch(() => {}), AFTER_CHANGE_MS);
 }
 
 /** Starts syncing for as long as the app is open. `merged` refreshes the screen after others' changes. */
 export function startDriveSync(merged: () => void) {
-  if (!onDevice) return () => {};
   onMerged = merged;
   // Back from Google after a tap on "Continue": the token is in hand now.
   if (googleConfigured) resumeAfterGoogle('sync');

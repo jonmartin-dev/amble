@@ -63,7 +63,7 @@ import {
   updateTask,
 } from './domain/tasks.ts';
 import { addDays, planningDate } from './lib/dates.ts';
-import type { Push } from './notify/push.ts';
+import type { Push } from './notify/devices.ts';
 import { reminderBody } from './notify/reminders.ts';
 import { madeAt } from './requests.ts';
 

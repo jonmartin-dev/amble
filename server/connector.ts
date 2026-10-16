@@ -1,19 +1,19 @@
 // The remote connector: Amble as its own OAuth 2.1 authorization server, plus the MCP endpoint
 // those tokens unlock. Claude (claude.ai, the desktop and mobile apps, Claude Code) and ChatGPT
 // find everything from the 401 on /mcp, identify themselves with a Client ID Metadata Document
-// (or dynamic registration), and send the member through Amble's normal sign-in and a one-tap
-// consent page.
+// (or dynamic registration), and send the member through the server's sign-in and a one-tap
+// consent page (/oauth/consent/<id>).
 import { createMcpHandler, OAuthError, OAuthErrorCode, requireBearerAuth, type AuthInfo } from '@modelcontextprotocol/server';
 import { eq } from 'drizzle-orm';
 import type { Context, Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { z } from 'zod';
 import type { Config } from './config.ts';
 import type { Db } from './db/index.ts';
 import { members } from './db/schema.ts';
 import type { Assistant } from './domain/household.ts';
 import type { Env } from './env.ts';
 import { createMcpServer } from './mcp/server.ts';
+import { html, page } from './pages.ts';
 import {
   assistantFor,
   clientHost,
@@ -37,12 +37,7 @@ function oauthError(c: Context<Env>, err: unknown) {
   return c.json({ error: 'server_error', error_description: 'Something went wrong.' }, 500);
 }
 
-function errorPage(message: string) {
-  const safe = message.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
-  return `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Amble</title>
-<body style="font:16px/1.5 system-ui,sans-serif;max-width:32rem;margin:15vh auto;padding:0 1.5rem;color:#171d1a;background:#f4fbf7">
-<h1 style="font-weight:500">Can't connect</h1><p>${safe}</p><p>Start again from the app you were connecting.</p></body>`;
-}
+const firstName = (name: string) => name.split(/\s+/)[0] ?? name;
 
 async function readBody(c: Context<Env>): Promise<Record<string, string>> {
   const type = c.req.header('content-type') ?? '';
@@ -61,6 +56,8 @@ function basicClientId(header: string | undefined) {
 
 export function registerConnector(app: Hono<Env>, { db, config, fetchImpl = fetch }: { db: Db; config: Config; fetchImpl?: typeof fetch }) {
   const base = config.basePath;
+  const errorPage = (message: string) =>
+    page("Can't connect", html`<h1>Can't connect</h1><p>${message}</p><p class="muted">Start again from the app you were connecting.</p>`, { base });
   const issuer = config.publicUrl;
   const resource = `${config.publicUrl}/mcp`;
   // RFC 9728 puts the document under the origin's /.well-known with the resource path appended.
@@ -161,7 +158,48 @@ export function registerConnector(app: Hono<Env>, { db, config, fetchImpl = fetc
       scope: SCOPE,
       resource,
     });
-    return c.redirect(`${base}/connect/${id}`);
+    return c.redirect(`${base}/oauth/consent/${id}`);
+  });
+
+  // ---- the one-tap consent ---------------------------------------------------------------------
+
+  app.get('/oauth/consent/:id', (c) => {
+    const me = c.get('member');
+    const request = me && store.getRequest(c.req.param('id'), me.id);
+    if (!me || !request) {
+      return c.html(
+        page('Expired', html`<h1>This link has expired</h1><p>Start connecting again from the assistant. Requests last 15 minutes.</p>`, { base }),
+        404,
+      );
+    }
+    const name = request.client.name ?? clientHost(request.client);
+    return c.html(
+      page(
+        `Connect ${name}`,
+        html`<h1>Let ${name} use your Amble?</h1>
+<p>${name} from <strong>${clientHost(request.client)}</strong> will be able to see and change your tasks, lists and plans as ${firstName(me.name)}.</p>
+${isLoopback(request.redirectUri) ? html`<p class="warn">This hands access to an app on this computer (${new URL(request.redirectUri).host}). Only allow it if you just started connecting from Claude Code or another app you trust.</p>` : ''}
+<form method="post" action="${base}/oauth/consent/${c.req.param('id')}" class="actions">
+<button class="primary" name="approve" value="1">Allow</button>
+<button class="quiet" name="approve" value="0">Cancel</button>
+</form>
+<p class="muted">You can disconnect it any time from <a href="${base}/server">this server's page</a>.</p>`,
+        { base },
+      ),
+    );
+  });
+
+  app.post('/oauth/consent/:id', async (c) => {
+    const me = c.get('member');
+    const form = await c.req.parseBody();
+    const decided = me && store.decide(c.req.param('id'), me.id, form.approve === '1');
+    if (!decided) return c.html(errorPage(EXPIRED), 404);
+    const url = new URL(decided.request.redirectUri);
+    if (decided.code) url.searchParams.set('code', decided.code);
+    else url.searchParams.set('error', 'access_denied');
+    if (decided.request.state) url.searchParams.set('state', decided.request.state);
+    url.searchParams.set('iss', issuer);
+    return c.redirect(url.toString());
   });
 
   app.post('/oauth/token', async (c) => {
@@ -239,52 +277,12 @@ export function registerConnector(app: Hono<Env>, { db, config, fetchImpl = fetc
     return mcp.fetch(c.req.raw, { authInfo: auth });
   });
 
-  // ---- the app's side: consent and connected apps (signed-in API) -----------------------
-
-  return function registerApi(api: Hono<Env>) {
-    api.get('/api/oauth/requests/:id', (c) => {
-      const me = c.get('member')!;
-      const request = store.getRequest(c.req.param('id'), me.id);
-      if (!request) return c.json({ error: EXPIRED }, 404);
-      return c.json({
-        clientName: request.client.name ?? clientHost(request.client),
-        clientHost: clientHost(request.client),
-        redirectHost: new URL(request.redirectUri).host,
-        loopback: isLoopback(request.redirectUri),
-      });
-    });
-
-    api.post('/api/oauth/requests/:id', async (c) => {
-      const me = c.get('member')!;
-      const parsed = z.object({ approve: z.boolean() }).safeParse(await c.req.json().catch(() => null));
-      if (!parsed.success) return c.json({ error: 'Choose Allow or Cancel.' }, 400);
-      const decided = store.decide(c.req.param('id'), me.id, parsed.data.approve);
-      if (!decided) return c.json({ error: EXPIRED }, 404);
-      const url = new URL(decided.request.redirectUri);
-      if (decided.code) url.searchParams.set('code', decided.code);
-      else url.searchParams.set('error', 'access_denied');
-      if (decided.request.state) url.searchParams.set('state', decided.request.state);
-      url.searchParams.set('iss', issuer);
-      return c.json({ redirect: url.toString() });
-    });
-
-    api.get('/api/connections', (c) => {
-      const me = c.get('member')!;
-      return c.json({
-        mcpUrl: resource,
-        connections: store.listGrants(me.id).map((g) => ({
-          id: g.id,
-          clientName: g.clientName,
-          createdAt: g.createdAt,
-          lastUsedAt: g.lastUsedAt,
-        })),
-      });
-    });
-
-    api.delete('/api/connections/:id', (c) => {
-      const me = c.get('member')!;
-      if (!store.deleteGrant(c.req.param('id'), me.id)) return c.json({ error: 'Not found.' }, 404);
-      return c.body(null, 204);
-    });
+  // For the server's page: the connector's address, and each person's connected assistants.
+  return {
+    mcpUrl: resource,
+    connections: (memberId: string) => store.listGrants(memberId),
+    disconnect: (grantId: string, memberId: string) => store.deleteGrant(grantId, memberId),
   };
 }
+
+export type Connector = ReturnType<typeof registerConnector>;

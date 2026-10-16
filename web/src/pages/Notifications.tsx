@@ -9,13 +9,11 @@ import Phone from '~icons/material-symbols/phone-android-outline-rounded';
 import { pushHint } from '../components/ReminderSheet.tsx';
 import { ListGroup, SectionTitle, segment, SubpageHeader, Switch } from '../components/ui.tsx';
 import { api } from '../lib/api.ts';
-import { onDevice } from '../lib/device.ts';
 import { allowExactReminders, exactReminders, native } from '../lib/native.ts';
 import { reminderLabel, shortDate, isoDate } from '../lib/dates.ts';
 import { disablePush, enablePush, usePushState, type PushState } from '../lib/push.ts';
 import { usePushDevices, useReminders } from '../lib/queries.ts';
 import { useSnackbar } from '../lib/snackbar.tsx';
-import { useSyncState } from '../lib/sync.ts';
 
 export function notificationSummary(state: PushState | null) {
   switch (state) {
@@ -38,8 +36,6 @@ export function notificationSummary(state: PushState | null) {
 export function Notifications() {
   const qc = useQueryClient();
   const snack = useSnackbar();
-  // On a device the change is made right here, connection or not.
-  const online = useSyncState().online || onDevice;
   const push = usePushState();
   const { data } = usePushDevices();
   const { data: upcoming } = useReminders();
@@ -120,7 +116,7 @@ export function Notifications() {
             title: 'Reminders on this device',
             subtitle: unavailable ? pushHint(push.state) : notificationSummary(push.state),
             trailing: unavailable ? undefined : (
-              <Switch checked={push.state === 'on'} onChange={(v) => !busy && online && void toggle(v)} label="Reminders on this device" />
+              <Switch checked={push.state === 'on'} onChange={(v) => !busy && void toggle(v)} label="Reminders on this device" />
             ),
           },
         ]}
@@ -144,18 +140,15 @@ export function Notifications() {
         </div>
       )}
       {push.state === 'on' && (
-        <button type="button" onClick={() => void test()} disabled={!online} className="mt-3 rounded-full px-4 py-2 text-sm font-medium text-primary hover:bg-surface-high disabled:opacity-40">
+        <button type="button" onClick={() => void test()} className="mt-3 rounded-full px-4 py-2 text-sm font-medium text-primary hover:bg-surface-high">
           Send a test notification
         </button>
       )}
-      {!online && <p className="mt-2 px-1 text-sm text-on-surface-variant">Changing this needs a connection.</p>}
-      {onDevice && (
-        <p className="mt-2 px-1 text-sm text-on-surface-variant">
-          {native
-            ? 'Your phone shows each reminder at its time, even with Amble closed.'
-            : 'With no Amble server, a reminder shows while Amble is open in this browser. Keep it open in a tab, or install it, to be reminded.'}
-        </p>
-      )}
+      <p className="mt-2 px-1 text-sm text-on-surface-variant">
+        {native
+          ? 'Your phone shows each reminder at its time, even with Amble closed.'
+          : 'In a browser, a reminder shows while Amble is open. Keep it open in a tab, or install it, to be reminded.'}
+      </p>
 
       {others.length > 0 && (
         <>

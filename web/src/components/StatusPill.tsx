@@ -1,12 +1,9 @@
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import CloudDone from '~icons/material-symbols/cloud-done-outline-rounded';
-import CloudOff from '~icons/material-symbols/cloud-off-outline-rounded';
 import Login from '~icons/material-symbols/login-rounded';
 import Sync from '~icons/material-symbols/sync-rounded';
 import Upgrade from '~icons/material-symbols/upgrade-rounded';
-import { appUrl } from '../lib/api.ts';
-import { onDevice } from '../lib/device.ts';
 import { refreshStatus, syncNow, useDriveSync } from '../lib/drive-sync.ts';
 import { signInToServer, useServerReturn } from '../lib/server-sync.ts';
 import { useSnackbar } from '../lib/snackbar.tsx';
@@ -29,7 +26,7 @@ interface Status {
 }
 
 /**
- * A quiet pill above the toolbar: offline, syncing, or a new version ready. It says nothing while
+ * A quiet pill above the toolbar: sync paused, saving, or a new version ready. It says nothing while
  * everything is in step, which is almost always.
  */
 export function StatusPill() {
@@ -64,6 +61,8 @@ export function StatusPill() {
     }
   }, [behind, sync.pending]);
 
+  // Changes go straight into the database on this device; only syncing can be waiting.
+  const server = drive.status?.target?.kind === 'server' ? drive.status.target.url : null;
   let status: Status | null = null;
   if (update) {
     status = {
@@ -73,35 +72,20 @@ export function StatusPill() {
       action: { label: 'Reload', run: applyUpdate },
       tone: 'primary',
     };
-  } else if (sync.blocked === 'signed-out') {
+  } else if (server && drive.status?.error === 'Your server needs you to sign in again.') {
     status = {
-      key: 'signed-out',
+      key: 'drive',
       icon: <Login className="size-[18px]" aria-hidden />,
-      text: `Sign in to sync ${changes(sync.pending)}`,
-      action: { label: 'Sign in', run: () => window.location.assign(appUrl(`/auth/login?return=${encodeURIComponent(location.pathname)}`)) },
+      text: 'Sync paused',
+      action: { label: 'Sign in', run: () => void signInToServer(server, 'server-again') },
     };
-  } else if (onDevice) {
-    // Changes go straight into the database on this device; only syncing can be waiting.
-    const server = drive.status?.target?.kind === 'server' ? drive.status.target.url : null;
-    if (server && drive.status?.error === 'Your server needs you to sign in again.') {
-      status = {
-        key: 'drive',
-        icon: <Login className="size-[18px]" aria-hidden />,
-        text: 'Sync paused',
-        action: { label: 'Sign in', run: () => void signInToServer(server, 'server-again') },
-      };
-    } else if (drive.needsGoogle && drive.status?.on) {
-      status = {
-        key: 'drive',
-        icon: <Sync className="size-[18px]" aria-hidden />,
-        text: drive.status.waiting ? 'Changes to sync' : 'Sync paused',
-        action: { label: 'Continue', run: () => void syncNow({ tap: true }).catch(() => {}) },
-      };
-    }
-  } else if (!sync.online || sync.blocked === 'offline') {
-    status = { key: 'offline', icon: <CloudOff className="size-[18px]" aria-hidden />, text: sync.pending ? `Offline · ${changes(sync.pending)} to sync` : 'Offline' };
-  } else if (sync.blocked === 'server') {
-    status = { key: 'server', icon: <CloudOff className="size-[18px]" aria-hidden />, text: `Can't reach Amble · ${changes(sync.pending)} to sync` };
+  } else if (drive.needsGoogle && drive.status?.on) {
+    status = {
+      key: 'drive',
+      icon: <Sync className="size-[18px]" aria-hidden />,
+      text: drive.status.waiting ? 'Changes to sync' : 'Sync paused',
+      action: { label: 'Continue', run: () => void syncNow({ tap: true }).catch(() => {}) },
+    };
   } else if (slowSync && sync.pending) {
     status = {
       key: 'syncing',

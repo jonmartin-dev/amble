@@ -2,10 +2,9 @@
 // without a connection. The copy belongs to whoever is signed in and goes when they sign out.
 import type { Query, QueryClient } from '@tanstack/react-query';
 import type { PersistedClient, Persister } from '@tanstack/react-query-persist-client';
-import { appUrl, type Group } from './api.ts';
+import type { Group } from './api.ts';
 import { kvDel, kvGet, kvSet } from './idb.ts';
-import { disablePush } from './push.ts';
-import { discardQueue, syncState } from './sync.ts';
+import { discardQueue } from './sync.ts';
 
 const CACHE_KEY = 'query-cache';
 const OWNER_KEY = 'owner';
@@ -106,18 +105,4 @@ export function prefetchForOffline(qc: QueryClient, get: <T>(path: string) => Pr
     })
     // A refresh can cancel this (the outbox finishing on open does); the next open tries again.
     .catch(() => {});
-}
-
-/** Signs out, dropping this device's copy and anything still waiting to sync (after asking). */
-export async function signOut(qc?: QueryClient) {
-  const waiting = syncState().pending;
-  if (waiting && !confirm(`${waiting} ${waiting === 1 ? "change hasn't" : "changes haven't"} synced yet. Sign out anyway and lose ${waiting === 1 ? 'it' : 'them'}?`)) {
-    return;
-  }
-  // Reminders stop coming to this device; whoever signs in next turns them on for themselves.
-  await disablePush().catch(() => {});
-  await Promise.all([discardQueue(), kvDel(CACHE_KEY), kvDel(OWNER_KEY)]).catch(() => {});
-  qc?.clear();
-  await fetch(appUrl('/auth/logout'), { method: 'POST' }).catch(() => {});
-  window.location.assign(appUrl('/'));
 }

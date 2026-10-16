@@ -1,20 +1,23 @@
 // Google sign-in for Drive sync, in the page: Google hands the app an access token that lasts about
 // an hour, and the Picker lets someone choose a household file shared with them. A browser keeps it
-// going without asking in one of two ways. With a token endpoint (VITE_GOOGLE_TOKEN_URL: an Amble
-// server's /google/token, or the worker in deploy/google-token-worker), signing in brings back a
-// refresh token too, and the app refreshes in place. Without one, it takes a quick trip to Google
-// that shows nothing (prompt=none) while nobody's using the page. Only someone signed out of Google,
-// or who took Amble's access away, is asked to tap. The Android app signs in through Google Play
-// services instead (android/.../GoogleDrivePlugin.java), which renews it.
+// going without asking in one of two ways. With a token endpoint (the /google/token of the Amble
+// server that serves the app, VITE_GOOGLE_TOKEN_URL, or the worker in deploy/google-token-worker),
+// signing in brings back a refresh token too, and the app refreshes in place. Without one, it takes
+// a quick trip to Google that shows nothing (prompt=none) while nobody's using the page. Only
+// someone signed out of Google, or who took Amble's access away, is asked to tap. The Android app
+// signs in through Google Play services instead (android/.../GoogleDrivePlugin.java), which renews
+// it.
 import { registerPlugin } from '@capacitor/core';
 import { DRIVE_SCOPES, HOUSEHOLD_MIME } from '../../../server/sync/drive.ts';
 import { basePath } from './api.ts';
 import { native } from './native.ts';
 
-const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
-const API_KEY = import.meta.env.VITE_GOOGLE_API_KEY as string | undefined;
-const APP_ID = import.meta.env.VITE_GOOGLE_APP_ID as string | undefined;
-const TOKEN_URL = import.meta.env.VITE_GOOGLE_TOKEN_URL as string | undefined;
+// From the Amble server that serves the app, which knows its own Google client; or built in.
+const served = window.__AMBLE__?.google;
+const CLIENT_ID = served?.clientId || (import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined);
+const API_KEY = served?.apiKey || (import.meta.env.VITE_GOOGLE_API_KEY as string | undefined);
+const APP_ID = served?.appId || (import.meta.env.VITE_GOOGLE_APP_ID as string | undefined);
+const TOKEN_URL = served?.tokenUrl || (import.meta.env.VITE_GOOGLE_TOKEN_URL as string | undefined);
 
 interface GoogleDrivePlugin {
   authorize(options: { interactive?: boolean; email?: string }): Promise<{ accessToken: string; scopes: string[] }>;

@@ -1,9 +1,8 @@
-// Notifications on this device, for reminders: whether they can be on here, turning them on and
-// off, and keeping the server's record of this device current. Amble only ever notifies someone
-// about a reminder they set.
+// Notifications on this device, for reminders: whether they can be on here, and turning them on
+// and off. The app shows reminders itself; in the Android app, the phone does, even with Amble
+// closed. Amble only ever notifies someone about a reminder they set.
 import { useCallback, useEffect, useState } from 'react';
 import { api } from './api.ts';
-import { onDevice } from './device.ts';
 import { kvDel, kvGet, kvSet } from './idb.ts';
 import { askPhoneNotifyPermission, cancelPhoneReminders, checkInBackground, native, phoneNotifyPermission, schedulePhoneReminders } from './native.ts';
 
@@ -17,41 +16,19 @@ export type PushState = 'unsupported' | 'needs-install' | 'blocked' | 'off' | 'o
 const isApple = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const installed = () => window.matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true;
 
-// On a device with no server, the app shows reminders itself, so only notifications are needed;
-// in the Android app, the phone shows them.
-export const pushSupported = () =>
-  native || (onDevice ? 'Notification' in window : 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window);
+export const pushSupported = () => native || 'Notification' in window;
 
-/** On a device, the address that stands for "this browser" once reminders are on here. */
+/** The address that stands for "this browser" once reminders are on here. */
 const DEVICE_ENDPOINT = 'device-endpoint';
 async function deviceEndpoint() {
   return kvGet<string>(DEVICE_ENDPOINT).catch(() => undefined);
 }
 
-function keyBytes(base64url: string) {
-  const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (base64url.length % 4)) % 4);
-  return Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
-}
-
-/** Whether a subscription was made with the server's current key. */
-function sameKey(sub: PushSubscription, publicKey: string) {
-  const had = sub.options.applicationServerKey;
-  if (!had) return false;
-  const a = new Uint8Array(had);
-  const b = keyBytes(publicKey);
-  return a.length === b.length && a.every((v, i) => v === b[i]);
-}
-
-const registration = () => navigator.serviceWorker.getRegistration();
-
-/** This device's subscription, if notifications are on here. */
+/** This device's sign-up for reminders, if notifications are on here. */
 export async function currentSubscription(): Promise<{ endpoint: string; unsubscribe(): Promise<unknown> } | null> {
   if (!pushSupported()) return null;
-  if (onDevice) {
-    const endpoint = await deviceEndpoint();
-    return endpoint ? { endpoint, unsubscribe: () => kvDel(DEVICE_ENDPOINT) } : null;
-  }
-  return (await (await registration())?.pushManager.getSubscription()) ?? null;
+  const endpoint = await deviceEndpoint();
+  return endpoint ? { endpoint, unsubscribe: () => kvDel(DEVICE_ENDPOINT) } : null;
 }
 
 export async function pushState(): Promise<PushState> {
@@ -65,32 +42,15 @@ export async function pushState(): Promise<PushState> {
   return Notification.permission === 'granted' && (await currentSubscription()) ? 'on' : 'off';
 }
 
-async function subscribe(reg: ServiceWorkerRegistration, publicKey: string) {
-  let sub = await reg.pushManager.getSubscription();
-  if (sub && !sameKey(sub, publicKey)) {
-    await sub.unsubscribe();
-    sub = null;
-  }
-  sub ??= await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(publicKey) });
-  await api('/push/subscriptions', { method: 'POST', body: JSON.stringify(sub.toJSON()) });
-}
-
-/** Asks the browser for permission (call it from a tap) and signs this device up for reminders. */
+/** Asks for permission (call it from a tap) and signs this device up for reminders. */
 export async function enablePush(): Promise<PushState> {
   if (!pushSupported()) return pushState();
   const permission = native ? await askPhoneNotifyPermission() : await Notification.requestPermission();
   if (permission !== 'granted') return permission === 'denied' ? 'blocked' : 'off';
-  if (onDevice) {
-    const endpoint = (await deviceEndpoint()) ?? `device:${crypto.randomUUID()}`;
-    await api('/push/subscriptions', { method: 'POST', body: JSON.stringify({ endpoint, keys: { p256dh: '-', auth: '-' } }) });
-    await kvSet(DEVICE_ENDPOINT, endpoint);
-    if (native) await syncPhoneReminders();
-    return 'on';
-  }
-  const reg = await registration();
-  if (!reg) throw new Error("Notifications need the installed app. Reload Amble and try again.");
-  const { publicKey } = await api<{ publicKey: string }>('/push');
-  await subscribe(reg, publicKey);
+  const endpoint = (await deviceEndpoint()) ?? `device:${crypto.randomUUID()}`;
+  await api('/push/subscriptions', { method: 'POST', body: JSON.stringify({ endpoint, keys: { p256dh: '-', auth: '-' } }) });
+  await kvSet(DEVICE_ENDPOINT, endpoint);
+  if (native) await syncPhoneReminders();
   return 'on';
 }
 
@@ -111,18 +71,6 @@ export async function syncPhoneReminders() {
   if (!native || !(await currentSubscription())) return;
   await schedulePhoneReminders();
   await checkInBackground();
-}
-
-/**
- * On start: sends this device's subscription to the server again, so reminders follow whoever is
- * signed in here and a new server key doesn't leave the device silently signed up with the old one.
- */
-export async function refreshPush() {
-  if (onDevice || !pushSupported() || Notification.permission !== 'granted') return;
-  const reg = await registration();
-  if (!reg || !(await reg.pushManager.getSubscription())) return;
-  const { publicKey } = await api<{ publicKey: string }>('/push');
-  await subscribe(reg, publicKey);
 }
 
 /** This device's notification state, checked again whenever the app comes back to the front. */

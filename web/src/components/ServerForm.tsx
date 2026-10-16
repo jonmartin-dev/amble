@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import ErrorIcon from '~icons/material-symbols/error-outline-rounded';
+import { servedBy } from '../lib/api.ts';
 import { findServer, signInToServer } from '../lib/server-sync.ts';
 
 /**
@@ -7,7 +8,8 @@ import { findServer, signInToServer } from '../lib/server-sync.ts';
  * carries on with once the server sends the person back (see useServerReturn).
  */
 export function ServerForm({ action, onCancel }: { action: string; onCancel?: () => void }) {
-  const [address, setAddress] = useState('');
+  // Opened from an Amble server, that's most likely the one.
+  const [address, setAddress] = useState(servedBy?.url ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

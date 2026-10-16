@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createAi } from './ai/client.ts';
-import { createApp } from './app.ts';
-import { createOidc } from './auth/oidc.ts';
+import { apiApp } from './test-api.ts';
 import { createSession } from './auth/sessions.ts';
 import { config, type Config } from './config.ts';
 import { openDatabase, type Db } from './db/index.ts';
@@ -25,7 +24,7 @@ const testConfig: Config = {
 };
 
 let db: Db;
-let app: ReturnType<typeof createApp>;
+let app: ReturnType<typeof apiApp>;
 let jon: Member;
 let alex: Member;
 let today: string;
@@ -50,7 +49,7 @@ beforeEach(() => {
   seedStarterGroups(db);
   jon = db.insert(members).values({ email: 'jon@example.com', name: 'Jon Martin', timezone: 'America/Chicago', role: 'admin' }).returning().get();
   alex = db.insert(members).values({ email: 'alex@example.com', name: 'Alex', timezone: 'America/Chicago' }).returning().get();
-  app = createApp({ db, config: testConfig, oidc: createOidc(testConfig), ai: createAi(testConfig) });
+  app = apiApp({ db, config: testConfig, ai: createAi(testConfig) });
   today = planningDate(jon);
 });
 

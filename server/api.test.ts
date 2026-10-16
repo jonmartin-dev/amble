@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createAi } from './ai/client.ts';
-import { createApp } from './app.ts';
-import { createOidc } from './auth/oidc.ts';
+import { apiApp } from './test-api.ts';
 import { createSession } from './auth/sessions.ts';
 import { config, type Config } from './config.ts';
 import { openDatabase, type Db } from './db/index.ts';
@@ -25,7 +24,7 @@ const testConfig: Config = {
 };
 
 let db: Db;
-let app: ReturnType<typeof createApp>;
+let app: ReturnType<typeof apiApp>;
 let jon: Member;
 let today: string;
 const cookies = new Map<string, string>();
@@ -54,7 +53,7 @@ beforeEach(() => {
   seedStarterGroups(db);
   cookies.clear();
   jon = db.insert(members).values({ email: 'jon@example.com', name: 'Jon Martin', timezone: 'America/Chicago', role: 'admin' }).returning().get();
-  app = createApp({ db, config: testConfig, oidc: createOidc(testConfig), ai: createAi(testConfig) });
+  app = apiApp({ db, config: testConfig, ai: createAi(testConfig) });
   today = planningDate(jon);
 });
 
@@ -279,7 +278,7 @@ describe('AI settings API', () => {
       return new Response(JSON.stringify({ choices: [{ finish_reason: 'stop', message: { content: '{"minutes":10}' } }], usage: { prompt_tokens: 50, completion_tokens: 5 } }));
     }) as unknown as typeof fetch;
     const aiConfig = { ...testConfig, oidc: { ...testConfig.oidc, clientSecret: 'client-secret' } };
-    app = createApp({ db, config: aiConfig, oidc: createOidc(aiConfig), ai: createAi(aiConfig, db, fetchImpl) });
+    app = apiApp({ db, config: aiConfig, ai: createAi(aiConfig, db, fetchImpl) });
     const alex = db.insert(members).values({ email: 'alex@example.com', name: 'Alex Martin', timezone: 'America/Chicago' }).returning().get();
     const luna = { provider: 'openai', model: 'gpt-6-luna', effort: 'medium', monthlyCapUsd: 10 };
 
@@ -293,7 +292,7 @@ describe('AI settings API', () => {
     expect(shown).toMatchObject({ available: true, provider: 'openai', modelName: 'GPT-6 Luna', source: 'settings', settings: { keyEnding: '5678', prices: [0.1, 0.5] } });
     expect(JSON.stringify(shown)).not.toContain('sk-right');
     expect((await as(alex).get('/ai')).json).toMatchObject({ available: true, modelName: 'GPT-6 Luna', settings: null });
-    expect((await as(alex).get('/session')).json.auth.ai).toEqual({ provider: 'openai', name: 'OpenAI' });
+    expect((await as(alex).get('/ai')).json.providerName).toBe('OpenAI');
 
     // Changing only the effort keeps the saved key.
     expect((await as(jon).put('/ai', { ...luna, effort: 'low' })).json.ok).toBe(true);

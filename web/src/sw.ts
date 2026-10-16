@@ -1,15 +1,11 @@
 // Amble's service worker, built by the `serviceWorker` plugin in vite.config.ts.
 // - Keeps every file of this build so the app opens without a connection. A new build installs in
 //   the background and waits; the app offers a reload rather than swapping code under someone.
-// - Sends changes made offline once the connection is back, even with the app closed (Background
-//   Sync, where the browser has it).
-// - Shows reminders, and handles their Done and Snooze buttons without opening the app.
-import { addOp, flush } from './lib/outbox.ts';
+// - Handles the Done and Snooze buttons on the reminders the app shows.
+import { addOp } from './lib/outbox.ts';
 
 declare const __AMBLE_BUILD__: string;
 declare const __AMBLE_ASSETS__: string[];
-/** A build that runs Amble on the device: there's no server to send the outbox to. */
-declare const __AMBLE_DEVICE__: boolean;
 
 // The DOM typings don't describe a service worker's scope; these are the parts used here.
 interface ExtendableEvent extends Event {
@@ -19,14 +15,8 @@ interface FetchEvent extends ExtendableEvent {
   request: Request;
   respondWith(response: Response | Promise<Response>): void;
 }
-interface SyncEvent extends ExtendableEvent {
-  tag: string;
-}
 interface MessageEventLike extends ExtendableEvent {
   data: unknown;
-}
-interface PushEvent extends ExtendableEvent {
-  data: { json(): unknown } | null;
 }
 interface NotificationClickEvent extends ExtendableEvent {
   notification: Notification;
@@ -38,7 +28,7 @@ interface WindowClient {
   postMessage(message: unknown): void;
 }
 interface ServiceWorkerScope {
-  registration: ServiceWorkerRegistration & { sync?: { register(tag: string): Promise<void> } };
+  registration: ServiceWorkerRegistration;
   clients: {
     claim(): Promise<void>;
     matchAll(options?: { type?: string; includeUncontrolled?: boolean }): Promise<WindowClient[]>;
@@ -47,13 +37,11 @@ interface ServiceWorkerScope {
   skipWaiting(): Promise<void>;
   addEventListener(type: 'install' | 'activate', listener: (e: ExtendableEvent) => void): void;
   addEventListener(type: 'fetch', listener: (e: FetchEvent) => void): void;
-  addEventListener(type: 'sync', listener: (e: SyncEvent) => void): void;
   addEventListener(type: 'message', listener: (e: MessageEventLike) => void): void;
-  addEventListener(type: 'push', listener: (e: PushEvent) => void): void;
   addEventListener(type: 'notificationclick', listener: (e: NotificationClickEvent) => void): void;
 }
 
-/** What the server sends (server/notify/push.ts). */
+/** A reminder as the app shows it (server/notify/devices.ts). */
 interface PushMessage {
   title: string;
   body?: string;
@@ -68,8 +56,8 @@ const CACHE = `almanac-${__AMBLE_BUILD__}`;
 const scope = new URL(sw.registration.scope);
 const base = scope.pathname.replace(/\/$/, '');
 const shell = new URL('./', scope).href;
-// Paths the server answers itself, never the app shell.
-const SERVER_PATHS = ['/api/', '/auth/', '/oauth/', '/mcp', '/.well-known/', '/healthz'];
+// Paths an Amble server serving the app answers itself, never the app shell.
+const SERVER_PATHS = ['/api/', '/auth/', '/oauth/', '/sync/', '/server', '/google/', '/mcp', '/.well-known/', '/healthz'];
 
 sw.addEventListener('install', (event) => {
   event.waitUntil(
@@ -124,48 +112,7 @@ sw.addEventListener('fetch', (event) => {
   );
 });
 
-/** Sends the outbox and tells open windows; the result says whether anything is still waiting. */
-async function sendOutbox() {
-  if (__AMBLE_DEVICE__) {
-    // The app's own worker applies changes; an open window sends them now, or the next one opened will.
-    for (const client of await sw.clients.matchAll({ type: 'window' })) client.postMessage({ type: 'outbox-added' });
-    return { sent: [], failed: [], blocked: null };
-  }
-  const result = await flush((path, init) => fetch(`${base}/api${path}`, init));
-  for (const client of await sw.clients.matchAll({ type: 'window' })) client.postMessage({ type: 'outbox-flushed' });
-  return result;
-}
-
-sw.addEventListener('sync', (event) => {
-  if (event.tag !== 'almanac-outbox' || __AMBLE_DEVICE__) return;
-  event.waitUntil(
-    sendOutbox().then((result) => {
-      // Rejecting asks the browser to try again later.
-      if (result.blocked === 'offline' || result.blocked === 'server' || result.blocked === 'busy') throw new Error(result.blocked);
-    }),
-  );
-});
-
 // ---- reminders ------------------------------------------------------------------------------
-
-sw.addEventListener('push', (event) => {
-  let message: PushMessage | null = null;
-  try {
-    message = event.data?.json() as PushMessage;
-  } catch {
-    // Not one of ours; a notification still has to show for every push.
-  }
-  const options: NotificationOptions & { actions?: { action: string; title: string }[]; timestamp?: number } = {
-    body: message?.body,
-    tag: message?.tag,
-    icon: new URL('icon-192.png', scope).href,
-    badge: new URL('badge-96.png', scope).href,
-    actions: message?.actions ?? [],
-    timestamp: Date.now(),
-    data: { url: message?.url, ...message?.data },
-  };
-  event.waitUntil(sw.registration.showNotification(message?.title || 'Amble', options));
-});
 
 /** Brings the app forward on a page, opening it if it isn't open. */
 async function openApp(url: string | undefined) {
@@ -182,7 +129,10 @@ async function openApp(url: string | undefined) {
   await sw.clients.openWindow(target.href);
 }
 
-/** Done and Snooze go through the outbox, so they still count when the phone is offline. */
+/**
+ * Done and Snooze go through the outbox: the app's own worker applies them, from an open window
+ * now, or the next one opened.
+ */
 async function act(action: 'done' | 'snooze', title: string, data: NonNullable<PushMessage['data']>) {
   if (!data.memberId || !data.taskId) return;
   const op =
@@ -190,8 +140,7 @@ async function act(action: 'done' | 'snooze', title: string, data: NonNullable<P
       ? { path: `/tasks/${data.taskId}/complete`, body: { done: true }, label: `Finish ${title}` }
       : { path: `/reminders/${data.reminderId}/snooze`, body: { minutes: data.snoozeMinutes ?? 60 }, label: `Snooze ${title}` };
   await addOp({ ...op, method: 'POST', memberId: data.memberId, key: crypto.randomUUID(), at: Date.now() });
-  const result = await sendOutbox();
-  if (result.blocked) await sw.registration.sync?.register('almanac-outbox').catch(() => {});
+  for (const client of await sw.clients.matchAll({ type: 'window' })) client.postMessage({ type: 'outbox-added' });
 }
 
 sw.addEventListener('notificationclick', (event) => {

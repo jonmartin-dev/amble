@@ -109,11 +109,28 @@ async function connect({ clientId = CLAUDE, redirectUri = CLAUDE_CALLBACK, appro
   });
   const authorize = await signedIn(`/oauth/authorize?${query}`);
   expect(authorize.status).toBe(302);
-  const requestId = authorize.headers.get('location')!.match(/\/amble\/connect\/(.+)$/)![1]!;
-  const consent = await (await signedIn(`/api/oauth/requests/${requestId}`)).json();
-  const decided = await signedIn(`/api/oauth/requests/${requestId}`, { method: 'POST', body: JSON.stringify({ approve }) });
-  const redirect = new URL((await decided.json()).redirect);
+  const requestId = authorize.headers.get('location')!.match(/\/amble\/oauth\/consent\/(.+)$/)![1]!;
+  // The consent page, as the member sees it: who's asking, and a warning for an app on this computer.
+  const page = await (await signedIn(`/oauth/consent/${requestId}`)).text();
+  const consent = {
+    clientName: /Let (.+?) use your Amble\?/.exec(page)?.[1],
+    clientHost: /<strong>(.+?)<\/strong>/.exec(page)?.[1],
+    loopback: page.includes('class="warn"'),
+  };
+  const decided = await signedIn(`/oauth/consent/${requestId}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ approve: approve ? '1' : '0' }).toString(),
+  });
+  expect(decided.status).toBe(302);
+  const redirect = new URL(decided.headers.get('location')!);
   return { consent, redirect, verifier, clientId, redirectUri, resource };
+}
+
+/** The member's connected assistants, from the server's page: names, and ids to disconnect them by. */
+async function connections() {
+  const page = await (await signedIn('/server')).text();
+  return { page, ids: [...page.matchAll(/\/server\/connections\/([^/]+)\/remove/g)].map((m) => m[1]!) };
 }
 
 async function tokens(flow: Awaited<ReturnType<typeof connect>>, extra: Record<string, string> = {}) {
@@ -191,7 +208,7 @@ describe('connecting Claude', () => {
 
   it('runs the whole flow and lets Claude use the tools as the member', async () => {
     const flow = await connect();
-    expect(flow.consent).toEqual({ clientName: 'Claude', clientHost: 'claude.ai', redirectHost: 'claude.ai', loopback: false });
+    expect(flow.consent).toEqual({ clientName: 'Claude', clientHost: 'claude.ai', loopback: false });
     expect(flow.redirect.origin + flow.redirect.pathname).toBe(CLAUDE_CALLBACK);
     expect(flow.redirect.searchParams.get('state')).toBe('xyz');
     expect(flow.redirect.searchParams.get('iss')).toBe(ISSUER);
@@ -211,8 +228,10 @@ describe('connecting Claude', () => {
     await client.close();
     expect(db.select().from(activity).all()).toMatchObject([{ action: 'task.created', via: 'claude', memberId: jon.id }]);
 
-    const listed = await (await signedIn('/api/connections')).json();
-    expect(listed).toMatchObject({ mcpUrl: MCP_URL, connections: [{ clientName: 'Claude' }] });
+    const listed = await connections();
+    expect(listed.page).toContain(MCP_URL);
+    expect(listed.page).toContain('Claude<br>');
+    expect(listed.ids).toHaveLength(1);
   });
 
   it('refuses a wrong code verifier, and a code used twice', async () => {
@@ -258,8 +277,10 @@ describe('connecting Claude', () => {
 
   it('disconnecting from Amble revokes every token', async () => {
     const issued = (await tokens(await connect())).body;
-    const [grant] = (await (await signedIn('/api/connections')).json()).connections;
-    expect((await signedIn(`/api/connections/${grant.id}`, { method: 'DELETE' })).status).toBe(204);
+    const [id] = (await connections()).ids;
+    const removed = await signedIn(`/server/connections/${id}/remove`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: '' });
+    expect(removed.headers.get('location')).toBe('/amble/server?done=Disconnected.');
+    expect((await connections()).ids).toEqual([]);
     const res = await request('/mcp', { method: 'POST', headers: { authorization: `Bearer ${issued.access_token}`, 'content-type': 'application/json' }, body: '{}' });
     expect(res.status).toBe(401);
   });
@@ -283,7 +304,7 @@ async function addTaskAs(accessToken: string) {
 describe('connecting ChatGPT', () => {
   it('signs in with its metadata document, even though it prefers private_key_jwt', async () => {
     const flow = await connect({ clientId: CHATGPT, redirectUri: CHATGPT_CALLBACK });
-    expect(flow.consent).toEqual({ clientName: 'ChatGPT', clientHost: 'chatgpt.com', redirectHost: 'chatgpt.com', loopback: false });
+    expect(flow.consent).toEqual({ clientName: 'ChatGPT', clientHost: 'chatgpt.com', loopback: false });
     expect(flow.redirect.origin + flow.redirect.pathname).toBe(CHATGPT_CALLBACK);
     expect(flow.redirect.searchParams.get('state')).toBe('xyz');
     // ChatGPT compares iss with the metadata's issuer character for character.
@@ -294,8 +315,7 @@ describe('connecting ChatGPT', () => {
     expect(body).toMatchObject({ token_type: 'Bearer', scope: 'almanac' });
     expect(body.refresh_token).toMatch(/^alm_rt_/);
     expect(await addTaskAs(body.access_token)).toMatchObject([{ action: 'task.created', via: 'chatgpt', memberId: jon.id }]);
-    const listed = await (await signedIn('/api/connections')).json();
-    expect(listed.connections).toMatchObject([{ clientName: 'ChatGPT' }]);
+    expect((await connections()).page).toContain('ChatGPT<br>');
 
     const refreshed = await request(
       '/oauth/token',

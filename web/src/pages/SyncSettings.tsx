@@ -1,15 +1,14 @@
 // Settings → Sync and backup, on a device: keeping a copy in the person's Google Drive, making that
 // a household others can join, and joining one someone shared; or syncing with the household's
 // own server instead.
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import CloudSync from '~icons/material-symbols/cloud-sync-outline-rounded';
 import Groups from '~icons/material-symbols/groups-outline-rounded';
 import PersonAdd from '~icons/material-symbols/person-add-outline-rounded';
 import Warning from '~icons/material-symbols/warning-outline-rounded';
 import { ListGroup, SectionTitle, SubpageHeader } from '../components/ui.tsx';
-import { api, ApiError, appUrl } from '../lib/api.ts';
-import { onDevice } from '../lib/device.ts';
+import { api, ApiError } from '../lib/api.ts';
 import { refreshStatus, syncNow, useDriveSync, type DriveSyncStatus } from '../lib/drive-sync.ts';
 import { forgetRefreshToken, forgetToken, googleConfigured, pickHouseholdFile, resumeAfterGoogle, tokenFromTap } from '../lib/google.ts';
 import { refreshViews } from '../lib/mutations.ts';
@@ -51,145 +50,6 @@ export async function joinHousehold(action: string, email?: string) {
 }
 
 export function SyncSettings() {
-  return onDevice ? <DeviceSync /> : <ServerSync />;
-}
-
-interface ServerStatus extends DriveSyncStatus {
-  mode: 'server';
-  /** The server has a Google client to connect with. */
-  enabled: boolean;
-  /** The Google account the server syncs as, once an admin connected one. */
-  google: string | null;
-}
-
-/** On a server: an admin connects it to Google Drive, so it keeps in step with the household's devices. */
-function ServerSync() {
-  const qc = useQueryClient();
-  const snack = useSnackbar();
-  const me = useMe();
-  const admin = me?.role === 'admin';
-  const { data: status } = useQuery({ queryKey: ['sync'], queryFn: () => api<ServerStatus>('/sync') });
-  const { data: households } = useQuery({
-    queryKey: ['sync', 'households'],
-    queryFn: () => api<{ households: { id: string; name: string; owner: string | null }[] }>('/sync/households', { method: 'POST', body: '{}' }),
-    enabled: Boolean(admin && status?.google && !status.on),
-    select: (d) => d.households,
-  });
-  const [busy, setBusy] = useState(false);
-  const problem = new URLSearchParams(window.location.search).get('error');
-
-  const run = async (work: () => Promise<unknown>) => {
-    setBusy(true);
-    try {
-      await work();
-      refreshViews(qc);
-    } catch (e) {
-      snack({ message: (e as Error).message });
-    } finally {
-      setBusy(false);
-      void qc.invalidateQueries({ queryKey: ['sync'] });
-    }
-  };
-  const connect = (body: object) => run(() => api('/sync/connect', { method: 'POST', body: JSON.stringify(body) }));
-  const stop = () => {
-    if (confirm('Stop syncing this server? Its data stays, and so does the file in Google Drive.')) void run(() => api('/sync', { method: 'DELETE' }));
-  };
-
-  return (
-    <>
-      <SubpageHeader title="Sync" />
-      <section className="mt-4 rounded-[2rem] bg-secondary-container p-5 text-on-secondary-container">
-        <div className="flex items-center gap-3">
-          <CloudSync className="size-6" aria-hidden />
-          <h2 className="display text-xl font-medium">Keep this server in step with your devices</h2>
-        </div>
-        <p className="mt-2">
-          A household that keeps Amble in Google Drive can have this server as one more copy. Then the server's own app, and Claude or
-          ChatGPT through the connector, see and change the same tasks and lists as everyone's phones.
-        </p>
-      </section>
-
-      {problem && (
-        <p role="alert" className="mt-4 flex gap-3 rounded-3xl bg-warm-container p-4 text-on-warm-container">
-          <Warning className="size-6 shrink-0" aria-hidden />
-          {problem === 'off' ? 'Only an admin can connect Google Drive, and the server needs a Google sign-in client.' : problem}
-        </p>
-      )}
-
-      {status && !status.enabled ? (
-        <p className="mt-6 flex gap-3 rounded-3xl bg-surface-low p-5 text-on-surface-variant">
-          <Warning className="size-6 shrink-0" aria-hidden />
-          Sync needs a Google sign-in client on this server, with the Google Drive API turned on.
-        </p>
-      ) : status?.on ? (
-        <>
-          <SectionTitle>Syncing</SectionTitle>
-          <ListGroup
-            rows={[
-              {
-                icon: <CloudSync className="size-6" />,
-                title: status.target?.name ?? 'Google Drive',
-                subtitle: `${status.google ?? 'Google Drive'} · ${syncedLabel(status, busy, false)}`,
-                trailing: admin ? (
-                  <button type="button" disabled={busy} onClick={() => void run(() => api('/sync/run', { method: 'POST', body: '{}' }))} className={quiet}>
-                    Sync now
-                  </button>
-                ) : undefined,
-              },
-            ]}
-          />
-          {admin && (
-            <button type="button" disabled={busy} onClick={stop} className={`mt-4 ${quiet}`}>
-              Stop syncing
-            </button>
-          )}
-        </>
-      ) : !admin ? (
-        <p className="mt-6 px-1 text-on-surface-variant">An admin can connect this server to Google Drive.</p>
-      ) : !status?.google ? (
-        <div className="mt-6 flex flex-col items-start gap-3">
-          <button type="button" onClick={() => window.location.assign(appUrl('/auth/drive'))} className={button}>
-            Connect Google Drive
-          </button>
-          <p className="px-1 text-sm text-on-surface-variant">
-            Google asks whether Amble can keep its files in your Drive. The server keeps that access, to sync while nobody's using it.
-          </p>
-        </div>
-      ) : (
-        <>
-          <SectionTitle>Join a household</SectionTitle>
-          {households?.length ? (
-            <ListGroup
-              rows={households.map((h) => ({
-                icon: <Groups className="size-6" />,
-                title: h.name,
-                subtitle: h.owner ? `Kept by ${h.owner}` : undefined,
-                trailing: (
-                  <button type="button" disabled={busy} onClick={() => void connect({ mode: 'join', fileId: h.id })} className={quiet}>
-                    Join
-                  </button>
-                ),
-              }))}
-            />
-          ) : (
-            <p className="px-1 text-on-surface-variant">
-              {households
-                ? `No household files that ${status.google} can open yet. Join or make one in Amble on a device with this account, or start one here.`
-                : 'Looking…'}
-            </p>
-          )}
-          <SectionTitle>Or start one</SectionTitle>
-          <button type="button" disabled={busy} onClick={() => void connect({ mode: 'create', name: `${me?.name ?? 'Our'}'s Amble household` })} className={button}>
-            Make a household from this server
-          </button>
-          <p className="mt-2 px-1 text-sm text-on-surface-variant">Everything on this server goes into a new file in Google Drive, for devices to join.</p>
-        </>
-      )}
-    </>
-  );
-}
-
-function DeviceSync() {
   const qc = useQueryClient();
   const snack = useSnackbar();
   const me = useMe();

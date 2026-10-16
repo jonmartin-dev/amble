@@ -6,7 +6,6 @@ import { Avatar } from '../components/Avatar.tsx';
 import { SectionTitle, SubpageHeader } from '../components/ui.tsx';
 import { Link } from '@tanstack/react-router';
 import { api, type HouseholdMember } from '../lib/api.ts';
-import { onDevice } from '../lib/device.ts';
 import { useDriveSync } from '../lib/drive-sync.ts';
 import { expressive } from '../lib/motion.ts';
 import { useMe, useMembers } from '../lib/queries.ts';
@@ -67,9 +66,7 @@ export function Household() {
                 </p>
                 {/* A device's own person has no email until they sign in to Google. */}
                 {!m.email.endsWith('@device.invalid') && <p className="truncate text-sm text-on-surface-variant">{m.email}</p>}
-                {!onDevice && (m.role === 'admin' || !m.signedIn) && (
-                  <p className="text-sm text-on-surface-variant">{m.role === 'admin' ? 'Admin' : "Hasn't signed in yet"}</p>
-                )}
+
               </div>
               {(admin || m.id === me?.id) && (
                 <button
@@ -122,7 +119,7 @@ export function Household() {
         ))}
       </ul>
 
-      {onDevice && !onServer ? (
+      {!onServer ? (
         <>
           <SectionTitle>Add someone</SectionTitle>
           <p className="px-1 text-on-surface-variant">

@@ -1,12 +1,27 @@
-// Amble with no server: the API runs in a worker on this device (web/src/worker/api.worker.ts),
-// and requests the app would send over the network go to it instead. Only one tab can have the
-// database open; another tab waits, and can take it over.
+// Amble runs on the device: its API runs in a worker here (web/src/worker/api.worker.ts), and the
+// app's requests go to it. Only one tab can have the database open; another tab waits, and can
+// take it over.
 import { Capacitor } from '@capacitor/core';
 import { useSyncExternalStore } from 'react';
 import type { FromWorker, ToWorker } from '../worker/protocol.ts';
 
-/** This build runs Amble on the device rather than talking to a server. */
-export const onDevice = import.meta.env.VITE_AMBLE_DEVICE === '1';
+declare global {
+  interface Window {
+    /** Written into the page by an Amble server that serves the app (server/app.ts). */
+    __AMBLE__?: {
+      basePath: string;
+      server?: { url: string; signIn: string; privacyContact: string; ai: { provider: string; name: string } | null };
+      google?: { clientId: string; apiKey: string; appId: string; tokenUrl: string } | null;
+      /** Set by a server with dev sign-in on, for scripts that drive the app (scripts/lib/household.ts). */
+      test?: boolean;
+    };
+    /** The device's API, for those scripts. */
+    __ambleFetch?: typeof deviceFetch;
+  }
+}
+
+/** The path the app is served under: from the server that serves it, or the one it was built for. */
+export const basePath = window.__AMBLE__?.basePath ?? (import.meta.env.BASE_URL === './' ? '' : import.meta.env.BASE_URL.replace(/\/$/, ''));
 
 export type DeviceState = 'starting' | 'ready' | 'busy' | 'moved' | 'failed';
 
@@ -91,7 +106,7 @@ function startWorker() {
     failure = e.message || 'The worker stopped.';
     set('failed');
   });
-  send({ type: 'init', basePath: (window.__AMBLE__?.basePath ?? import.meta.env.BASE_URL.replace(/\/$/, '')) || '', userAgent: navigator.userAgent });
+  send({ type: 'init', basePath, userAgent: navigator.userAgent });
 }
 
 /** Another tab wants the database: let it go. */
@@ -117,11 +132,13 @@ channel?.addEventListener('message', (e: MessageEvent<{ type?: string }>) => {
   if (e.data?.type === 'takeover' && worker && state !== 'busy') release();
 });
 
-if (onDevice) {
+// Not in tests, which have no workers.
+if (typeof Worker !== 'undefined') {
   startWorker();
   // Asks the browser not to clear Amble's storage to make room; installed apps usually get this.
   void navigator.storage?.persist?.().catch(() => {});
 }
+if (window.__AMBLE__?.test) window.__ambleFetch = deviceFetch;
 
 /** fetch() for the device's own API: `path` is under /api. */
 export async function deviceFetch(path: string, init: RequestInit = {}): Promise<Response> {

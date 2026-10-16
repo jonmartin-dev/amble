@@ -24,7 +24,7 @@ import { readCalendarsWhileOpen } from './lib/calendar.ts';
 import { EXPANDED, InPane, isDetail, useMedia } from './lib/layout.ts';
 import { refreshViews } from './lib/mutations.ts';
 import { CACHE_MAX_AGE_MS, CACHE_VERSION, claimDevice, idbPersister, prefetchForOffline, shouldSave } from './lib/persist.ts';
-import { refreshPush, syncPhoneReminders } from './lib/push.ts';
+import { syncPhoneReminders } from './lib/push.ts';
 import { registerServiceWorker } from './lib/pwa.ts';
 import { get, useSession } from './lib/queries.ts';
 import { SnackbarProvider, useSnackbar } from './lib/snackbar.tsx';
@@ -44,17 +44,15 @@ import { TaskDetail } from './pages/TaskDetail.tsx';
 import { Calendar } from './pages/Calendar.tsx';
 import { AiSettings } from './pages/AiSettings.tsx';
 import { Capacity } from './pages/Capacity.tsx';
-import { Connect } from './pages/Connect.tsx';
 import { ConnectionsPage } from './pages/Connections.tsx';
 import { GroupsSettings } from './pages/GroupsSettings.tsx';
 import { Settings } from './pages/Settings.tsx';
-import { SignIn } from './pages/SignIn.tsx';
 import { DeviceBlocked, Welcome } from './pages/Welcome.tsx';
 import { SyncSettings } from './pages/SyncSettings.tsx';
 import { startDriveSync, syncSoon } from './lib/drive-sync.ts';
 import { takeGoogleReturn } from './lib/google.ts';
 import { takeServerReturn } from './lib/server-sync.ts';
-import { onDevice, onDeviceChange, useDeviceState } from './lib/device.ts';
+import { onDeviceChange, useDeviceState } from './lib/device.ts';
 import { native, QUICK_ADD, startPhone, updateTodayWidget } from './lib/native.ts';
 import { Stats } from './pages/Stats.tsx';
 import { Today } from './pages/Today.tsx';
@@ -102,7 +100,7 @@ function SyncBridge() {
       }),
     [qc],
   );
-  // On a device that syncs through Google Drive, rounds run while the app is open.
+  // With sync on (Google Drive, or the household's server), rounds run while the app is open.
   useEffect(
     () =>
       startDriveSync(() => {
@@ -186,10 +184,6 @@ function Root() {
     return () => clearTimeout(t);
   }, [memberId]);
 
-  // Notifications follow whoever is signed in here, so tell the server about this device again.
-  useEffect(() => {
-    if (memberId && navigator.onLine && !onDevice) void refreshPush().catch(() => {});
-  }, [memberId]);
   // Tapping a reminder while the app is open brings it to that task.
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
@@ -202,19 +196,16 @@ function Root() {
 
   useEffect(() => {
     if (!memberId) return;
-    // Whatever should open offline gets loaded now, while there's a connection.
-    void claimDevice(qc, memberId).then(() => navigator.onLine && prefetchForOffline(qc, get));
+    // Every list and the whole backlog get loaded now, so they open at once.
+    void claimDevice(qc, memberId).then(() => prefetchForOffline(qc, get));
   }, [qc, memberId]);
   useEffect(() => (memberId ? readCalendarsWhileOpen(qc) : undefined), [qc, memberId]);
 
   if (pathname === '/privacy') return <Privacy />;
-  if (onDevice && deviceState !== 'ready' && deviceState !== 'starting') return <DeviceBlocked state={deviceState} />;
+  if (deviceState !== 'ready' && deviceState !== 'starting') return <DeviceBlocked state={deviceState} />;
   if (session.isPending) return <div className="min-h-dvh" />;
   if (!session.data && session.isError) return <Offline />;
-  if (onDevice && !session.data?.member) return <Welcome />;
-  if (!session.data?.member || pathname === '/signin') return <SignIn />;
-  // The consent page stands alone, without the app's toolbar.
-  if (pathname.startsWith('/connect/')) return <Outlet />;
+  if (!session.data?.member) return <Welcome />;
 
   // On a list (open on its own or beside a page), + adds to it.
   const onList = pathname.startsWith('/list/');
@@ -307,23 +298,14 @@ const routeTree = rootRoute.addChildren([
       return <ListPage key={groupId} groupId={groupId ?? ''} />;
     },
   }),
-  createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/connect/$requestId',
-    component: function ConnectRoute() {
-      const { requestId } = useParams({ strict: false });
-      return <Connect requestId={requestId ?? ''} />;
-    },
-  }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/signin', component: SignIn }),
   createRoute({ getParentRoute: () => rootRoute, path: '/privacy', component: Privacy }),
 ]);
 
-// Back from Google's sign-in (Drive sync on a device): keep the token and restore the address
-// before the router reads it.
-if (onDevice) takeGoogleReturn();
+// Back from Google's sign-in (Drive sync): keep the token and restore the address before the
+// router reads it.
+takeGoogleReturn();
 // Back from signing in on the household's server, the same way.
-if (onDevice) takeServerReturn();
+takeServerReturn();
 
 // Apply the saved theme before the first paint so there's no flash of the default colors.
 applyTheme(loadLocalTheme());
@@ -343,14 +325,14 @@ declare module '@tanstack/react-router' {
 
 const queryClient = new QueryClient({
   defaultOptions: {
-    // Kept as long as the saved copy on the device, so what was loaded still opens offline.
-    // On a device the data is right here, so nothing waits for a connection.
-    queries: { retry: 1, refetchOnWindowFocus: true, gcTime: CACHE_MAX_AGE_MS, networkMode: onDevice ? 'always' : 'online' },
-    mutations: { networkMode: onDevice ? 'always' : 'online' },
+    // Kept as long as the saved copy, so the app opens at once. The data is right here on the
+    // device, so nothing waits for a connection.
+    queries: { retry: 1, refetchOnWindowFocus: true, gcTime: CACHE_MAX_AGE_MS, networkMode: 'always' },
+    mutations: { networkMode: 'always' },
   },
 });
-// TanStack Query assumes it starts online; tell it the truth so offline reads don't spin.
-onlineManager.setOnline(onDevice || navigator.onLine);
+// The API is on this device, so it's always reachable.
+onlineManager.setOnline(true);
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

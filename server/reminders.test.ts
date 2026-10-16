@@ -1,8 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createAi } from './ai/client.ts';
-import { createApp } from './app.ts';
-import { createOidc } from './auth/oidc.ts';
+import { apiApp } from './test-api.ts';
 import { createSession } from './auth/sessions.ts';
 import { config, type Config } from './config.ts';
 import { openDatabase, type Db } from './db/index.ts';
@@ -11,7 +10,8 @@ import { seedStarterGroups } from './db/seed.ts';
 import { parseReminderTime } from './domain/reminders.ts';
 import { completeTasks, createTasks, getTask, skipTask } from './domain/tasks.ts';
 import { addDays, planningDate } from './lib/dates.ts';
-import { createPush, deviceName } from './notify/push.ts';
+import { deviceName, type PushMessage } from './notify/devices.ts';
+import { createLocalPush } from './notify/local-push.ts';
 import { createReminderSender, reminderBody } from './notify/reminders.ts';
 
 const ORIGIN = 'https://amble.test';
@@ -28,18 +28,19 @@ const testConfig: Config = {
   ai: { ...config.ai, apiKey: '' },
 };
 
-const ENDPOINT = 'https://fcm.googleapis.com/fcm/send/device-1';
-const KEYS = { p256dh: 'BPublicKeyOfTheDevice', auth: 'secret' };
+// A device signs up as "this browser": the app shows its reminders itself.
+const ENDPOINT = 'device:this-browser';
+const KEYS = { p256dh: '-', auth: '-' };
 
 let db: Db;
-let app: ReturnType<typeof createApp>;
-let push: ReturnType<typeof createPush>;
+let app: ReturnType<typeof apiApp>;
+let push: ReturnType<typeof createLocalPush>;
 let jon: Member;
 let alex: Member;
 let today: string;
-/** What the fake push service was asked to deliver, and how it answers. */
-let delivered: { endpoint: string; payload: Record<string, unknown>; options: Record<string, unknown> }[];
-let answer: (endpoint: string) => number;
+/** What the device was asked to show, and whether it could. */
+let delivered: { payload: PushMessage }[];
+let shows: boolean;
 const cookies = new Map<string, string>();
 
 function as(member: Member) {
@@ -75,13 +76,12 @@ beforeEach(() => {
   jon = db.insert(members).values({ email: 'jon@example.com', name: 'Jon Martin', timezone: 'America/Chicago', role: 'admin' }).returning().get();
   alex = db.insert(members).values({ email: 'alex@example.com', name: 'Alex Martin', timezone: 'America/Chicago' }).returning().get();
   delivered = [];
-  answer = () => 201;
-  push = createPush(db, testConfig, async (sub, payload, options) => {
-    const status = answer(sub.endpoint);
-    if (status >= 300) throw Object.assign(new Error(`Push failed (${status})`), { statusCode: status });
-    delivered.push({ endpoint: sub.endpoint, payload: JSON.parse(payload as string), options: options as Record<string, unknown> });
+  shows = true;
+  push = createLocalPush(db, async (payload) => {
+    if (shows) delivered.push({ payload });
+    return shows;
   });
-  app = createApp({ db, config: testConfig, oidc: createOidc(testConfig), ai: createAi(testConfig), push });
+  app = apiApp({ db, config: testConfig, ai: createAi(testConfig), push });
   today = planningDate(jon);
 });
 
@@ -141,10 +141,9 @@ describe('setting reminders', () => {
 });
 
 describe('devices', () => {
-  it('signs a device up, names it, and moves it to whoever signs in on it next', async () => {
+  it('signs a device up, names it, and moves it to whoever uses it next', async () => {
     expect((await as(jon).post('/push/subscriptions', { endpoint: ENDPOINT, keys: KEYS })).status).toBe(204);
     const { json } = await as(jon).get('/push');
-    expect(json.publicKey).toMatch(/^[A-Za-z0-9_-]{80,}$/);
     expect(json.devices).toEqual([expect.objectContaining({ endpoint: ENDPOINT, device: 'Chrome on Android' })]);
 
     await as(alex).post('/push/subscriptions', { endpoint: ENDPOINT, keys: KEYS });
@@ -153,17 +152,6 @@ describe('devices', () => {
 
     await as(alex).post('/push/unsubscribe', { endpoint: ENDPOINT });
     expect(db.select().from(pushSubscriptions).all()).toEqual([]);
-  });
-
-  it('only sends through real push services', async () => {
-    const res = await as(jon).post('/push/subscriptions', { endpoint: 'https://evil.example.com/hook', keys: KEYS });
-    expect(res.status).toBe(400);
-    expect((await as(jon).post('/push/subscriptions', { endpoint: 'http://fcm.googleapis.com/x', keys: KEYS })).status).toBe(400);
-    expect((await as(jon).post('/push/subscriptions', { endpoint: 'https://web.push.apple.com/abc', keys: KEYS })).status).toBe(204);
-  });
-
-  it('keeps the same keys across restarts', () => {
-    expect(createPush(db, testConfig).publicKey).toBe(push.publicKey);
   });
 
   it('names devices from their browser', () => {
@@ -189,7 +177,7 @@ describe('sending reminders', () => {
     expect(await sender().run()).toBe(0);
     expect(await sender().run(inMinutes(2))).toBe(1);
     expect(delivered).toHaveLength(1);
-    const [{ payload, options }] = delivered as [(typeof delivered)[0]];
+    const [{ payload }] = delivered as [(typeof delivered)[0]];
     expect(payload).toMatchObject({
       title: 'Take the bins out',
       body: 'Recycling week',
@@ -197,8 +185,6 @@ describe('sending reminders', () => {
       actions: [{ action: 'done' }, { action: 'snooze' }],
       data: { kind: 'reminder', taskId: task.id, memberId: jon.id },
     });
-    expect(options).toMatchObject({ urgency: 'high', TTL: 4 * 60 * 60 });
-    expect(options.topic).toMatch(/^[0-9a-f]{32}$/);
     // Sent once only.
     expect(await sender().run(inMinutes(3))).toBe(0);
     expect(getTask(db, jon, task.id).reminder?.sentAt).toBeInstanceOf(Date);
@@ -213,24 +199,23 @@ describe('sending reminders', () => {
     expect(db.select({ outcome: reminders.outcome }).from(reminders).all()).toEqual([{ outcome: 'skipped' }, { outcome: 'skipped' }]);
   });
 
-  it('forgets devices the push service no longer knows', async () => {
+  it('says so when there is no device to show it on', async () => {
     await soon();
-    answer = () => 410;
+    db.delete(pushSubscriptions).run();
     await sender().run(inMinutes(2));
-    expect(db.select().from(pushSubscriptions).all()).toEqual([]);
     expect(db.select({ outcome: reminders.outcome }).from(reminders).get()).toEqual({ outcome: 'no-device' });
   });
 
-  it('tries again each minute when the push service is down, then gives up', async () => {
+  it("tries again each minute when it can't show, then gives up", async () => {
     await soon();
-    answer = () => 503;
+    shows = false;
     await sender().run(inMinutes(2));
     expect(db.select({ sentAt: reminders.sentAt }).from(reminders).get()?.sentAt).toBeNull();
-    answer = () => 201;
+    shows = true;
     expect(await sender().run(inMinutes(3))).toBe(1);
 
     await soon('Another', 1);
-    answer = () => 503;
+    shows = false;
     await sender().run(inMinutes(45));
     expect(db.select({ outcome: reminders.outcome }).from(reminders).all()).toContainEqual({ outcome: 'failed' });
   });

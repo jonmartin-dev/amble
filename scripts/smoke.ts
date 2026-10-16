@@ -1,9 +1,11 @@
 // Clicks through the core loop in a phone-sized Chrome and fails on any broken step or console error.
-// Needs `pnpm dev` running against a throwaway database (see scripts/demo.ts). It changes that data.
+// Needs an Amble server with AMBLE_DEV_LOGIN=1 serving the built app, on a throwaway database (see
+// scripts/demo.ts). The browser syncs with it as <email>, so the run's changes reach that data.
 // Usage: node scripts/smoke.ts <email>
 import { chromium, type Page } from 'playwright-core';
+import { joinHousehold, local } from './lib/household.ts';
 
-const base = process.env.AMBLE_URL ?? 'http://localhost:5173';
+const base = process.env.AMBLE_URL ?? 'http://localhost:8787';
 const email = process.argv[2];
 if (!email) throw new Error('Usage: node scripts/smoke.ts <email>');
 
@@ -33,11 +35,11 @@ const TASK = `Smoke ${run}: buy stamps`;
 const ITEM = `Smoke ${run} basil`;
 const GROUP = `Garden ${run}`;
 
-await page.goto(`${base}/auth/dev?email=${encodeURIComponent(email)}`);
+await joinHousehold(page, base, email);
 await page.waitForLoadState('networkidle');
 
 await check("the day's first open shows the briefing, and Start my day goes to Today", async (p) => {
-  const briefing = (await (await p.request.get(`${base}/api/briefing`)).json()) as { seen: boolean };
+  const briefing = (await (await local(p).get(`/briefing`)).json()) as { seen: boolean };
   // A database someone already opened today skips it; nothing to check then.
   if (briefing.seen && !p.url().endsWith('/briefing')) return console.log('   (skipped: already seen today)');
   await p.getByRole('button', { name: 'Start my day' }).waitFor({ timeout: 8000 });
@@ -50,7 +52,7 @@ await check("the day's first open shows the briefing, and Start my day goes to T
 });
 
 // Plain quick add first; smart add (which calls the AI model) gets its own step below.
-await page.request.patch(`${base}/api/me`, { data: { smartAdd: false } });
+await local(page).patch(`/me`, { data: { smartAdd: false } });
 await page.reload();
 
 await check('quick add puts a task on today', async (p) => {
@@ -136,12 +138,11 @@ await check('a reminder set on the task page shows there and is coming up', asyn
   await until(p, /^I'll remind you /);
   await p.getByRole('button', { name: /^Today \d|^Tomorrow \d/ }).waitFor({ timeout: 5000 });
   for (let i = 0; i < 20; i++) {
-    // From the page, like the app asks, rather than a pooled connection the server may have closed.
-    const { reminders } = (await p.evaluate((url) => fetch(url).then((r) => r.json()), `${base}/api/reminders`)) as { reminders: { title: string }[] };
+    const { reminders } = (await (await local(p).get('/reminders')).json()) as { reminders: { title: string }[] };
     if (reminders.some((r) => r.title === TASK)) return;
     await p.waitForTimeout(250);
   }
-  throw new Error('the reminder never reached the server');
+  throw new Error('the reminder was never saved');
 });
 
 await check('a photo added to the task shows as a tile and can be removed', async (p) => {
@@ -178,7 +179,7 @@ await check('removing a task, then undoing it', async (p) => {
   // The previous snackbar may still be fading out, so take the newest Undo.
   await p.getByRole('button', { name: 'Undo' }).last().click();
   await p.waitForTimeout(600);
-  const res = await p.request.get(`${base}/api/tasks?q=${encodeURIComponent(TASK)}`);
+  const res = await local(p).get(`/tasks?q=${encodeURIComponent(TASK)}`);
   const { tasks } = (await res.json()) as { tasks: unknown[] };
   if (tasks.length !== 1) throw new Error('task was not restored');
 });
@@ -210,27 +211,27 @@ await check('the grocery list plans its run as one task', async (p) => {
   await p.getByRole('dialog', { name: 'Plan Grocery run' }).getByText('Tomorrow').click();
   await p.getByRole('link', { name: 'Grocery run · Tomorrow' }).click();
   await p.getByRole('link', { name: /^Groceries/ }).waitFor({ timeout: 5000 });
-  const { tasks } = (await (await p.request.get(`${base}/api/tasks?q=Grocery%20run`)).json()) as { tasks: { id: string; listName: string | null }[] };
+  const { tasks } = (await (await local(p).get(`/tasks?q=Grocery%20run`)).json()) as { tasks: { id: string; listName: string | null }[] };
   if (tasks[0]?.listName !== 'Groceries') throw new Error('the grocery run is not linked to Groceries');
-  await p.request.post(`${base}/api/tasks/${tasks[0].id}/archive`, { data: {} });
+  await local(p).post(`/tasks/${tasks[0].id}/archive`, { data: {} });
 });
 
 await check("a meal's ingredients go to Groceries, each in its aisle", async (p) => {
-  const { group } = (await (await p.request.post(`${base}/api/groups`, { data: { name: `Meals ${run}`, kind: 'list', template: 'meals' } })).json()) as { group: { id: string } };
-  await p.request.post(`${base}/api/lists/${group.id}/items`, { data: { name: 'Tacos', section: 'Friday', parts: ['Tortillas', 'Salsa'] } });
+  const { group } = (await (await local(p).post(`/groups`, { data: { name: `Meals ${run}`, kind: 'list', template: 'meals' } })).json()) as { group: { id: string } };
+  await local(p).post(`/lists/${group.id}/items`, { data: { name: 'Tacos', section: 'Friday', parts: ['Tortillas', 'Salsa'] } });
   await p.goto(`${base}/list/${group.id}`);
   await p.getByRole('button', { name: /^Tacos/ }).click({ button: 'right' });
   await p.getByRole('button', { name: 'Add all 2 to Groceries' }).click();
   await until(p, 'Added 2 to Groceries');
   for (let i = 0; i < 20; i++) {
     await p.waitForTimeout(250);
-    const groceries = (await (await p.request.get(`${base}/api/groups`)).json()) as { groups: { id: string; template: string | null }[] };
+    const groceries = (await (await local(p).get(`/groups`)).json()) as { groups: { id: string; template: string | null }[] };
     const id = groceries.groups.find((g) => g.template === 'groceries')!.id;
-    const { open } = (await (await p.request.get(`${base}/api/lists/${id}`)).json()) as { open: { name: string; section: string | null }[] };
+    const { open } = (await (await local(p).get(`/lists/${id}`)).json()) as { open: { name: string; section: string | null }[] };
     const placed = Object.fromEntries(open.map((i) => [i.name, i.section]));
     if (placed.Tortillas === 'Bakery' && placed.Salsa === 'Pantry') {
-      for (const name of ['Tortillas', 'Salsa']) await p.request.post(`${base}/api/lists/${id}/items/${encodeURIComponent(name)}/check`, { data: { checked: true } });
-      await p.request.post(`${base}/api/groups/${group.id}/archive`, { data: {} });
+      for (const name of ['Tortillas', 'Salsa']) await local(p).post(`/lists/${id}/items/${encodeURIComponent(name)}/check`, { data: { checked: true } });
+      await local(p).post(`/groups/${group.id}/archive`, { data: {} });
       return;
     }
   }
@@ -276,7 +277,7 @@ await check("the calendar's day sheet pulls a task in from the backlog", async (
     if (d.getHours() < 4) d.setDate(d.getDate() - 1);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   });
-  await p.request.post(`${base}/api/tasks`, { data: { title, mustDo: true, dueDate: today } });
+  await local(p).post(`/tasks`, { data: { title, mustDo: true, dueDate: today } });
   await p.goto(`${base}/calendar`);
   await p.getByRole('radio', { name: 'Week' }).click();
   await p.getByRole('button', { name: /^Today ·/ }).click();
@@ -313,7 +314,7 @@ await check('settings rename a group, archive it and bring it back', async (p) =
   await until(p, `Archived ${GROUP} beds`);
   await p.getByRole('button', { name: 'Undo' }).last().click();
   await p.waitForTimeout(600);
-  const { groups } = (await (await p.request.get(`${base}/api/groups`)).json()) as { groups: { name: string }[] };
+  const { groups } = (await (await local(p).get(`/groups`)).json()) as { groups: { name: string }[] };
   if (!groups.some((g) => g.name === `${GROUP} beds`)) throw new Error('group was not restored');
 });
 
@@ -325,7 +326,7 @@ await check('pinning capacity changes how full today is, and unpinning goes back
     return d.toLocaleDateString(undefined, { weekday: 'long' });
   });
   // Before the calendar's adjustment, which scales the pinned number along with everything else.
-  const capacity = async () => ((await (await p.request.get(`${base}/api/today`)).json()) as { load: { baseCapacityMinutes: number } }).load.baseCapacityMinutes;
+  const capacity = async () => ((await (await local(p).get(`/today`)).json()) as { load: { baseCapacityMinutes: number } }).load.baseCapacityMinutes;
   const before = await capacity();
   await p.getByRole('button', { name: `More time on ${day}` }).click();
   await p.waitForTimeout(1200);
@@ -338,13 +339,13 @@ await check('pinning capacity changes how full today is, and unpinning goes back
 
 await check('a repeating task comes back after it is finished', async (p) => {
   const title = `Smoke ${run}: bins out`;
-  const created = await p.request.post(`${base}/api/tasks`, { data: { title, repeat: { mode: 'schedule', every: 1, unit: 'day' } } });
+  const created = await local(p).post(`/tasks`, { data: { title, repeat: { mode: 'schedule', every: 1, unit: 'day' } } });
   const { task } = (await created.json()) as { task: { id: string } };
   await p.goto(`${base}/task/${task.id}`);
   await until(p, 'Every day');
   await p.getByRole('checkbox', { name: 'Complete' }).click();
   await p.waitForTimeout(800);
-  const { tasks } = (await (await p.request.get(`${base}/api/tasks?q=${encodeURIComponent(title)}`)).json()) as { tasks: { id: string }[] };
+  const { tasks } = (await (await local(p).get(`/tasks?q=${encodeURIComponent(title)}`)).json()) as { tasks: { id: string }[] };
   if (tasks.length !== 1 || tasks[0]!.id === task.id) throw new Error('no next one was made');
   await p.goto(`${base}/task/${tasks[0]!.id}`);
   await p.getByRole('button', { name: 'Skip next' }).click();
@@ -372,9 +373,9 @@ await check('a packing list starts from its template and resets for the next tri
 });
 
 await check('smart add reads what was typed and saves it after review', async (p) => {
-  const ai = (await (await p.request.get(`${base}/api/ai`)).json()) as { available: boolean };
+  const ai = (await (await local(p).get(`/ai`)).json()) as { available: boolean };
   if (!ai.available) return console.log('   (skipped: no AI model on this server)');
-  await p.request.patch(`${base}/api/me`, { data: { smartAdd: true } });
+  await local(p).patch(`/me`, { data: { smartAdd: true } });
   await p.goto(`${base}/`);
   await p.getByRole('button', { name: 'Add a task' }).click();
   await p.getByLabel('What to add').fill('water the ferns every sunday');
@@ -383,30 +384,30 @@ await check('smart add reads what was typed and saves it after review', async (p
   await p.getByText("Here's what I got").first().waitFor({ timeout: 20000 });
   await p.getByRole('button', { name: /^Add (all )?\d+$/ }).click();
   await p.getByRole('dialog', { name: 'Add' }).waitFor({ state: 'detached', timeout: 8000 });
-  const { tasks } = (await (await p.request.get(`${base}/api/tasks?q=ferns`)).json()) as { tasks: { id: string; repeat: { weekdays?: number[] } | null }[] };
+  const { tasks } = (await (await local(p).get(`/tasks?q=ferns`)).json()) as { tasks: { id: string; repeat: { weekdays?: number[] } | null }[] };
   const ferns = tasks.find((t) => t.repeat?.weekdays?.includes(7));
   if (!ferns) throw new Error('no repeating ferns task');
-  await p.request.post(`${base}/api/tasks/${ferns.id}/archive`, { data: {} });
+  await local(p).post(`/tasks/${ferns.id}/archive`, { data: {} });
 });
 
 await check('a task due later offers the day with the most room, and plans it there', async (p) => {
   const due = new Date(Date.now() + 4 * 86_400_000).toISOString().slice(0, 10);
-  const { task } = (await (await p.request.post(`${base}/api/tasks`, { data: { title: `Smoke ${run}: insurance form`, dueDate: due, estimateMinutes: 30 } })).json()) as { task: { id: string } };
+  const { task } = (await (await local(p).post(`/tasks`, { data: { title: `Smoke ${run}: insurance form`, dueDate: due, estimateMinutes: 30 } })).json()) as { task: { id: string } };
   await p.goto(`${base}/task/${task.id}`);
   await until(p, /has the most room before it's due|is the lightest/);
   await p.getByRole('button', { name: 'Plan it' }).click();
   await until(p, /^Moved to /);
-  // The move goes out through the outbox; give it a moment to reach the server.
+  // Give the move a moment to be saved.
   let planned: string | null = null;
   for (let i = 0; i < 20 && !planned; i++) {
     await p.waitForTimeout(250);
-    planned = ((await (await p.request.get(`${base}/api/tasks/${task.id}`)).json()) as { task: { plannedDate: string | null } }).task.plannedDate;
+    planned = ((await (await local(p).get(`/tasks/${task.id}`)).json()) as { task: { plannedDate: string | null } }).task.plannedDate;
   }
   if (!planned || planned > due) throw new Error(`planned for ${planned}, due ${due}`);
 });
 
 await check('plan my week proposes days and plans what was kept', async (p) => {
-  await p.request.post(`${base}/api/tasks`, { data: { title: `Smoke ${run}: sort the garage shelves`, estimateMinutes: 20 } });
+  await local(p).post(`/tasks`, { data: { title: `Smoke ${run}: sort the garage shelves`, estimateMinutes: 20 } });
   await p.goto(`${base}/calendar`);
   await p.getByRole('button', { name: 'Plan my week' }).click();
   const make = p.getByRole('button', { name: 'Make a plan' });
@@ -417,12 +418,10 @@ await check('plan my week proposes days and plans what was kept', async (p) => {
   await until(p, /^Planned /);
 });
 
-await check('the calendars page explains itself and offers to connect', async (p) => {
+await check('the calendars page explains itself and points to the phone', async (p) => {
   await p.goto(`${base}/settings/calendars`);
   await until(p, 'Plan around your calendar');
-  const calendars = (await (await p.request.get(`${base}/api/calendars`)).json()) as { enabled: boolean };
-  if (calendars.enabled) await p.getByRole('button', { name: /Connect (Google Calendar|another Google account)/ }).waitFor();
-  else await until(p, "Calendar sync isn't set up on this server");
+  await until(p, /Amble app on your Android phone|Your phone has shared how busy/);
 });
 
 await check('on a tablet a task opens beside the backlog, the next takes its place, and Back closes it', async (p) => {

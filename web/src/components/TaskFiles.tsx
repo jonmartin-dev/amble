@@ -10,13 +10,12 @@ import Draft from '~icons/material-symbols/draft-outline-rounded';
 import ImageIcon from '~icons/material-symbols/image-outline-rounded';
 import Movie from '~icons/material-symbols/movie-outline-rounded';
 import Pdf from '~icons/material-symbols/picture-as-pdf-outline-rounded';
-import { appUrl, send as sendRequest, type Task, type TaskFile } from '../lib/api.ts';
-import { deviceFetch, onDevice } from '../lib/device.ts';
+import { send as sendRequest, type Task, type TaskFile } from '../lib/api.ts';
+import { deviceFetch } from '../lib/device.ts';
 import { editTask } from '../lib/local.ts';
 import { expressive } from '../lib/motion.ts';
 import { refreshViews, useSend } from '../lib/mutations.ts';
 import { useSnackbar } from '../lib/snackbar.tsx';
-import { useSyncState } from '../lib/sync.ts';
 import { useBackToClose } from '../lib/viewport.ts';
 
 // Photos get a smaller copy this many pixels across, for the task page and for Claude.
@@ -24,16 +23,12 @@ const PREVIEW_PX = 1600;
 
 const filePath = (f: TaskFile, download = false) => `/files/${f.id}${download ? '?download=1' : ''}`;
 const previewPath = (f: TaskFile) => `/files/${f.id}/preview`;
-const fileUrl = (f: TaskFile, download = false) => appUrl(`/api${filePath(f, download)}`);
 
-/**
- * Where to show a file from: its address on the server, or on a device (where there's no server to
- * ask), a copy read from the device's own store.
- */
+/** Where to show a file from: a copy read from the device's own store. */
 function useFileSrc(path: string | null) {
-  const [src, setSrc] = useState<string | null>(() => (onDevice || !path ? null : appUrl(`/api${path}`)));
+  const [src, setSrc] = useState<string | null>(null);
   useEffect(() => {
-    if (!onDevice || !path) return;
+    if (!path) return;
     let url: string | null = null;
     let gone = false;
     void deviceFetch(path)
@@ -52,7 +47,7 @@ function useFileSrc(path: string | null) {
   return src;
 }
 
-/** On a device, opening or downloading a file means making a copy for the browser to show. */
+/** Opening or downloading a file means making a copy for the browser to show. */
 async function openOnDevice(f: TaskFile, download: boolean) {
   const res = await deviceFetch(filePath(f, download));
   if (!res.ok) return;
@@ -68,7 +63,6 @@ async function openOnDevice(f: TaskFile, download: boolean) {
 
 /** Props for a link that opens or downloads a file, wherever it's kept. */
 function fileLink(f: TaskFile, download: boolean) {
-  if (!onDevice) return download ? { href: fileUrl(f, true), download: f.name } : { href: fileUrl(f), target: '_blank', rel: 'noreferrer' };
   return {
     href: '#',
     onClick: (e: React.MouseEvent) => {
@@ -96,38 +90,17 @@ function FileIcon({ mime, className }: { mime: string; className?: string }) {
   return <Draft className={className} aria-hidden />;
 }
 
-/** Sends a file straight to the server, reporting how far along it is. */
+/** Keeps a file in the device's own store. */
 async function upload(taskId: string, file: File, onProgress: (share: number) => void): Promise<TaskFile> {
-  if (onDevice) {
-    const res = await deviceFetch(`/tasks/${taskId}/files?name=${encodeURIComponent(file.name)}`, {
-      method: 'POST',
-      headers: { 'Content-Type': file.type || 'application/octet-stream' },
-      body: file,
-    });
-    const body = (await res.json().catch(() => null)) as { file?: TaskFile; error?: string } | null;
-    if (!res.ok || !body?.file) throw new Error(body?.error ?? `Couldn't add ${file.name}.`);
-    onProgress(1);
-    return body.file;
-  }
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', appUrl(`/api/tasks/${taskId}/files?name=${encodeURIComponent(file.name)}`));
-    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
-    xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
-    xhr.onload = () => {
-      const body = (() => {
-        try {
-          return JSON.parse(xhr.responseText) as { file?: TaskFile; error?: string };
-        } catch {
-          return null; // An error page from something in between.
-        }
-      })();
-      if (xhr.status < 300 && body?.file) resolve(body.file);
-      else reject(new Error(body?.error ?? `Couldn't add ${file.name} (${xhr.status}).`));
-    };
-    xhr.onerror = () => reject(new Error(`Couldn't add ${file.name}. Check the connection and try again.`));
-    xhr.send(file);
+  const res = await deviceFetch(`/tasks/${taskId}/files?name=${encodeURIComponent(file.name)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': file.type || 'application/octet-stream' },
+    body: file,
   });
+  const body = (await res.json().catch(() => null)) as { file?: TaskFile; error?: string } | null;
+  if (!res.ok || !body?.file) throw new Error(body?.error ?? `Couldn't add ${file.name}.`);
+  onProgress(1);
+  return body.file;
 }
 
 /** A smaller copy of a photo, turned the right way up, or null if it's small already or can't be read. */
@@ -217,8 +190,6 @@ export function TaskFiles({ task }: { task: Task }) {
   const qc = useQueryClient();
   const snack = useSnackbar();
   const send = useSend();
-  // On a device the file goes into its own store, so no connection is needed.
-  const online = useSyncState().online || onDevice;
   const picker = useRef<HTMLInputElement>(null);
   const [uploads, setUploads] = useState<{ key: string; name: string; progress: number }[]>([]);
   const [viewing, setViewing] = useState<TaskFile | null>(null);
@@ -318,12 +289,11 @@ export function TaskFiles({ task }: { task: Task }) {
       )}
       <button
         type="button"
-        disabled={!online}
         onClick={() => picker.current?.click()}
         className="flex items-center gap-3 rounded-2xl px-3 py-2.5 text-left text-on-surface-variant transition-colors hover:bg-surface-high disabled:opacity-50"
       >
         <AttachFile className="size-5" aria-hidden />
-        <span>{online ? 'Add a photo or file' : 'Adding files needs a connection'}</span>
+        <span>Add a photo or file</span>
       </button>
       <input
         ref={picker}

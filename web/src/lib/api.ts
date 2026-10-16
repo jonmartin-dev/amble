@@ -1,19 +1,14 @@
 import type { AiEffort, AiProviderId } from '../../../shared/ai.ts';
 import type { Proposal } from '../../../shared/proposals.ts';
 import type { Repeat } from '../../../shared/repeat.ts';
-import { deviceFetch, onDevice } from './device.ts';
+import { basePath, deviceFetch } from './device.ts';
 import type { ThemePrefs } from './theme.ts';
 
 export type { Repeat, Proposal };
+export { basePath };
 
-declare global {
-  interface Window {
-    __AMBLE__?: { basePath: string };
-  }
-}
-
-// The server writes its base path into the page; a device build is told it when it's built.
-export const basePath = window.__AMBLE__?.basePath ?? (onDevice ? import.meta.env.BASE_URL.replace(/\/$/, '') : '');
+/** The Amble server this app was served from, if it was: the household can sync with it. */
+export const servedBy = window.__AMBLE__?.server ?? null;
 
 export const appUrl = (path: string) => `${basePath}${path}`;
 
@@ -28,9 +23,9 @@ export class ApiError extends Error {
 /** Status 0: the request never reached the server. */
 export const OFFLINE_MESSAGE = "You're offline, so that didn't go through. Try again once you're connected.";
 
-/** fetch() for a path under /api: over the network, or to the API running on this device. */
+/** fetch() for a path under /api: the API running on this device. */
 export function send(path: string, init?: RequestInit): Promise<Response> {
-  return onDevice ? deviceFetch(path, init) : fetch(appUrl(`/api${path}`), init);
+  return deviceFetch(path, init);
 }
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {

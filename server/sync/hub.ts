@@ -224,7 +224,7 @@ export function registerSyncHub(app: Hono<Env>, { db, config, service, schema, a
     const challenge = String(form.code_challenge ?? '');
     const member = c.get('member');
     if (!allowedReturn(redirectUri) || !challenge) return problem(c, 'The request is missing a part. Start again.');
-    if (!member) return c.redirect(appUrl('/signin?error=expired'));
+    if (!member) return c.redirect(appUrl('/auth/signin?error=expired'));
     const back = new URL(redirectUri);
     back.searchParams.set('state', state);
     if (form.allow !== '1') {

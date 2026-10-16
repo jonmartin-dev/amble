@@ -1,10 +1,12 @@
 // Captures the phone-sized screenshots shown in the README, from the demo household.
-// Needs `pnpm dev` running on a demo database (see scripts/demo.ts) and Chrome installed.
+// Needs an Amble server with AMBLE_DEV_LOGIN=1 serving the built app on a demo database (see
+// scripts/demo.ts), and Chrome installed.
 // Usage: node scripts/readme-shots.ts [email]   -> docs/screenshots/*.png
 import fs from 'node:fs';
 import { chromium, type Page } from 'playwright-core';
+import { joinHousehold, local, syncNow } from './lib/household.ts';
 
-const base = process.env.AMBLE_URL ?? 'http://localhost:5173';
+const base = process.env.AMBLE_URL ?? 'http://localhost:8787';
 const email = process.argv[2] ?? 'sam@example.com';
 const out = 'docs/screenshots';
 const light = { mode: 'light', seed: '#2e6a57', style: 'tonal', contrast: 0 };
@@ -26,8 +28,8 @@ const browser = await chromium.launch({ channel: 'chrome' });
 const errors: string[] = [];
 
 const signIn = async (page: Page) => {
-  await page.goto(`${base}/auth/dev?email=${encodeURIComponent(email)}`);
-  const session = (await (await page.request.get(`${base}/api/session`)).json()) as { member: { theme: unknown } | null };
+  await joinHousehold(page, base, email);
+  const session = (await (await local(page).get(`/session`)).json()) as { member: { theme: unknown } | null };
   if (!session.member) throw new Error(`Dev sign-in failed for ${email}. Is the demo database running?`);
   return session.member.theme;
 };
@@ -35,8 +37,8 @@ const signIn = async (page: Page) => {
 // Find the demo's richest task and its grocery list.
 const probe = await browser.newPage();
 const originalTheme = await signIn(probe);
-const { tasks } = (await (await probe.request.get(`${base}/api/tasks`)).json()) as { tasks: { id: string; subtasks: unknown[]; links: unknown[] }[] };
-const { groups } = (await (await probe.request.get(`${base}/api/groups`)).json()) as { groups: { id: string; template: string | null }[] };
+const { tasks } = (await (await local(probe).get(`/tasks`)).json()) as { tasks: { id: string; subtasks: unknown[]; links: unknown[] }[] };
+const { groups } = (await (await local(probe).get(`/groups`)).json()) as { groups: { id: string; template: string | null }[] };
 await probe.close();
 const rich = [...tasks].sort((a, b) => b.subtasks.length + b.links.length - (a.subtasks.length + a.links.length))[0];
 const groceries = groups.find((g) => g.template === 'groceries');
@@ -91,8 +93,8 @@ for (const shot of shots) {
   page.on('pageerror', (e) => errors.push(`${shot.name}: ${e.message}`));
   page.on('console', (m) => m.type() === 'error' && errors.push(`${shot.name}: ${m.text()}`));
   await signIn(page);
-  // Saved as the member's theme too, so the server copy doesn't override it.
-  await page.request.patch(`${base}/api/me`, { data: { theme: shot.theme } });
+  // Saved as the member's theme too, so the household's copy doesn't override it.
+  await local(page).patch(`/me`, { data: { theme: shot.theme } });
   await page.evaluate((t) => localStorage.setItem('almanac-theme', JSON.stringify(t)), shot.theme);
   await shot.open(page);
   await page.waitForTimeout(900);
@@ -104,7 +106,8 @@ for (const shot of shots) {
 
 const restore = await browser.newPage();
 await signIn(restore);
-await restore.request.patch(`${base}/api/me`, { data: { theme: originalTheme } });
+await local(restore).patch(`/me`, { data: { theme: originalTheme } });
+await syncNow(restore);
 await browser.close();
 if (errors.length) {
   console.error(`\n${errors.length} browser errors:\n${errors.join('\n')}`);

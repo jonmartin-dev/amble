@@ -1,11 +1,11 @@
-// Sends the reminders whose time has come. The scheduler runs it every minute.
+// Shows the reminders whose time has come, on the device that runs it. The scheduler runs it every minute.
 import type { Db } from '../db/index.ts';
 import type { Member, Task } from '../db/schema.ts';
 import { dueReminders, markReminder } from '../domain/reminders.ts';
 import { addDays, planningDate } from '../lib/dates.ts';
-import type { Push } from './push.ts';
+import type { Push } from './devices.ts';
 
-// Past this, the moment has gone (the server was down at the time), so it isn't sent late.
+// Past this, the moment has gone (Amble wasn't open at the time), so it isn't shown late.
 const STALE_MS = 6 * 60 * 60 * 1000;
 // Devices that couldn't be reached get another try each minute for this long.
 const RETRY_FOR_MS = 30 * 60 * 1000;
