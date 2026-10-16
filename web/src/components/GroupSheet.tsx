@@ -107,7 +107,8 @@ export function GroupSheet({ open, onClose, group }: { open: boolean; onClose: (
             aria-checked={icon === i}
             aria-label={i}
             onClick={() => setIcon(i)}
-            animate={{ borderRadius: icon === i ? 14 : 999 }}
+            // In percent, both ways: from 999px the change would only show at the very end.
+            animate={{ borderRadius: icon === i ? '35%' : '50%' }}
             transition={expressive.fastSpatial}
             className={`grid size-10 place-items-center ${icon === i ? tone(color) : 'bg-surface-high text-on-surface-variant'}`}
           >
@@ -212,7 +213,7 @@ export function GroupSheet({ open, onClose, group }: { open: boolean; onClose: (
                     }`}
                   >
                     <motion.span
-                      animate={{ borderRadius: on ? 14 : 999 }}
+                      animate={{ borderRadius: on ? '35%' : '50%' }}
                       transition={expressive.fastSpatial}
                       className={`grid size-10 place-items-center ${tone(t.id === 'default' ? color : t.color)}`}
                     >

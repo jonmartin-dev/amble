@@ -153,12 +153,23 @@ export function ButtonGroup<T extends string | number>({
   label: string;
   size?: 'sm' | 'md';
 }) {
+  // M3 Expressive's connected button group: round outer ends, 8dp inner corners that tighten to
+  // 4dp while pressed, and the selected one fully round. Round is exactly half the height: a larger
+  // number makes the browser scale every corner of the button down to fit, squaring the inner ones
+  // and making the shape jump as it animates.
+  const round = size === 'sm' ? 20 : 24;
   return (
     <div role="radiogroup" aria-label={label} className="flex gap-0.5">
       {options.map((o, i) => {
         const on = o.value === value;
         const first = i === 0;
         const last = i === options.length - 1;
+        const corners = (inner: number) => ({
+          borderTopLeftRadius: on || first ? round : inner,
+          borderBottomLeftRadius: on || first ? round : inner,
+          borderTopRightRadius: on || last ? round : inner,
+          borderBottomRightRadius: on || last ? round : inner,
+        });
         return (
           <motion.button
             key={String(o.value)}
@@ -167,14 +178,9 @@ export function ButtonGroup<T extends string | number>({
             aria-checked={on}
             onClick={() => onChange(o.value)}
             initial={false}
-            animate={{
-              borderTopLeftRadius: on || first ? 999 : 8,
-              borderBottomLeftRadius: on || first ? 999 : 8,
-              borderTopRightRadius: on || last ? 999 : 8,
-              borderBottomRightRadius: on || last ? 999 : 8,
-            }}
+            animate={corners(8)}
             transition={expressive.fastSpatial}
-            whileTap={{ scale: 0.96 }}
+            whileTap={corners(4)}
             className={`flex flex-1 items-center justify-center gap-2 text-sm font-medium transition-colors ${size === 'sm' ? 'h-10' : 'h-12'} ${
               on ? 'bg-primary text-on-primary' : 'bg-surface-high text-on-surface'
             }`}

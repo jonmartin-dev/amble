@@ -30,7 +30,8 @@ function Swatch({ hex, selected, prefs, onPick, label }: { hex: string | 'phone'
       aria-checked={selected}
       aria-label={label}
       onClick={onPick}
-      animate={{ borderRadius: selected ? 20 : 999 }}
+      // In percent, both ways: from 999px the change would only show at the very end.
+      animate={{ borderRadius: selected ? '28%' : '50%' }}
       whileTap={{ scale: 0.9 }}
       transition={expressive.fastSpatial}
       className="relative grid aspect-square w-full place-items-center overflow-hidden bg-surface-high"
