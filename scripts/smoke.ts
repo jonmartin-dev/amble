@@ -220,6 +220,10 @@ await check('the grocery list plans its run as one task', async (p) => {
 });
 
 await check("a meal's ingredients go to Groceries, each in its aisle", async (p) => {
+  const groceries = (await (await local(p).get(`/groups`)).json()) as { groups: { id: string; template: string | null }[] };
+  const id = groceries.groups.find((g) => g.template === 'groceries')!.id;
+  // A run that stopped partway leaves them on Groceries; checked off, they come back as added.
+  for (const name of ['Tortillas', 'Salsa']) await local(p).post(`/lists/${id}/items/${encodeURIComponent(name)}/check`, { data: { checked: true } });
   const { group } = (await (await local(p).post(`/groups`, { data: { name: `Meals ${run}`, kind: 'list', template: 'meals' } })).json()) as { group: { id: string } };
   await local(p).post(`/lists/${group.id}/items`, { data: { name: 'Tacos', section: 'Friday', parts: ['Tortillas', 'Salsa'] } });
   await p.goto(`${base}/list/${group.id}`);
@@ -228,8 +232,6 @@ await check("a meal's ingredients go to Groceries, each in its aisle", async (p)
   await until(p, 'Added 2 to Groceries');
   for (let i = 0; i < 20; i++) {
     await p.waitForTimeout(250);
-    const groceries = (await (await local(p).get(`/groups`)).json()) as { groups: { id: string; template: string | null }[] };
-    const id = groceries.groups.find((g) => g.template === 'groceries')!.id;
     const { open } = (await (await local(p).get(`/lists/${id}`)).json()) as { open: { name: string; section: string | null }[] };
     const placed = Object.fromEntries(open.map((i) => [i.name, i.section]));
     if (placed.Tortillas === 'Bakery' && placed.Salsa === 'Pantry') {
@@ -410,7 +412,10 @@ await check('a task due later offers the day with the most room, and plans it th
 });
 
 await check('plan my week proposes days and plans what was kept', async (p) => {
-  await local(p).post(`/tasks`, { data: { title: `Smoke ${run}: sort the garage shelves`, estimateMinutes: 20 } });
+  // Due this week, so it gets a day however full earlier runs left the week; one without a due
+  // date stays in the backlog when no day has room.
+  const due = new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10);
+  await local(p).post(`/tasks`, { data: { title: `Smoke ${run}: sort the garage shelves`, dueDate: due, estimateMinutes: 20 } });
   await p.goto(`${base}/calendar`);
   await p.getByRole('button', { name: 'Plan my week' }).click();
   const make = p.getByRole('button', { name: 'Make a plan' });
