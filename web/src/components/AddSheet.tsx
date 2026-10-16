@@ -112,7 +112,7 @@ function SendButton({ ready, thinking, smart }: { ready: boolean; thinking: bool
       aria-label={thinking ? 'Reading it' : smart ? 'Read it' : 'Add'}
       initial={false}
       animate={{ borderRadius: active ? 18 : 28 }}
-      whileTap={{ scale: 0.9, borderRadius: 14 }}
+      whileTap={{ borderRadius: 12 }}
       transition={expressive.fastSpatial}
       className={`relative grid size-14 shrink-0 place-items-center overflow-hidden transition-colors duration-200 ${
         active ? 'bg-primary text-on-primary' : 'bg-surface-highest text-on-surface-variant'

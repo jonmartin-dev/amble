@@ -143,8 +143,8 @@ export function Welcome() {
     if (to) void navigate({ to });
   };
 
-  const primary = 'rounded-full bg-primary px-6 py-4 text-lg font-medium text-on-primary transition-transform active:scale-[0.97] disabled:opacity-40';
-  const quiet = 'rounded-full px-6 py-3 font-medium text-primary transition-transform active:scale-[0.97] disabled:opacity-40';
+  const primary = 'press h-14 rounded-full bg-primary px-6 text-lg font-medium text-on-primary disabled:opacity-40';
+  const quiet = 'press h-12 rounded-full px-6 font-medium text-primary disabled:opacity-40';
   const here = servedBy ? new URL(servedBy.url).host : null;
 
   return (
@@ -299,7 +299,7 @@ export function PageError({ error }: { error: unknown }) {
         <button
           type="button"
           onClick={() => window.location.reload()}
-          className="rounded-full bg-primary px-6 py-3 font-medium text-on-primary transition-transform active:scale-[0.97]"
+          className="press h-12 rounded-full bg-primary px-6 font-medium text-on-primary"
         >
           Try again
         </button>
@@ -326,7 +326,7 @@ export function StartFailed({ error }: { error: unknown }) {
       <button
         type="button"
         onClick={() => window.location.reload()}
-        className="mt-6 rounded-full bg-primary px-6 py-3 font-medium text-on-primary transition-transform active:scale-[0.97]"
+        className="press mt-6 h-12 rounded-full bg-primary px-6 font-medium text-on-primary"
       >
         Try again
       </button>
@@ -359,7 +359,7 @@ export function DeviceBlocked({ state }: { state: DeviceState }) {
       <button
         type="button"
         onClick={useHere}
-        className="mt-10 rounded-full bg-primary px-6 py-4 text-lg font-medium text-on-primary transition-transform active:scale-[0.97]"
+        className="press mt-10 h-14 rounded-full bg-primary px-6 text-lg font-medium text-on-primary"
       >
         Use it here
       </button>

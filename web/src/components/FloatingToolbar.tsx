@@ -1,7 +1,5 @@
 import { Link, useRouterState } from '@tanstack/react-router';
-import { motion } from 'motion/react';
 import { useRef } from 'react';
-import { expressive } from '../lib/motion.ts';
 import Add from '~icons/material-symbols/add-rounded';
 import Chart from '~icons/material-symbols/bar-chart-rounded';
 import CalendarOutline from '~icons/material-symbols/calendar-month-outline-rounded';
@@ -33,11 +31,11 @@ export function FloatingToolbar({ onAdd, label, away = false }: { onAdd: () => v
 
   return (
     <div
-      className={`toolbar fixed inset-x-0 z-10 flex justify-center gap-3 px-4 medium:hidden ${away ? 'toolbar-away' : ''}`}
+      className={`toolbar fixed inset-x-0 z-10 flex items-center justify-center gap-3 px-4 medium:hidden ${away ? 'toolbar-away' : ''}`}
       style={{ bottom: 'max(1.25rem, env(safe-area-inset-bottom))' }}
       inert={away}
     >
-      <nav aria-label="Main" className="relative flex items-center gap-1 rounded-full bg-surface-highest p-2 shadow-lg">
+      <nav aria-label="Main" className="relative flex items-center gap-1 rounded-full bg-surface-container p-2 shadow-lg">
         {/* One pill that slides between tabs. A CSS transition keeps it on the GPU, so it glides
             the moment a tab is tapped, even while the new page is still being built. */}
         <span
@@ -61,16 +59,9 @@ export function FloatingToolbar({ onAdd, label, away = false }: { onAdd: () => v
           );
         })}
       </nav>
-      <motion.button
-        type="button"
-        aria-label={label}
-        onClick={onAdd}
-        whileTap={{ scale: 0.9, borderRadius: '40%' }}
-        transition={expressive.fastSpatial}
-        className="grid size-16 place-items-center rounded-[1.25rem] bg-primary text-on-primary shadow-lg"
-      >
-        <Add className="size-7" aria-hidden />
-      </motion.button>
+      <button type="button" aria-label={label} onClick={onAdd} className="grid size-14 place-items-center rounded-2xl bg-primary text-on-primary shadow-lg">
+        <Add className="size-6" aria-hidden />
+      </button>
     </div>
   );
 }

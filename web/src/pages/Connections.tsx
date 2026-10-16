@@ -30,10 +30,8 @@ function Address({ url }: { url: string | undefined }) {
       <motion.button
         type="button"
         onClick={() => void copy()}
-        whileTap={{ scale: 0.92 }}
-        transition={expressive.fastSpatial}
         aria-label="Copy address"
-        className="grid size-11 shrink-0 place-items-center rounded-full bg-primary text-on-primary"
+        className="press grid size-11 shrink-0 place-items-center rounded-full bg-primary text-on-primary"
       >
         <AnimatePresence mode="wait" initial={false}>
           <motion.span

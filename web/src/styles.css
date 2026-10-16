@@ -392,17 +392,41 @@ body::before {
   mask-image: linear-gradient(to right, transparent, black 2rem, black calc(100% - 2rem), transparent);
 }
 
-/* A button that gives a little while it's pressed. */
+/* A button whose corners square off a little while it's pressed, as Material 3 Expressive buttons
+   do, rather than shrinking. A fully round corner is an endless radius, which can't be animated
+   from, so a round button's corner is its real half-height (--round), from its height class. The
+   pressed corner is 8px up to 44px tall and 12px from 48px. */
 .press {
   transition:
-    transform 350ms var(--spring-fast),
+    border-radius 350ms var(--spring-fast),
     color 150ms,
     background-color 150ms,
     border-color 150ms,
     opacity 150ms;
 }
+.press:is(.h-9, .size-9) {
+  --round: 1.125rem;
+}
+.press:is(.h-10, .size-10) {
+  --round: 1.25rem;
+}
+.press:is(.h-11, .size-11) {
+  --round: 1.375rem;
+}
+.press:is(.h-12, .size-12) {
+  --round: 1.5rem;
+}
+.press:is(.h-14, .size-14) {
+  --round: 1.75rem;
+}
+.press.rounded-full {
+  border-radius: var(--round, calc(infinity * 1px));
+}
 .press:active:not(:disabled) {
-  transform: scale(0.94);
+  border-radius: 0.75rem;
+}
+.press:is(.h-9, .size-9, .h-10, .size-10, .h-11, .size-11):active:not(:disabled) {
+  border-radius: 0.5rem;
 }
 /* The same for something as wide as a row, which only needs to give a little. */
 .press-soft {

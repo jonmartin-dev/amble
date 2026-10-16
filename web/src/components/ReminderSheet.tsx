@@ -112,15 +112,14 @@ export function ReminderSheet({ task, open, onClose }: { task: Task; open: boole
           ) : (
             <span />
           )}
-          <motion.button
+          <button
             type="button"
-            whileTap={{ scale: 0.96 }}
             disabled={!valid}
             onClick={() => pick(custom)}
-            className="rounded-full bg-primary px-5 py-2.5 text-sm font-medium text-on-primary transition-opacity disabled:opacity-40"
+            className="press h-10 rounded-full bg-primary px-5 text-sm font-medium text-on-primary disabled:opacity-40"
           >
             Set reminder
-          </motion.button>
+          </button>
         </div>
       }
     >

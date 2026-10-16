@@ -135,15 +135,14 @@ export function DaySheet({
                         </span>
                       )}
                     </span>
-                    <motion.button
+                    <button
                       type="button"
-                      whileTap={{ scale: 0.9 }}
                       onClick={() => actions.move(t, date, today)}
                       aria-label={`Plan ${t.title} for this day`}
-                      className="grid size-10 shrink-0 place-items-center rounded-full bg-primary-container text-on-primary-container"
+                      className="press grid size-10 shrink-0 place-items-center rounded-full bg-primary-container text-on-primary-container"
                     >
                       <Add className="size-5" aria-hidden />
-                    </motion.button>
+                    </button>
                   </motion.li>
                 ))}
               </ul>

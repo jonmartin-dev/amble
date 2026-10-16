@@ -1,9 +1,7 @@
 import { Link } from '@tanstack/react-router';
-import { motion } from 'motion/react';
 import Add from '~icons/material-symbols/add-rounded';
 import SettingsOutline from '~icons/material-symbols/settings-outline-rounded';
 import SettingsFilled from '~icons/material-symbols/settings-rounded';
-import { expressive } from '../lib/motion.ts';
 import { NAV_ITEMS } from './FloatingToolbar.tsx';
 
 /**
@@ -18,16 +16,9 @@ export function NavRail({ current, settings, onAdd, label }: { current: string |
       className="fixed inset-y-0 left-0 z-10 hidden flex-col items-center overflow-y-auto pb-4 [scrollbar-width:none] medium:flex"
       style={{ width: 'var(--rail)', paddingTop: 'max(1.5rem, env(safe-area-inset-top))', paddingLeft: 'env(safe-area-inset-left)' }}
     >
-      <motion.button
-        type="button"
-        aria-label={label}
-        onClick={onAdd}
-        whileTap={{ scale: 0.9, borderRadius: '40%' }}
-        transition={expressive.fastSpatial}
-        className="grid size-14 shrink-0 place-items-center rounded-2xl bg-primary text-on-primary shadow-md"
-      >
-        <Add className="size-7" aria-hidden />
-      </motion.button>
+      <button type="button" aria-label={label} onClick={onAdd} className="grid size-14 shrink-0 place-items-center rounded-2xl bg-primary text-on-primary shadow-md">
+        <Add className="size-6" aria-hidden />
+      </button>
       <div className="mt-7 flex flex-col gap-2">
         {NAV_ITEMS.map(({ to, label, Icon, ActiveIcon }) => (
           <RailItem key={to} to={to} label={label} active={current === to} Icon={current === to ? ActiveIcon : Icon} />

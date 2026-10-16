@@ -62,13 +62,7 @@ function SuggestionCard({ s, added, onAdd, onLater, today }: { s: Suggestion; ad
               On today
             </motion.span>
           ) : (
-            <motion.button
-              key="add"
-              type="button"
-              whileTap={{ scale: 0.95 }}
-              onClick={onAdd}
-              className="h-10 rounded-full bg-primary px-5 text-sm font-medium text-on-primary"
-            >
+            <motion.button key="add" type="button" onClick={onAdd} className="press h-10 rounded-full bg-primary px-5 text-sm font-medium text-on-primary">
               Add to today
             </motion.button>
           )}
@@ -217,14 +211,9 @@ export function Briefing() {
         </>
       )}
 
-      <motion.button
-        type="button"
-        whileTap={{ scale: 0.97 }}
-        onClick={() => void navigate({ to: '/' })}
-        className="mt-8 h-14 w-full rounded-full bg-primary text-lg font-medium text-on-primary"
-      >
+      <button type="button" onClick={() => void navigate({ to: '/' })} className="press mt-8 h-14 w-full rounded-full bg-primary text-lg font-medium text-on-primary">
         Start my day
-      </motion.button>
+      </button>
 
       <MoveSheet task={moving} today={today} onClose={() => setMoving(null)} />
     </>
