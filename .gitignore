@@ -14,3 +14,7 @@ SPEC.md
 
 # Where deploy/ssh-deploy.sh ships to by default
 deploy/local.env
+
+# What deploy/setup.sh writes for a server: its secrets, and the .env it replaced
+secrets/
+.env.backup-*

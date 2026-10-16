@@ -100,6 +100,10 @@ For the Claude desktop app, add the same command under `mcpServers` in its confi
 
 A server is one more copy of the household, on a computer you keep. It serves the web app at its own address, keeps the household in step for devices that choose Use my own server, shares photos and files on tasks between them, hosts the connector for Claude and ChatGPT, and keeps the household's AI model, which everyone's devices use. A household that started in Google Drive can move onto it: the server joins the Drive file, and each device is offered a move to the server. Once a household has a server, the server is how it syncs. What the server has to set (the household's AI model, connected assistants, the code to add a phone) is in the app, under Settings, Your server, on any device that syncs with it; the server's own page at `<AMBLE_PUBLIC_URL>/server` has the same, for a browser.
 
+Nobody runs one for you: each household that wants a server runs its own, and most never need one. [docs/self-hosting.md](docs/self-hosting.md) walks through it, written so an AI assistant can take you through it, and `deploy/setup.sh` does most of the work. It asks for the address, the emails and the sign-in client, then writes `.env` and `secrets/`, builds and starts the server, and checks each part. Run `deploy/setup.sh --check` any time to see what needs fixing, and `deploy/setup.sh --update` to update.
+
+By hand, the same thing is:
+
 ```sh
 cp .env.example .env    # set AMBLE_PUBLIC_URL, the emails, OIDC_CLIENT_ID, and AMBLE_DEV_LOGIN=0
 mkdir -p data secrets

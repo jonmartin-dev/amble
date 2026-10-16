@@ -8,3 +8,4 @@ design
 .claude
 *.log
 **/*.test.ts
+.env.backup-*
