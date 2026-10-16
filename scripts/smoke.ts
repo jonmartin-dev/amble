@@ -28,7 +28,8 @@ async function check(name: string, fn: (p: Page) => Promise<void>) {
     process.exitCode = 1;
   }
 }
-const until = (p: Page, text: string | RegExp) => p.getByText(text).first().waitFor({ timeout: 5000 });
+// Visible only: the tabs stay built in the background, and one may say the same thing.
+const until = (p: Page, text: string | RegExp) => p.getByText(text).locator('visible=true').first().waitFor({ timeout: 5000 });
 // Each run makes its own things, so runs against the same database don't collide.
 const run = Date.now().toString(36).slice(-4);
 const TASK = `Smoke ${run}: buy stamps`;
@@ -416,6 +417,9 @@ await check('plan my week proposes days and plans what was kept', async (p) => {
   await plan.waitFor({ timeout: 40000 });
   await plan.click();
   await until(p, /^Planned /);
+  // The sheet closes by going back in history; let that land before the next page.
+  await p.getByRole('dialog').first().waitFor({ state: 'detached', timeout: 5000 });
+  await p.waitForTimeout(500);
 });
 
 await check('the calendars page explains itself and points to the phone', async (p) => {

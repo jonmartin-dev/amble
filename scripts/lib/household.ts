@@ -13,7 +13,8 @@ export async function joinHousehold(page: Page, base: string, email: string) {
   await dev.click();
   await page.getByRole('button', { name: 'Continue' }).click();
   // Back in the app, which brings the household down and then sets this device up as them.
-  await page.waitForURL((u) => u.origin === new URL(base).origin && !u.pathname.startsWith('/auth'), { timeout: 30_000 });
+  const app = new URL(base);
+  await page.waitForURL((u) => u.origin === app.origin && !u.pathname.slice(app.pathname.replace(/\/$/, '').length).startsWith('/auth'), { timeout: 30_000 });
   await page.waitForFunction(() => window.__ambleFetch !== undefined);
   for (let i = 0; i < 120; i++) {
     const { member } = await (await local(page).get('/session')).json();
