@@ -17,6 +17,9 @@ export interface NewTask {
   estimateMinutes?: number | null;
   /** The list it's a trip for, like Groceries for a grocery run. */
   listId?: string | null;
+  repeat?: Repeat | null;
+  /** A reminder for whoever adds it, as an ISO time. */
+  remindAt?: string | null;
 }
 
 export type TaskPatch = Partial<Omit<NewTask, 'assigneeId' | 'listId'>> & {

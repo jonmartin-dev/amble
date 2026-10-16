@@ -13,9 +13,13 @@ import Person from '~icons/material-symbols/person-outline-rounded';
 import Schedule from '~icons/material-symbols/schedule-outline-rounded';
 import TodayIcon from '~icons/material-symbols/today-outline-rounded';
 import Folder from '~icons/material-symbols/folder-outline-rounded';
+import Bell from '~icons/material-symbols/notifications-outline-rounded';
+import RepeatIcon from '~icons/material-symbols/repeat-rounded';
 import type { AddHints } from '../../../shared/proposals.ts';
-import { api, ApiError, type Proposal, type SmartAddResponse, type TimeOfDay } from '../lib/api.ts';
-import { dayLabel, firstName, todayIso } from '../lib/dates.ts';
+import { parseQuick, quickTitle, type QuickField } from '../../../shared/quick.ts';
+import { describeRepeat } from '../../../shared/repeat.ts';
+import { api, ApiError, type Group, type Proposal, type SmartAddResponse, type TimeOfDay } from '../lib/api.ts';
+import { dayLabel, firstName, reminderPhrase, todayIso } from '../lib/dates.ts';
 import { editTask } from '../lib/local.ts';
 import { expressive } from '../lib/motion.ts';
 import { useSend, useTaskActions } from '../lib/mutations.ts';
@@ -166,6 +170,23 @@ const rowMotion = (forward: boolean) => ({
   transition: expressive.fastSpatial,
 });
 
+/** A local date and minutes after midnight, as a moment. */
+function localTime(date: string, minutes: number) {
+  const [y, m, d] = date.split('-').map(Number);
+  return new Date(y!, m! - 1, d!, Math.floor(minutes / 60), minutes % 60);
+}
+
+/** The group a #word names: its name run together ("#homeoffice"), or the start of it ("#err"). */
+function groupNamed(groups: Group[], word: string) {
+  const flat = (name: string) => name.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+  const w = flat(word);
+  const tasks = groups.filter((g) => g.kind === 'tasks');
+  return tasks.find((g) => flat(g.name) === w) ?? (w.length >= 2 ? tasks.find((g) => flat(g.name).startsWith(w)) : undefined);
+}
+
+/** Whether an @word is this person: their first name. */
+const sameName = (m: { name: string }, word: string) => firstName(m.name).toLowerCase() === word.toLowerCase();
+
 // Browsers without `field-sizing` (Safari, for now) get the text box grown by hand.
 const sizesItself = typeof CSS !== 'undefined' && CSS.supports('field-sizing', 'content');
 
@@ -197,6 +218,8 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
   const [time, setTime] = useState<TimeOfDay | null>(null);
   const [mustDo, setMustDo] = useState(false);
   const [explicit, setExplicit] = useState<Set<HintKey>>(new Set());
+  // A reminder or repeat read from the text that the person took off again.
+  const [dropped, setDropped] = useState<Set<'remindAt' | 'repeat'>>(new Set());
   const [picker, setPicker] = useState<Picker>(null);
   const [phase, setPhase] = useState<Phase>('compose');
   const [drafts, setDrafts] = useState<Draft[]>([]);
@@ -218,6 +241,7 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
     setTime(null);
     setMustDo(false);
     setExplicit(new Set());
+    setDropped(new Set());
     setPicker(null);
     setPhase('compose');
     setDrafts([]);
@@ -246,17 +270,51 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
     for (const key of ['today', 'tasks', 'task', 'load', 'groups', 'activity', 'stats', 'list', 'ai']) void qc.invalidateQueries({ queryKey: [key] });
   };
 
-  // Without smart add (or when it can't help), each line becomes a task with the chips' settings.
+  /**
+   * A line as a task: its day, time, reminder and the rest read from the words (shared/quick.ts),
+   * with whatever chip the person tapped winning, and the words of what was used taken out.
+   */
+  const readLine = (line: string) => {
+    const p = parseQuick(line, today);
+    const auto = (key: HintKey) => !explicit.has(key);
+    const used: QuickField[] = [];
+    const take = <T,>(field: QuickField, key: HintKey | null, value: T | undefined, fallback: T): T => {
+      if (value === undefined || (key && !auto(key))) return fallback;
+      used.push(field);
+      return value;
+    };
+    const matchedGroup = p.group ? groupNamed(groups, p.group) : undefined;
+    const matchedPerson = p.person ? members.find((m) => sameName(m, p.person!)) : undefined;
+    const task = {
+      plannedDate: take('plannedDate', 'plannedDate', p.plannedDate, planned),
+      dueDate: take('dueDate', 'dueDate', p.dueDate, due),
+      timeOfDay: take('timeOfDay', 'timeOfDay', p.timeOfDay, time),
+      mustDo: take('mustDo', 'mustDo', p.mustDo, mustDo),
+      groupId: take('group', 'groupId', matchedGroup?.id, groupId),
+      assigneeId: take('person', 'assigneeId', matchedPerson ? (matchedPerson.id === me?.id ? undefined : matchedPerson.id) : undefined, assignee),
+      remindAt: dropped.has('remindAt') ? undefined : take('remindAt', null, p.remindAt, undefined),
+      repeat: dropped.has('repeat') ? undefined : take('repeat', null, p.repeat, undefined),
+    };
+    return { title: quickTitle(line, p, used) || line.trim(), ...task };
+  };
+
+  // Without smart add (or when it can't help), each line becomes a task, read for its day and the rest.
   const addAsTyped = (raw: string, why?: string) => {
-    const titles = raw
+    const lines = raw
       .split('\n')
       .map((l) => l.trim())
       .filter(Boolean);
-    for (const title of titles) {
-      actions.create({ title, plannedDate: planned, dueDate: due, groupId, assigneeId: assignee, timeOfDay: time, mustDo });
+    const titles: string[] = [];
+    for (const line of lines) {
+      const { remindAt, ...t } = readLine(line);
+      titles.push(t.title);
+      // The parser moves a reminder that's gone by; this is for one that went by while the sheet was open.
+      const at = remindAt ? localTime(remindAt.date, remindAt.minutes) : null;
+      actions.create({ ...t, remindAt: at && at > new Date() ? at.toISOString() : null });
     }
     setText('');
     setMustDo(false);
+    setDropped(new Set());
     setPhase('compose');
     setDrafts([]);
     setNotice(`${why ? `${why} ` : ''}Added ${titles.length === 1 ? `"${titles[0]}"` : plural(titles.length, 'task')}.`);
@@ -345,8 +403,12 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
       .finally(() => setApplying(false));
   };
 
-  const group = groups.find((g) => g.id === groupId);
-  const person = assignee === undefined ? 'Me' : assignee === null ? 'Anyone' : firstName(members.find((m) => m.id === assignee)?.name ?? '');
+  // As it's typed (one line, without smart add), the chips show what the words say.
+  const reading = !smart && text.trim() && !text.includes('\n') ? readLine(text) : null;
+  const shown = reading ?? { plannedDate: planned, dueDate: due, timeOfDay: time, mustDo, groupId, assigneeId: assignee, remindAt: undefined, repeat: undefined };
+  const group = groups.find((g) => g.id === shown.groupId);
+  const person =
+    shown.assigneeId === undefined ? 'Me' : shown.assigneeId === null ? 'Anyone' : firstName(members.find((m) => m.id === shown.assigneeId)?.name ?? '');
   const ctx = { today, me: me?.id ?? '', groups, members };
   const toggle = (p: Exclude<Picker, null>) => () => setPicker(picker === p ? null : p);
   const icon = 'size-[1.125rem]';
@@ -354,24 +416,30 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
   // The row under the text: the options, or one option's choices in their place.
   const chips = (
     <ScrollRow className="flex gap-1.5 overflow-x-auto pr-6">
-      <OptionChip on={planned !== null} icon={<TodayIcon className={icon} aria-hidden />} onClick={toggle('when')}>
-        {planned ? dayLabel(planned, today) : 'Someday'}
+      <OptionChip on={shown.plannedDate !== null} icon={<TodayIcon className={icon} aria-hidden />} onClick={toggle('when')}>
+        {shown.plannedDate ? dayLabel(shown.plannedDate, today) : 'Someday'}
       </OptionChip>
       <OptionChip on={!!group} icon={group ? <GroupIcon name={group.icon} className={icon} /> : <Folder className={icon} aria-hidden />} onClick={toggle('group')}>
         {group?.name ?? 'Group'}
       </OptionChip>
       {members.length > 1 && (
-        <OptionChip on={assignee !== undefined} icon={<Person className={icon} aria-hidden />} onClick={toggle('for')}>
+        <OptionChip on={shown.assigneeId !== undefined} icon={<Person className={icon} aria-hidden />} onClick={toggle('for')}>
           {person}
         </OptionChip>
       )}
-      <OptionChip on={!!time} icon={<Schedule className={icon} aria-hidden />} onClick={toggle('time')}>
-        {time ? <span className="capitalize">{time}</span> : 'Any time'}
+      <OptionChip on={!!shown.timeOfDay} icon={<Schedule className={icon} aria-hidden />} onClick={toggle('time')}>
+        {shown.timeOfDay ? <span className="capitalize">{shown.timeOfDay}</span> : 'Any time'}
       </OptionChip>
-      <OptionChip on={mustDo} icon={<Flag className={icon} aria-hidden />} onClick={() => pick('mustDo', setMustDo)(!mustDo)}>
+      <OptionChip on={shown.mustDo} icon={<Flag className={icon} aria-hidden />} onClick={() => pick('mustDo', setMustDo)(!shown.mustDo)}>
         Must do
       </OptionChip>
-      <DateChip keepFocus value={due} min={today} label={due ? `Due ${dayLabel(due, today, true)}` : 'Due'} onPick={pick('dueDate', setDue)} />
+      <DateChip
+        keepFocus
+        value={shown.dueDate}
+        min={today}
+        label={shown.dueDate ? `Due ${dayLabel(shown.dueDate, today, true)}` : 'Due'}
+        onPick={pick('dueDate', setDue)}
+      />
     </ScrollRow>
   );
   const choices = picker && (
@@ -384,17 +452,17 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
       >
         <Close className="size-5" aria-hidden />
       </button>
-      {picker === 'when' && <WhenChips value={planned} today={today} onChange={pick('plannedDate', setPlanned)} />}
-      {picker === 'group' && <GroupChips groups={groups} value={groupId} onChange={pick('groupId', setGroupId)} />}
+      {picker === 'when' && <WhenChips value={shown.plannedDate} today={today} onChange={pick('plannedDate', setPlanned)} />}
+      {picker === 'group' && <GroupChips groups={groups} value={shown.groupId} onChange={pick('groupId', setGroupId)} />}
       {picker === 'for' && (
         <PersonChips
           members={members}
           me={me?.id ?? ''}
-          value={assignee === undefined ? (me?.id ?? null) : assignee}
+          value={shown.assigneeId === undefined ? (me?.id ?? null) : shown.assigneeId}
           onChange={pick('assigneeId', (v: string | null) => setAssignee(v === me?.id ? undefined : v))}
         />
       )}
-      {picker === 'time' && <TimeChips value={time} onChange={pick('timeOfDay', setTime)} />}
+      {picker === 'time' && <TimeChips value={shown.timeOfDay} onChange={pick('timeOfDay', setTime)} />}
     </ScrollRow>
   );
 
@@ -458,6 +526,25 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
           </motion.p>
         )}
       </div>
+      {!thinking && reading && (reading.remindAt || reading.repeat) && (
+        // What the words asked for that has no chip of its own; a tap takes it off again.
+        <div className="mt-2 flex flex-wrap gap-1.5" onPointerDown={keepKeyboard}>
+          {reading.remindAt && (
+            <button type="button" onClick={() => setDropped((d) => new Set(d).add('remindAt'))} className="chip chip-on">
+              <Bell aria-hidden />
+              Remind me {reminderPhrase(localTime(reading.remindAt.date, reading.remindAt.minutes))}
+              <Close className="-mr-2" aria-label="Take it off" />
+            </button>
+          )}
+          {reading.repeat && (
+            <button type="button" onClick={() => setDropped((d) => new Set(d).add('repeat'))} className="chip chip-on">
+              <RepeatIcon aria-hidden />
+              {describeRepeat(reading.repeat, reading.plannedDate)}
+              <Close className="-mr-2" aria-label="Take it off" />
+            </button>
+          )}
+        </div>
+      )}
       <div className="mt-3 flex items-center gap-2">
         <div className="relative min-w-0 flex-1 overflow-hidden" onPointerDown={keepKeyboard}>
           <AnimatePresence mode="popLayout" initial={false}>
