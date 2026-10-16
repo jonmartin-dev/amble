@@ -7,6 +7,8 @@ import { useEffect, useState } from 'react';
 import ErrorIcon from '~icons/material-symbols/error-outline-rounded';
 import { api, ApiError, appUrl, type Member } from '../lib/api.ts';
 import { deviceFailure, useHere, type DeviceState } from '../lib/device.ts';
+import { refreshStatus } from '../lib/drive-sync.ts';
+import { applyUpdate, useUpdateReady } from '../lib/pwa.ts';
 import { googleConfigured, resumeAfterGoogle, tokenFromTap } from '../lib/google.ts';
 import { useServerReturn } from '../lib/server-sync.ts';
 import { ServerForm } from '../components/ServerForm.tsx';
@@ -39,9 +41,12 @@ export function Welcome() {
 
   // Back from signing in on the household's server: the device has its data now.
   useServerReturn('welcome-server', (outcome) => {
-    if (outcome.ok) void qc.invalidateQueries();
+    if (outcome.ok) void joined();
     else setError(outcome.error);
   });
+
+  // Sync is on now: the views and the sync loop (which read "off" when the app opened) catch up.
+  const joined = () => Promise.all([qc.invalidateQueries(), refreshStatus().catch(() => null)]);
 
   /** A second device: whatever this Google account syncs comes in, and the device is theirs. */
   const fromDrive = async () => {
@@ -52,7 +57,7 @@ export function Welcome() {
       const { households } = await api<{ households: { id: string }[] }>('/sync/households', { method: 'POST', body: JSON.stringify({ token }) });
       if (households.length) await joinHousehold('welcome');
       else await api('/sync/connect', { method: 'POST', body: JSON.stringify({ token, mode: 'personal' }) });
-      await qc.invalidateQueries();
+      await joined();
     } catch (err) {
       setError(err instanceof Error ? err.message : "That didn't work. Try again.");
     } finally {
@@ -147,6 +152,42 @@ export function Welcome() {
 }
 
 /** Shown instead of the app while the device's database isn't this tab's to use. */
+/**
+ * A page broke. Says so plainly, with what went wrong (worth passing on), and a way back. A new
+ * version waiting is applied first: a page left open across an update is the likeliest cause.
+ */
+export function PageError({ error }: { error: unknown }) {
+  const updateReady = useUpdateReady();
+  useEffect(() => {
+    console.error(error);
+    if (updateReady) applyUpdate();
+  }, [error, updateReady]);
+  return (
+    <Frame>
+      <div role="alert" className="mt-8 flex gap-3 rounded-3xl bg-warm-container p-4 text-on-warm-container">
+        <ErrorIcon className="mt-0.5 size-5 shrink-0" aria-hidden />
+        <div>
+          <p className="font-medium">This page ran into a problem.</p>
+          <p className="mt-1 text-sm">Your things are fine. Trying again usually sorts it out.</p>
+          {error instanceof Error && <p className="mt-2 text-sm break-words opacity-80">{error.message}</p>}
+        </div>
+      </div>
+      <div className="mt-6 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="rounded-full bg-primary px-6 py-3 font-medium text-on-primary transition-transform active:scale-[0.97]"
+        >
+          Try again
+        </button>
+        <a href={appUrl('/')} className="rounded-full px-6 py-3 font-medium text-primary hover:bg-surface-high">
+          Back to Today
+        </a>
+      </div>
+    </Frame>
+  );
+}
+
 /** Amble on this device didn't answer when the app opened. A new version waiting is applied first (main.tsx). */
 export function StartFailed({ error }: { error: unknown }) {
   return (

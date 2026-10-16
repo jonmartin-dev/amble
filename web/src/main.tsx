@@ -47,7 +47,7 @@ import { Capacity } from './pages/Capacity.tsx';
 import { ConnectionsPage } from './pages/Connections.tsx';
 import { GroupsSettings } from './pages/GroupsSettings.tsx';
 import { Settings } from './pages/Settings.tsx';
-import { DeviceBlocked, StartFailed, Welcome } from './pages/Welcome.tsx';
+import { DeviceBlocked, PageError, StartFailed, Welcome } from './pages/Welcome.tsx';
 import { SyncSettings } from './pages/SyncSettings.tsx';
 import { startDriveSync, syncSoon } from './lib/drive-sync.ts';
 import { takeGoogleReturn } from './lib/google.ts';
@@ -310,6 +310,7 @@ applyTheme(loadLocalTheme());
 const router = createRouter({
   routeTree,
   basepath: basePath || '/',
+  defaultErrorComponent: PageError,
 });
 
 declare module '@tanstack/react-router' {

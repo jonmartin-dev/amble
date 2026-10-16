@@ -189,7 +189,7 @@ export function registerSyncHub(app: Hono<Env>, { db, config, service, schema, a
   // ---- signing a device in ------------------------------------------------------------------
 
   const appUrl = (p: string) => `${base}${p}`;
-  const where = (uri: string) => (uri === APP_RETURN ? 'the Amble app on your phone' : new URL(uri).host);
+  const where = (uri: string) => (uri === APP_RETURN ? 'The Amble app on your phone' : `Amble at ${new URL(uri).host}`);
   const problem = (c: Context<Env>, message: string) =>
     c.html(page("Can't sign in", html`<h1>Can't sign in</h1><p>${message}</p><p class="muted">Start again from Amble on your device.</p>`, { base }), 400);
 
