@@ -147,6 +147,34 @@ describe('calling an OpenAI-style provider', () => {
   });
 });
 
+describe('calling Anthropic for a device', () => {
+  it("sends the device's schema the way Anthropic takes it, with the enums it refuses moved into descriptions", async () => {
+    const sent: { output_config: { format: { schema: unknown } } }[] = [];
+    const fetchImpl = (async (_url: string, init: RequestInit) => {
+      sent.push(JSON.parse(init.body as string));
+      const message = {
+        id: 'msg_1',
+        type: 'message',
+        role: 'assistant',
+        model: 'claude-haiku-5-5',
+        content: [{ type: 'text', text: JSON.stringify({ items: [{ kind: 'note', text: 'hi' }], unclear: '' }) }],
+        stop_reason: 'end_turn',
+        stop_sequence: null,
+        usage: { input_tokens: 10, output_tokens: 5 },
+      };
+      return new Response(JSON.stringify(message), { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as unknown as typeof fetch;
+    const ai = createAi(testConfig, undefined, fetchImpl);
+    const setup = { ...setupFor('anthropic'), apiKey: 'key-for-a-device-schema' };
+    // What the server's /sync/ai passes on: the device's schema, and nothing to check it against.
+    const answer = await ai.complete(setup, { ...request, schema: z.unknown(), jsonSchema: strictSchema(Answer) });
+    expect(answer.output).toEqual({ items: [{ kind: 'note', text: 'hi' }], unclear: '' });
+    const schema = JSON.stringify(sent[0]!.output_config.format.schema);
+    expect(schema).not.toContain('"enum"');
+    expect(schema).toContain('task');
+  });
+});
+
 describe('AI settings', () => {
   let db: Db;
   beforeEach(() => {

@@ -5,6 +5,7 @@
 // with the household's own server, and has no model of its own, asks the server's
 // (server/sync/hub.ts), which keeps the key and the cap.
 import Anthropic from '@anthropic-ai/sdk';
+import { jsonSchemaOutputFormat } from '@anthropic-ai/sdk/helpers/json-schema';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { and, eq, gte, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -179,7 +180,7 @@ export function createAi(
         if (!r) throw new Error('This device stopped syncing with the server.');
         return serverCall(r, req, fetchImpl);
       }
-      return setup.provider === 'anthropic' ? anthropicCall(setup, req) : chatCall(setup, req, fetchImpl);
+      return setup.provider === 'anthropic' ? anthropicCall(setup, req, fetchImpl) : chatCall(setup, req, fetchImpl);
     },
     save(settings) {
       if (!db) throw new Error('No database to keep AI settings in.');
@@ -219,26 +220,36 @@ export function effortFor(setup: AiSetup, wanted: Effort): Effort | null {
 
 // ---- Anthropic ---------------------------------------------------------------------------------
 
-const anthropicClients = new Map<string, Anthropic>();
+const anthropicClients = new Map<string, { client: Anthropic; fetchImpl: typeof fetch }>();
 
-function anthropicFor(setup: AiSetup) {
-  let client = anthropicClients.get(setup.apiKey);
-  if (!client) {
+function anthropicFor(setup: AiSetup, fetchImpl: typeof fetch) {
+  let kept = anthropicClients.get(setup.apiKey);
+  if (kept?.fetchImpl !== fetchImpl) {
     // Smart add waits on this call, so fail fast and fall back rather than hang.
     // On a device the call goes straight from the app's worker, which Anthropic allows when asked.
     const onDevice = typeof document !== 'undefined' || 'WorkerGlobalScope' in globalThis;
-    client = new Anthropic({ apiKey: setup.apiKey, timeout: 45_000, maxRetries: 1, dangerouslyAllowBrowser: onDevice });
-    anthropicClients.set(setup.apiKey, client);
+    const client = new Anthropic({ apiKey: setup.apiKey, timeout: 45_000, maxRetries: 1, dangerouslyAllowBrowser: onDevice, fetch: fetchImpl });
+    anthropicClients.set(setup.apiKey, (kept = { client, fetchImpl }));
   }
-  return client;
+  return kept.client;
 }
 
-/** A call with a JSON Schema that came from elsewhere: the answer is checked against `schema` afterwards. */
-async function anthropicRawCall<T extends z.ZodType>(setup: AiSetup, req: AiRequest<T> & { jsonSchema: Record<string, unknown> }): Promise<AiAnswer<z.output<T>>> {
-  const response = await anthropicFor(setup).messages.create({
+/**
+ * A call with a JSON Schema that came from elsewhere (a device asking the server): the answer is
+ * checked against `schema` afterwards. The schema is written for strict OpenAI-style APIs, so it
+ * goes the way the Anthropic SDK sends one made from zod: what Anthropic refuses in a schema, such
+ * as enums, moves into the descriptions.
+ */
+async function anthropicRawCall<T extends z.ZodType>(
+  setup: AiSetup,
+  req: AiRequest<T> & { jsonSchema: Record<string, unknown> },
+  fetchImpl: typeof fetch,
+): Promise<AiAnswer<z.output<T>>> {
+  const { type, schema } = jsonSchemaOutputFormat(req.jsonSchema as Parameters<typeof jsonSchemaOutputFormat>[0]);
+  const response = await anthropicFor(setup, fetchImpl).messages.create({
     model: setup.model,
     max_tokens: req.maxTokens,
-    output_config: { ...(req.effort && { effort: req.effort }), format: { type: 'json_schema', schema: req.jsonSchema } },
+    output_config: { ...(req.effort && { effort: req.effort }), format: { type, schema } },
     system: req.system,
     messages: [{ role: 'user', content: req.content }],
   });
@@ -265,9 +276,9 @@ function checked<T extends z.ZodType>(schema: T, text: string, usage: AiUsage): 
   return { output: result.data as z.output<T>, problem: null, usage };
 }
 
-async function anthropicCall<T extends z.ZodType>(setup: AiSetup, req: AiRequest<T>): Promise<AiAnswer<z.output<T>>> {
-  if (req.jsonSchema) return anthropicRawCall(setup, { ...req, jsonSchema: req.jsonSchema });
-  const client = anthropicFor(setup);
+async function anthropicCall<T extends z.ZodType>(setup: AiSetup, req: AiRequest<T>, fetchImpl: typeof fetch): Promise<AiAnswer<z.output<T>>> {
+  if (req.jsonSchema) return anthropicRawCall(setup, { ...req, jsonSchema: req.jsonSchema }, fetchImpl);
+  const client = anthropicFor(setup, fetchImpl);
   const response = await client.messages.parse({
     model: setup.model,
     max_tokens: req.maxTokens,
