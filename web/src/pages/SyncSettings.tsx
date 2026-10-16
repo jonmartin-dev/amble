@@ -8,6 +8,7 @@ import CloudSync from '~icons/material-symbols/cloud-sync-outline-rounded';
 import Groups from '~icons/material-symbols/groups-outline-rounded';
 import PersonAdd from '~icons/material-symbols/person-add-outline-rounded';
 import Warning from '~icons/material-symbols/warning-outline-rounded';
+import { CopySection } from '../components/CopySection.tsx';
 import { ListGroup, SectionTitle, SubpageHeader } from '../components/ui.tsx';
 import { api, ApiError, servedBy } from '../lib/api.ts';
 import { refreshStatus, syncNow, useDriveSync, type DriveSyncStatus } from '../lib/drive-sync.ts';
@@ -366,6 +367,8 @@ export function SyncSettings() {
           </button>
         </>
       )}
+
+      <CopySection syncing={!!status?.on} />
     </>
   );
 }

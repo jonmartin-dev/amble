@@ -14,6 +14,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(SystemColorsPlugin.class);
         registerPlugin(PhoneCalendarPlugin.class);
         registerPlugin(CodeScannerPlugin.class);
+        registerPlugin(SaveFilePlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

@@ -10,6 +10,7 @@ import type { Config } from './config.ts';
 import type { Db } from './db/index.ts';
 import { members, serverSettings, type Member } from './db/schema.ts';
 import { seedStarterGroups } from './db/seed.ts';
+import { CopyError, restoredCopy, savedCopy, type CopyEngine } from './domain/copies.ts';
 import type { FileStore } from './domain/files.ts';
 import type { Env } from './env.ts';
 import type { Push } from './notify/devices.ts';
@@ -90,6 +91,7 @@ export function createLocalApp({
   push,
   files,
   sync,
+  copies,
   fetchImpl = fetch,
 }: {
   db: Db;
@@ -98,6 +100,8 @@ export function createLocalApp({
   push: Push;
   files: FileStore;
   sync?: SyncService;
+  /** Saving a copy of everything here to a file, and putting one back; `newestMigration` is when this build's newest was written. */
+  copies?: { engine: CopyEngine; newestMigration: number };
   /** For finding the household's server; tests pass their own. */
   fetchImpl?: typeof fetch;
 }) {
@@ -134,6 +138,9 @@ export function createLocalApp({
     return c.json({ member: startDevice(db, config, parsed.data.name) }, 201);
   });
 
+  // Before setup too, so a new device can start from a copy.
+  if (copies) registerCopies(app, { config, files, sync, ...copies });
+
   app.use('/api/*', async (c, next) => {
     if (!c.get('member')) return c.json({ error: 'Set up Amble on this device first.' }, 401);
     await next();
@@ -144,6 +151,29 @@ export function createLocalApp({
 
   app.all('/api/*', (c) => c.json({ error: 'Not found.' }, 404));
   return app;
+}
+
+/** A copy of everything on this device as a file to keep, and putting one back in place of what's here. */
+function registerCopies(app: Hono<Env>, { config, files, sync, engine, newestMigration }: { config: Config; files: FileStore; sync?: SyncService; engine: CopyEngine; newestMigration: number }) {
+  app.get('/api/copy', async () => {
+    const day = Temporal.Now.plainDateISO(config.timezone).toString();
+    return new Response(await savedCopy(engine, files), {
+      headers: { 'content-type': 'application/vnd.sqlite3', 'content-disposition': `attachment; filename="amble-${day}.amble"` },
+    });
+  });
+
+  // Only where the device doesn't sync: a household's copy already has everything, and putting an
+  // older one in its place here would only fight it.
+  app.post('/api/copy', async (c) => {
+    if (sync?.status().on) return c.json({ error: 'This device keeps in step with your household, which already has everything. To restore a copy here, stop syncing on this device first.' }, 409);
+    try {
+      await engine.replace(await restoredCopy(engine, files, new Uint8Array(await c.req.arrayBuffer()), newestMigration));
+    } catch (err) {
+      if (err instanceof CopyError) return c.json({ error: err.message }, 400);
+      throw err;
+    }
+    return c.json({ restored: true });
+  });
 }
 
 const token = z.object({ token: z.string().min(10).max(4000) });

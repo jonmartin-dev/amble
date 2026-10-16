@@ -8,9 +8,13 @@ import type { PushMessage } from './notify/devices.ts';
 import { drizzleOn, type Db } from './db/open.ts';
 import { readMigrationFiles } from 'drizzle-orm/migrator';
 import { applyMigrations } from './db/open.ts';
-import { asBetterSqlite, WasmClient } from './db/wasm.ts';
+import { asBetterSqlite, openWasmCopy, WasmClient, wasmBytes } from './db/wasm.ts';
 import { fileURLToPath } from 'node:url';
+import fs from 'node:fs';
+import { serverSettings } from './db/schema.ts';
+import type { CopyEngine } from './domain/copies.ts';
 import { memoryFiles } from './lib/memory-files.ts';
+import type { SyncService } from './sync/service.ts';
 
 let sqlite3: Sqlite3Static;
 let db: Db;
@@ -124,5 +128,111 @@ describe('Amble on a device', () => {
     expect((await call('PATCH', `/calendars/${calendars[0].id}`, { counts: false })).json.calendars[0]).toMatchObject({ counts: false });
     expect((await call('DELETE', '/calendars/phone')).status).toBe(204);
     expect((await call('GET', '/calendars')).json).toMatchObject({ on: false, calendars: [] });
+  });
+});
+
+describe('a copy of everything on a device', () => {
+  const migrationsFolder = fileURLToPath(new URL('../drizzle', import.meta.url));
+  const newestMigration = (JSON.parse(fs.readFileSync(`${migrationsFolder}/meta/_journal.json`, 'utf8')) as { entries: { when: number }[] }).entries.at(-1)!.when;
+
+  /** A device with copies, as the worker sets one up; `replaced` gets what a restore would put in place. */
+  function device(sync?: SyncService) {
+    const raw = new sqlite3.oo1.DB(':memory:', 'c');
+    const db = drizzleOn(asBetterSqlite(new WasmClient(sqlite3, raw)));
+    applyMigrations(db, readMigrationFiles({ migrationsFolder }));
+    const files = memoryFiles();
+    const replaced: Uint8Array[] = [];
+    const engine: CopyEngine = { current: () => wasmBytes(sqlite3, raw), open: (bytes) => openWasmCopy(sqlite3, bytes), replace: async (bytes) => void replaced.push(bytes) };
+    const config = deviceConfig('https://amble.example', '', 'America/Chicago');
+    const app = createLocalApp({
+      db,
+      config,
+      ai: createAi(config, db, fetch, { seal: (k) => k, open: (k) => k }),
+      push: createLocalPush(db, async () => true),
+      files,
+      sync,
+      copies: { engine, newestMigration },
+    });
+    const request = (path: string, init?: RequestInit) => app.request(`https://amble.example/api${path}`, init);
+    const post = (path: string, body: unknown) => request(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    return { db, files, replaced, request, post };
+  }
+
+  /** What's in a copy: its settings, its files table, and its tasks. */
+  function look(bytes: Uint8Array) {
+    const copy = openWasmCopy(sqlite3, bytes);
+    try {
+      const rows = <T>(sql: string) => copy.client.prepare(sql).all() as T[];
+      const tables = rows<{ name: string }>(`SELECT name FROM sqlite_master WHERE type = 'table'`).map((t) => t.name);
+      return {
+        settings: Object.fromEntries(rows<{ key: string; value: string }>('SELECT key, value FROM server_settings').map((r) => [r.key, JSON.parse(r.value)])),
+        files: tables.includes('amble_copy_files') ? rows<{ sha256: string }>('SELECT sha256 FROM amble_copy_files').map((f) => f.sha256) : null,
+        tasks: rows<{ title: string }>('SELECT title FROM tasks').map((t) => t.title),
+      };
+    } finally {
+      copy.close();
+    }
+  }
+
+  it("saves everything but the device's sync sign-in and AI key, files included, and a new device starts from it", async () => {
+    const old = device();
+    await old.post('/device/start', { name: 'Sam' });
+    const task = (await (await old.post('/tasks', { title: 'Water the plants' })).json()).task;
+    const upload = await old.request(`/tasks/${task.id}/files?name=note.txt`, { method: 'POST', headers: { 'content-type': 'text/plain' }, body: 'two cups a week' });
+    expect(upload.status).toBe(201);
+    old.db.insert(serverSettings).values({ key: 'ai', value: { provider: 'anthropic', key: 'sk-old' } }).run();
+    old.db.insert(serverSettings).values({ key: 'sync', value: { site: 'old-site', target: null, serverToken: 'old-token' } }).run();
+
+    const saved = await old.request('/copy');
+    expect(saved.headers.get('content-disposition')).toMatch(/^attachment; filename="amble-\d{4}-\d{2}-\d{2}\.amble"$/);
+    const bytes = new Uint8Array(await saved.arrayBuffer());
+    const inside = look(bytes);
+    expect(Object.keys(inside.settings)).toContain('device');
+    expect(inside.settings).not.toHaveProperty('ai');
+    expect(inside.settings).not.toHaveProperty('sync');
+    expect(inside.files).toEqual([...old.files.stored.keys()]);
+
+    // A new phone, never set up, with its own identity and AI key.
+    const fresh = device();
+    fresh.db.insert(serverSettings).values({ key: 'ai', value: { provider: 'gemini', key: 'sk-new' } }).run();
+    fresh.db.insert(serverSettings).values({ key: 'sync', value: { site: 'new-site', target: null } }).run();
+    const restored = await fresh.request('/copy', { method: 'POST', body: bytes });
+    expect(await restored.json()).toEqual({ restored: true });
+    const now = look(fresh.replaced[0]!);
+    expect(now.tasks).toEqual(['Water the plants']);
+    expect(now.files).toBeNull();
+    expect(now.settings.device).toEqual(inside.settings.device);
+    expect(now.settings.sync).toMatchObject({ site: 'new-site' });
+    expect(now.settings.ai).toMatchObject({ key: 'sk-new' });
+    expect(new TextDecoder().decode(fresh.files.stored.get([...old.files.stored.keys()][0]!))).toBe('two cups a week');
+  });
+
+  it("won't restore over a device that syncs, or anything but a copy from this version of Amble or an older one", async () => {
+    const old = device();
+    await old.post('/device/start', { name: 'Sam' });
+    const bytes = new Uint8Array(await (await old.request('/copy')).arrayBuffer());
+
+    const syncing = device({ status: () => ({ on: true }), stamp: () => {} } as unknown as SyncService);
+    const refused = await syncing.request('/copy', { method: 'POST', body: bytes });
+    expect(refused.status).toBe(409);
+    expect(((await refused.json()) as { error: string }).error).toMatch(/stop syncing on this device first/);
+
+    const fresh = device();
+    const restore = async (body: Uint8Array<ArrayBuffer>) => {
+      const res = await fresh.request('/copy', { method: 'POST', body });
+      return { status: res.status, error: ((await res.json()) as { error?: string }).error };
+    };
+    expect(await restore(new TextEncoder().encode('not a database at all'))).toEqual({ status: 400, error: "That file isn't a copy of Amble." });
+    const other = new sqlite3.oo1.DB(':memory:', 'c');
+    other.exec('CREATE TABLE notes (text TEXT)');
+    expect(await restore(wasmBytes(sqlite3, other))).toEqual({ status: 400, error: "That file isn't a copy of Amble." });
+    other.close();
+
+    const newer = openWasmCopy(sqlite3, bytes);
+    newer.client.exec(`UPDATE __drizzle_migrations SET created_at = ${newestMigration + 1} WHERE created_at = ${newestMigration}`);
+    const fromNewer = newer.bytes();
+    newer.close();
+    expect((await restore(fromNewer)).error).toMatch(/newer version of Amble/);
+    expect(fresh.replaced).toHaveLength(0);
   });
 });

@@ -7,7 +7,8 @@ import { createEstimator } from '../../../server/ai/estimate.ts';
 import { createBriefings } from '../../../server/ai/plan.ts';
 import { createAi } from '../../../server/ai/client.ts';
 import { applyMigrations, drizzleOn, migrationsFrom, type Db } from '../../../server/db/open.ts';
-import { asBetterSqlite, WasmClient } from '../../../server/db/wasm.ts';
+import { asBetterSqlite, openWasmCopy, WasmClient, wasmBytes } from '../../../server/db/wasm.ts';
+import type { CopyEngine } from '../../../server/domain/copies.ts';
 import { sweepFiles } from '../../../server/domain/files.ts';
 import { every, startJobs } from '../../../server/jobs.ts';
 import { createLocalApp, deviceAdopt, deviceConfig } from '../../../server/local.ts';
@@ -56,14 +57,27 @@ const showNotification = (message: PushMessage) =>
     post({ type: 'notify', id, message });
   });
 
-async function openDb(sqlite3: Sqlite3Static): Promise<Db> {
+// Set once a restored copy has replaced the database: nothing may use it until the app starts again.
+let restoring = false;
+
+async function openDb(sqlite3: Sqlite3Static) {
   const pool = await sqlite3.installOpfsSAHPoolVfs({ name: 'almanac', initialCapacity: 6 });
   const raw = new pool.OpfsSAHPoolDb(DB_FILE);
   const client = new WasmClient(sqlite3, raw);
   client.pragma('foreign_keys = ON');
   const db = drizzleOn(asBetterSqlite(client));
   applyMigrations(db, await migrationsFrom(journal, (tag) => sqlFiles[`../../../drizzle/${tag}.sql`]!));
-  return db;
+  // Copies of the whole database, saved by hand and put back (server/domain/copies.ts).
+  const copies: CopyEngine = {
+    current: () => wasmBytes(sqlite3, raw),
+    open: (bytes) => openWasmCopy(sqlite3, bytes),
+    async replace(bytes) {
+      restoring = true;
+      client.close();
+      await pool.importDb(DB_FILE, bytes);
+    },
+  };
+  return { db, copies };
 }
 
 async function start() {
@@ -74,7 +88,7 @@ async function start() {
   // Told where the .wasm file is, since the bundler renamed it.
   const load = sqlite3InitModule as unknown as (options: object) => Promise<Sqlite3Static>;
   const sqlite3 = await load({ locateFile: () => wasmUrl, print: () => {}, printErr: (s: string) => console.warn(s) });
-  const db = await openDb(sqlite3);
+  const { db, copies } = await openDb(sqlite3);
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const config = deviceConfig(self.location.origin, basePath, timezone);
   // The key is kept on the device as everything else is; it never leaves it except to the provider.
@@ -87,7 +101,15 @@ async function start() {
   const schema = journal.entries.at(-1)!.tag;
   sync = createSyncService({ db, schema, adopt: deviceAdopt(db, config), files });
   // With the household's server, a file added on another device comes from there the first time it's opened.
-  const app = createLocalApp({ db, config, ai, push, files: filesThroughServer(files, sync, config.maxFileBytes), sync });
+  const app = createLocalApp({
+    db,
+    config,
+    ai,
+    push,
+    files: filesThroughServer(files, sync, config.maxFileBytes),
+    sync,
+    copies: { engine: copies, newestMigration: journal.entries.at(-1)!.when },
+  });
 
   const estimator = createEstimator(db, ai, timezone);
   const briefings = createBriefings(db, ai, timezone);
@@ -123,6 +145,11 @@ ready.then(
 
 async function handle(message: Extract<ToWorker, { type: 'request' }>) {
   const { app, origin, basePath, userAgent } = await ready;
+  if (restoring) {
+    const body = new TextEncoder().encode(JSON.stringify({ error: 'Amble is starting again with the restored copy.' })).buffer as ArrayBuffer;
+    post({ type: 'response', id: message.id, status: 503, headers: [['content-type', 'application/json']], body }, [body]);
+    return;
+  }
   const headers = new Headers(message.headers);
   if (!headers.has('user-agent')) headers.set('user-agent', userAgent);
   const req = new Request(`${origin}${basePath}/api${message.path}`, {

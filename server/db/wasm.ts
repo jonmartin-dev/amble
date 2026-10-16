@@ -195,3 +195,20 @@ export class WasmClient {
 
 /** The client typed as better-sqlite3, which is all drizzle needs to know. */
 export const asBetterSqlite = (client: WasmClient) => client as unknown as BetterDatabase;
+
+/** A whole database as bytes, as it is now. */
+export const wasmBytes = (sqlite3: Sqlite3Static, db: WasmDatabase) => sqlite3.capi.sqlite3_js_db_export(db);
+
+/** A database of its own, in memory, from bytes: for checking or changing a copy (server/domain/copies.ts). */
+export function openWasmCopy(sqlite3: Sqlite3Static, bytes: Uint8Array) {
+  const db = new sqlite3.oo1.DB(':memory:', 'c');
+  const pointer = sqlite3.wasm.allocFromTypedArray(bytes);
+  const { capi } = sqlite3;
+  const rc = capi.sqlite3_deserialize(db.pointer!, 'main', pointer, bytes.byteLength, bytes.byteLength, capi.SQLITE_DESERIALIZE_FREEONCLOSE | capi.SQLITE_DESERIALIZE_RESIZEABLE);
+  if (rc) {
+    db.close();
+    throw new Error(`Couldn't open that database (${capi.sqlite3_js_rc_str(rc)}).`);
+  }
+  const client = new WasmClient(sqlite3, db);
+  return { client: asBetterSqlite(client), bytes: () => wasmBytes(sqlite3, db), close: () => client.close() };
+}

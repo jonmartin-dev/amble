@@ -44,6 +44,25 @@ export async function scanCode(): Promise<string | null> {
   return (await CodeScanner.scan()).value;
 }
 
+const SaveFile = registerPlugin<{
+  pick(options: { name: string; mime: string }): Promise<{ uri: string | null }>;
+  write(options: { uri: string; data: string }): Promise<void>;
+}>('SaveFile');
+
+/**
+ * Saves a file where the person picks, on Android's own save screen (SaveFilePlugin.java): Downloads,
+ * Google Drive or anywhere else it offers. False when they back out. Where first, then the bytes:
+ * they're too big to wait with the save screen.
+ */
+export async function saveFile(name: string, mime: string, bytes: Uint8Array): Promise<boolean> {
+  const { uri } = await SaveFile.pick({ name, mime });
+  if (!uri) return false;
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  await SaveFile.write({ uri, data: btoa(binary) });
+  return true;
+}
+
 /** Reads the phone's Material You colors again (they change with the wallpaper); true if they did. */
 async function refreshPhoneColors() {
   return setPhoneColors((await SystemColors.palettes()).palettes);

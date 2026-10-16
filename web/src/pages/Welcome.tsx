@@ -1,7 +1,7 @@
-// The first screens: what Amble is, then three ways to start. On this device only (Amble asks what
-// to call you), from Google Drive, or with the household's own server; opened from a server, that
-// server rather than Drive. Also the screens for when another tab has the database, the browser
-// won't give Amble storage, or a page breaks.
+// The first screens: what Amble is, then the ways to start. On this device only (Amble asks what
+// to call you), from Google Drive, with the household's own server, or from a saved copy; opened
+// from a server, that server rather than Drive. Also the screens for when another tab has the
+// database, the browser won't give Amble storage, or a page breaks.
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { AnimatePresence, motion } from 'motion/react';
@@ -17,6 +17,7 @@ import { refreshStatus } from '../lib/drive-sync.ts';
 import { applyUpdate, useUpdateReady } from '../lib/pwa.ts';
 import { googleConfigured, resumeAfterGoogle, tokenFromTap } from '../lib/google.ts';
 import { useServerReturn } from '../lib/server-sync.ts';
+import { useRestoreCopy } from '../components/CopySection.tsx';
 import { ServerForm } from '../components/ServerForm.tsx';
 import { joinHousehold } from './SyncSettings.tsx';
 import { expressive } from '../lib/motion.ts';
@@ -78,6 +79,7 @@ export function Welcome() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [server, setServer] = useState(false);
+  const copy = useRestoreCopy();
   // Came from the code: joining comes first, with starting alone a step aside.
   const [joinFirst, setJoinFirst] = useState(joining);
 
@@ -233,6 +235,10 @@ export function Welcome() {
                   Use my own server
                 </button>
               )}
+              <button type="button" onClick={copy.pick} disabled={saving || copy.restoring} className={quiet}>
+                {copy.restoring ? 'Restoring…' : 'Restore a saved copy'}
+              </button>
+              {copy.input}
             </div>
             {server && (
               <div className="mt-3">
