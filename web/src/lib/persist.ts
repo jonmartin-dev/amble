@@ -103,6 +103,6 @@ export function prefetchForOffline(qc: QueryClient, get: <T>(path: string) => Pr
         void qc.prefetchQuery({ queryKey: ['list', g.id], queryFn: () => get(`/lists/${g.id}`) });
       }
     })
-    // A refresh can cancel this (the outbox finishing on open does); the next open tries again.
+    // A refresh can cancel this (the first writes after opening do); the next open tries again.
     .catch(() => {});
 }

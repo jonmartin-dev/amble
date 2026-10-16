@@ -44,29 +44,12 @@ export function refreshViews(qc: QueryClient, keys = TASK_VIEWS) {
   for (const key of keys) void qc.invalidateQueries({ queryKey: [key] });
 }
 
-/**
- * Hands a change to the outbox, which sends it now or once there's a connection. If this device
- * can't store it (no IndexedDB), it's sent straight away instead.
- */
+/** Writes a change to the database on this device, after any made before it. The screen already shows it (local.ts). */
 export function useSend() {
-  const qc = useQueryClient();
-  const snack = useSnackbar();
-  return (method: 'POST' | 'PATCH' | 'DELETE', path: string, body: unknown, label: string) => {
-    const memberId = qc.getQueryData<Session>(['session'])?.member?.id;
-    if (!memberId) return;
-    queue({ memberId, method, path, body, label }).catch(() =>
-      api(path, { method, body: JSON.stringify(body) }).then(
-        () => refreshViews(qc),
-        (e: Error) => {
-          snack({ message: e.message });
-          refreshViews(qc);
-        },
-      ),
-    );
-  };
+  return (method: 'POST' | 'PATCH' | 'DELETE', path: string, body: unknown, label: string) => void queue({ method, path, body, label });
 }
 
-/** Saves the signed-in person's own settings: on screen at once, then to the server through the outbox. */
+/** Saves your own settings: on screen at once, then into the database on this device. */
 export function useSaveMe() {
   const qc = useQueryClient();
   const send = useSend();
@@ -101,8 +84,8 @@ function patched(qc: QueryClient, t: Task, patch: TaskPatch, steps: { id: string
 }
 
 /**
- * Every task change. Each shows at once in every view (local.ts) and goes out through the outbox,
- * so it works the same offline. Completing, moving and removing offer Undo. Confirmations live
+ * Every task change. Each shows at once in every view (local.ts) and is written to the database on
+ * this device, so it works the same offline. Completing, moving and removing offer Undo. Confirmations live
  * here, not on the screen that started them, so they still appear when that screen has gone away
  * (a swiped row, a closed task page).
  */

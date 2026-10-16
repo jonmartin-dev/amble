@@ -1,6 +1,6 @@
-// Changes show up the moment they're made, online or not: each one is applied to every cached
-// view it touches (the day lists, the backlog, task pages, load bars, group counts, lists) while
-// the outbox sends it. Once the server has it, the views refresh from the server's copy.
+// Changes show up the moment they're made: each one is applied to every cached view it touches
+// (the day lists, the backlog, task pages, load bars, group counts, lists) while it's written to
+// the database on this device (sync.ts). Once it's written, the views refresh from the database.
 //
 // The rules for which tasks land in which view mirror the server's (server/domain/tasks.ts and
 // load.ts), so what shows offline is what the server would show.

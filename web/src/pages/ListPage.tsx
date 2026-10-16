@@ -180,7 +180,7 @@ export function ListPage({ groupId }: { groupId: string }) {
     return () => window.removeEventListener(ADD_TO_LIST, focus);
   }, []);
 
-  // Each change shows at once and syncs through the outbox, so the list works in a store with no signal.
+  // Each change shows at once and is kept on this device, so the list works in a store with no signal.
   const add = (item: { name: string; quantity?: string | null; section?: string | null; store?: string | null }) => {
     const id = crypto.randomUUID();
     const outcome = addListItem(qc, groupId, { id, ...item });

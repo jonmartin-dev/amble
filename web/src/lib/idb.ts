@@ -1,5 +1,5 @@
 // A small IndexedDB store shared by the app and its service worker: the saved query cache, and
-// the outbox of changes waiting to be sent.
+// the mailbox of reminder actions taken while Amble was closed (outbox.ts).
 
 const NAME = 'almanac';
 const VERSION = 1;

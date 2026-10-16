@@ -46,7 +46,7 @@ Smart add, estimates and the planner's wording need an AI model: set one up in S
 | `server/local.ts`, `web/src/worker/` | Amble on the device: the API in a web worker on SQLite in WebAssembly (`server/db/wasm.ts`) |
 | `android/`, `web/src/lib/native.ts`, `capacitor.config.ts` | The Android app: Capacitor around the web app, with the phone's own notifications, calendars (`PhoneCalendarPlugin.java`), background check (`ReminderCheck.java`) and Google sign-in (`GoogleDrivePlugin.java`) |
 | `shared/` | Code the server and the app both use: list templates, repeat rules, smart add proposals |
-| `web/src/` | The React app: `pages/`, `components/`, `lib/` (queries, the offline outbox, theming, motion) and the service worker (`sw.ts`) |
+| `web/src/` | The React app: `pages/`, `components/`, `lib/` (queries, writes to the device's database, theming, motion) and the service worker (`sw.ts`) |
 | `drizzle/` | Database migrations, applied when Amble starts, on a device or the server |
 | `skill/amble/` | The Claude skill that teaches Claude to use the connector the calm way |
 | `scripts/` | Demo data, screenshots, browser checks and the smart add eval |
@@ -92,7 +92,7 @@ Sync has a few rules of its own:
 - Match the code around you: its naming, its comment density, its idioms. Comments say why, not what.
 - Dates on the server use `Temporal`. A person's day turns over at their cutoff hour (4am by default) in their time zone; use the helpers in `server/lib/dates.ts` rather than raw dates.
 - The app must stay smooth on a mid-range phone. Animate only `transform` and `opacity` for anything frequent; growing a bar or sliding a sheet from JavaScript repaints every frame. No view transitions between screens. Reuse one `Intl.DateTimeFormat` per set of options rather than calling `toLocaleDateString`. The four tabs stay built in React `<Activity>` boundaries, so hidden tabs keep their elements in the page and tests look for visible ones. Measure at 4x CPU slowdown in Chrome when you touch anything on a hot path.
-- Everything in the app works offline, since the API runs on the device; only AI features and sync need a connection. Changes go through the outbox (`web/src/lib/outbox.ts`), which shows them at once and saves them in order.
+- Everything in the app works offline, since the API runs on the device; only AI features and sync need a connection. A change shows at once (`web/src/lib/local.ts`) and is written straight to the device's database, in order (`web/src/lib/sync.ts`). The only queue is the service worker's mailbox (`web/src/lib/outbox.ts`) for a reminder's Done or Snooze tapped while Amble was closed.
 
 ## Words in the app
 

@@ -64,7 +64,7 @@ function phoneChanged() {
   void updateTodayWidget().catch(() => {});
 }
 
-/** Sends the outbox for as long as the app runs, and says when the server turned a change down. */
+/** Refreshes after changes are written for as long as the app runs, and says when one was turned down. */
 function SyncBridge() {
   const qc = useQueryClient();
   const snack = useSnackbar();
@@ -87,7 +87,6 @@ function SyncBridge() {
           });
           refreshViews(qc);
         },
-        onSignedOut: () => void qc.invalidateQueries({ queryKey: ['session'] }),
       }),
     [qc, snack],
   );

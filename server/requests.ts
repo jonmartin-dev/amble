@@ -1,6 +1,7 @@
-// Writes from the app's outbox. The app keeps changes made offline and sends them in order once
-// it's back online, each with a key. If an answer gets lost and the app sends a change again, the
-// first answer is replayed instead of applying it twice.
+// Writes from the reminder mailbox (web/src/lib/outbox.ts): a Done or Snooze tapped on a
+// notification while Amble was closed, applied when it next opens, each with a key. If an answer
+// gets lost and the app sends it again, the first answer is replayed instead of applying it twice.
+// The app's own changes go straight to the database without a key.
 import { and, eq, isNull, lt } from 'drizzle-orm';
 import type { MiddlewareHandler } from 'hono';
 import type { Db } from './db/index.ts';

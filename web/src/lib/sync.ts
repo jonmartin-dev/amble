@@ -1,41 +1,43 @@
-// The app's side of the outbox: queues changes, sends them whenever there's a connection, and
-// tells the screen how it's going. The screen updates the moment a change is made (see local.ts),
-// so nothing here makes anyone wait.
+// Changes made in the app, written straight into Amble's database on this device (its worker), one
+// after another in the order they were made. The screen shows each change the moment it's made
+// (local.ts), and a write takes milliseconds, so nothing waits on a connection; syncing with Drive
+// or the household's server happens after, from the database (drive-sync.ts). The one thing kept
+// for later is a reminder's Done or Snooze tapped while no Amble window was open: the service
+// worker leaves it in a small mailbox (outbox.ts), which Amble applies when it next opens.
 import { useSyncExternalStore } from 'react';
 import { send } from './api.ts';
-import { addOp, clearOps, countOps, flush, takeFailures, type Blocked, type Failure, type Op } from './outbox.ts';
+import { clearOps, countOps, flush, takeFailures, type Failure } from './outbox.ts';
 
 export interface SyncState {
-  /** Changes made here that the server hasn't confirmed yet. */
+  /** Changes made here and not written yet: only ever a moment. */
   pending: number;
-  /** Sending right now. */
+  /** Writing right now. */
   syncing: boolean;
-  /** Why changes are still waiting, if they are. */
-  blocked: Blocked | null;
+  /** For what needs the internet, like smart add. */
   online: boolean;
 }
 
 export interface SyncHandlers {
-  /** Changes reached the server: refresh what's on screen from it. */
+  /** Changes were written: refresh what's on screen, and pass them on. */
   onSent(): void;
-  /** The server turned changes down; they've been dropped. */
+  /** A change was turned down (it no longer made sense, like editing a task someone removed). */
   onFailed(failures: Failure[]): void;
-  onSignedOut(): void;
 }
 
-let state: SyncState = { pending: 0, syncing: false, blocked: null, online: navigator.onLine };
+let state: SyncState = { pending: 0, syncing: false, online: navigator.onLine };
 const listeners = new Set<() => void>();
 let handlers: SyncHandlers | null = null;
-let running: Promise<void> | null = null;
-let again = false;
-let retryTimer: ReturnType<typeof setTimeout> | undefined;
-let retryDelay = 2000;
 let idleWaiters: (() => void)[] = [];
+// Each write starts after the one before it, so they land in the order they were made.
+let chain: Promise<void> = Promise.resolve();
+let wrote = false;
+// Turned down before the app was listening.
+let early: Failure[] = [];
 
 function set(patch: Partial<SyncState>) {
   state = { ...state, ...patch };
   for (const l of listeners) l();
-  if (state.pending === 0 && !running) {
+  if (state.pending === 0) {
     for (const w of idleWaiters) w();
     idleWaiters = [];
   }
@@ -53,111 +55,82 @@ export function useSyncState() {
 
 export const syncState = () => state;
 
-/**
- * Resolves once every waiting change has reached the server, or after `ms`. Reads wait for this,
- * so a refresh never shows the server's copy from before a change that's still on its way.
- */
+/** Resolves once every change made so far is written, or after `ms`. Reads wait for this, so they never miss one. */
 export function syncIdle(ms = 4000): Promise<void> {
-  if (state.pending === 0 && !running) return Promise.resolve();
+  if (state.pending === 0) return Promise.resolve();
   return new Promise((resolve) => {
     idleWaiters.push(resolve);
     setTimeout(resolve, ms);
   });
 }
 
-/** Adds a change to the outbox and starts sending. Resolves once it's stored on this device. */
-export async function queue(op: Omit<Op, 'key' | 'at' | 'seq'>) {
-  set({ pending: state.pending + 1 });
-  await addOp({ ...op, key: crypto.randomUUID(), at: Date.now() });
-  kick();
+function failed(failures: Failure[]) {
+  if (handlers) handlers.onFailed(failures);
+  else early.push(...failures);
 }
 
-/** Drops every waiting change, for signing out. */
+/** Writes a change to this device's database, after any made before it. Resolves once it's written (or turned down). */
+export function queue(op: { method: 'POST' | 'PATCH' | 'DELETE'; path: string; body?: unknown; label: string }): Promise<void> {
+  set({ pending: state.pending + 1 });
+  const run = chain.then(async () => {
+    set({ syncing: true });
+    try {
+      const res = await send(op.path, {
+        method: op.method,
+        headers: { 'Content-Type': 'application/json' },
+        body: op.body === undefined ? undefined : JSON.stringify(op.body),
+      });
+      if (res.ok) wrote = true;
+      else {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        failed([{ label: op.label, message: body?.error ?? `It didn't save (${res.status}).`, at: Date.now() }]);
+      }
+    } catch {
+      failed([{ label: op.label, message: 'Amble on this device didn’t answer. Try again.', at: Date.now() }]);
+    } finally {
+      const pending = state.pending - 1;
+      set({ pending, syncing: pending > 0 });
+      if (pending === 0 && wrote) {
+        wrote = false;
+        handlers?.onSent();
+      }
+    }
+  });
+  chain = run.catch(() => {});
+  return run;
+}
+
+/** Empties the reminder mailbox, for a device someone else takes over. */
 export async function discardQueue() {
   await clearOps();
-  set({ pending: 0, blocked: null });
 }
 
-async function reportFailures() {
+/** Applies what the service worker left in the mailbox (outbox.ts) while no Amble window was open. */
+async function openMailbox() {
+  if (!(await countOps().catch(() => 0))) return;
+  const result = await flush(send).catch(() => null);
   const failures = await takeFailures().catch(() => []);
-  if (failures.length) handlers?.onFailed(failures);
+  if (failures.length) failed(failures);
+  if (result?.sent.length) handlers?.onSent();
 }
 
-function backgroundSync() {
-  // Chrome on Android sends the outbox from the service worker once the connection is back, even
-  // if the app has been closed by then.
-  void navigator.serviceWorker?.ready
-    .then((reg) => (reg as ServiceWorkerRegistration & { sync?: { register(tag: string): Promise<void> } }).sync?.register('almanac-outbox'))
-    .catch(() => {});
-}
-
-function retryLater(delay: number) {
-  clearTimeout(retryTimer);
-  retryTimer = setTimeout(kick, delay);
-}
-
-/** Sends whatever is waiting, unless a send is already running (which then goes round again). */
-export function kick() {
-  if (running) {
-    again = true;
-    return;
-  }
-  clearTimeout(retryTimer);
-  running = (async () => {
-    let sentAny = false;
-    do {
-      again = false;
-      const waiting = await countOps().catch(() => 0);
-      if (waiting === 0) {
-        set({ pending: 0, blocked: null });
-        break;
-      }
-      set({ pending: waiting, syncing: true });
-      const result = await flush(send).catch(() => ({ sent: [], failed: [], blocked: 'offline' as const }));
-      const pending = await countOps().catch(() => 0);
-      sentAny ||= result.sent.length > 0;
-      set({ pending, syncing: false, blocked: pending ? result.blocked : null, ...(result.sent.length && { online: true }) });
-      if (result.failed.length) await reportFailures();
-      if (result.blocked === 'signed-out') handlers?.onSignedOut();
-      else if (result.blocked === 'busy') retryLater(1500);
-      else if (result.blocked) {
-        // Offline: the browser says when it's back. Online but failing: try again, backing off.
-        backgroundSync();
-        if (navigator.onLine) retryLater(retryDelay);
-        retryDelay = Math.min(retryDelay * 2, 60_000);
-      }
-      if (result.blocked) break;
-      retryDelay = 2000;
-    } while (again);
-    if (sentAny) handlers?.onSent();
-  })().finally(() => {
-    running = null;
-    set({});
-  });
-}
-
-/** Starts sending the outbox for this app session: now, when the connection returns, and on return to the app. */
+/** Starts listening for this app session: written changes, the reminder mailbox, and the connection. */
 export function startSync(h: SyncHandlers) {
   const first = handlers == null;
   handlers = h;
+  if (early.length) {
+    h.onFailed(early);
+    early = [];
+  }
   if (!first) return;
-  window.addEventListener('online', () => {
-    set({ online: true });
-    retryDelay = 2000;
-    kick();
-  });
+  window.addEventListener('online', () => set({ online: true }));
   window.addEventListener('offline', () => set({ online: false }));
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') kick();
+    if (document.visibilityState === 'visible') void openMailbox();
   });
+  // A reminder's Done or Snooze, left by the service worker while this window was open too.
   navigator.serviceWorker?.addEventListener('message', (e) => {
-    // A reminder's Done or Snooze, queued by the service worker for this device's worker to apply.
-    if ((e.data as { type?: string } | null)?.type === 'outbox-added') return kick();
-    if ((e.data as { type?: string } | null)?.type !== 'outbox-flushed') return;
-    void reportFailures();
-    void countOps().then((pending) => set({ pending, blocked: pending ? state.blocked : null }));
-    handlers?.onSent();
+    if ((e.data as { type?: string } | null)?.type === 'outbox-added') void openMailbox();
   });
-  void reportFailures();
-  kick();
+  void openMailbox();
 }

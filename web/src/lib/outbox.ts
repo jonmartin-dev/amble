@@ -1,7 +1,8 @@
-// Changes waiting to reach the server. The app adds each change here and shows it straight away;
-// the outbox sends them in the order they were made, from the app or, once the app is closed, from
-// the service worker. Each carries a key so a resend is never applied twice, and its age so a
-// change made offline doesn't overwrite one someone made after it.
+// A mailbox for changes made while no Amble window is open: a reminder's Done or Snooze, tapped on
+// the notification. The service worker can't reach the database (it lives in the page's worker),
+// so it leaves the change here and Amble applies it when it next opens (sync.ts). Everything else
+// the app writes straight to the database. Each carries a key so one applied twice counts once,
+// and its age so it doesn't overwrite a change made after it.
 import { FAILED, OUTBOX, tx } from './idb.ts';
 
 export interface Op {

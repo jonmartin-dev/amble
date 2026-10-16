@@ -11,7 +11,7 @@ import { expressive } from '../lib/motion.ts';
 import { applyUpdate, useUpdateReady } from '../lib/pwa.ts';
 import { useSyncState } from '../lib/sync.ts';
 
-/** Only a send that takes this long says "Syncing"; quick ones pass without a word. */
+/** Only a write that takes this long says "Saving"; quick ones (nearly all) pass without a word. */
 const SHOW_SYNCING_AFTER_MS = 700;
 const SHOW_SYNCED_FOR_MS = 1800;
 
@@ -49,8 +49,8 @@ export function StatusPill() {
     return () => clearTimeout(t);
   }, [sync.syncing]);
 
-  // "All synced" follows only a stretch of changes waiting, never every quick save.
-  const behind = sync.pending > 0 && (sync.blocked != null || !sync.online || slowSync);
+  // "All saved" follows only a stretch of changes waiting, never every quick save.
+  const behind = sync.pending > 0 && slowSync;
   useEffect(() => {
     if (behind) wasBehind.current = true;
     else if (wasBehind.current && sync.pending === 0) {
@@ -94,10 +94,10 @@ export function StatusPill() {
           <Sync className="size-[18px]" aria-hidden />
         </motion.span>
       ),
-      text: `Syncing ${changes(sync.pending)}`,
+      text: `Saving ${changes(sync.pending)}`,
     };
   } else if (synced) {
-    status = { key: 'synced', icon: <CloudDone className="size-[18px]" aria-hidden />, text: 'All synced' };
+    status = { key: 'synced', icon: <CloudDone className="size-[18px]" aria-hidden />, text: 'All saved' };
   }
 
   // Snackbars sit just above the pill while it shows.
