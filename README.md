@@ -2,9 +2,9 @@
 
 A calm, shared planner for a household. It knows how full each day already is, from your tasks and your phone's calendar, and suggests what to do today and which day has room for something due later. It never nags.
 
-Amble runs on your phone or computer, with nothing to sign up for. Everything is on the device, so it works offline from the start. A household keeps in step through Google Drive, or through a server you run yourself. A server is optional: it adds Claude and ChatGPT, one AI model for the household's phones, and a home for the web app.
+Amble runs on your Android phone, with nothing to sign up for. Everything is on the phone, so it works offline from the start, and a household keeps in step through Google Drive. A household that wants more runs its own server, on a computer it keeps. That adds the web app for iPhones and computers, photos and files on tasks shared between devices, Claude and ChatGPT, and one AI model for everyone. Nobody runs a server for you.
 
-Status: early but usable. The day list, backlog, task details, smart add, repeating tasks, lists from eleven templates, handing tasks to each other, the calendar, stats, the activity feed, settings, reminders, files on tasks and the connector for Claude and ChatGPT all work. Capacity is learned from what gets done, your phone's calendars shape how full each day is, and the planner suggests what to do today and where things fit. There's an Android app; on iPhone, Amble runs in the browser.
+Status: early but usable. The day list, backlog, task details, smart add, repeating tasks, lists from eleven templates, handing tasks to each other, the calendar, stats, the activity feed, settings, reminders, files on tasks and the connector for Claude and ChatGPT all work. Capacity is learned from what gets done, your phone's calendars shape how full each day is, and the planner suggests what to do today and where things fit. The Android app is headed for the Play Store. On an iPhone or a computer, Amble runs in the browser, served by your household's server; an iPhone app is open for anyone who wants to build it ([Help wanted](CONTRIBUTING.md#help-wanted)).
 
 <p>
   <img src="docs/screenshots/briefing.png" width="160" alt="Here's today: the day's load, a task handed over and a suggestion">
@@ -62,7 +62,9 @@ AMBLE_PUBLIC_URL=http://localhost:8787 AMBLE_DATA_DIR=../amble-demo node --env-f
 
 Open http://localhost:8787, choose Use my own server, and sign in as Sam. With that running (and Chrome installed), `node scripts/screens.ts` captures every screen at phone size in several themes (`AMBLE_VIEWPORT=820x1180` for a tablet), and `node scripts/smoke.ts sam@example.com` clicks through the core loop and fails on any broken step or console error. Each starts a fresh browser that joins the household through the server, as a new device would.
 
-## Host the app with no server
+## The web app on its own
+
+Most people use the Android app, or the web app their household's server serves. To host just the web app yourself, as static files with no server:
 
 ```sh
 AMBLE_BASE=/ pnpm build    # static files in dist/web
@@ -72,7 +74,7 @@ Host `dist/web` anywhere that serves `index.html` for paths it doesn't have. `AM
 
 ## The Android app
 
-The same app in [Capacitor](https://capacitorjs.com): reminders show with the app closed, it reads the phone's calendars, and Drive sync keeps going without asking you to sign in again. `node scripts/android.ts run` builds it and installs it on a plugged-in phone or an emulator; [docs/android.md](docs/android.md) has what it needs.
+The same app in [Capacitor](https://capacitorjs.com): reminders show with the app closed, it reads the phone's calendars, and Drive sync keeps going without asking you to sign in again. It's headed for the Play Store. Until then, `node scripts/android.ts run` builds it and installs it on a plugged-in phone or an emulator; [docs/android.md](docs/android.md) has what it needs.
 
 ## Use it from Claude or ChatGPT
 
