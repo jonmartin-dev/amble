@@ -169,7 +169,16 @@ check() {
   esac
   if [ -n "$admins" ]; then ok "Admins: $admins"; else bad "AMBLE_ADMIN_EMAILS isn't set in .env: your own email, so you can sign in."; fi
   if [ -n "$id" ]; then ok "Sign-in client: $id"; else bad "OIDC_CLIENT_ID isn't set in .env: the client ID from your sign-in provider (docs/self-hosting.md, step 3)."; fi
-  if [ -s secrets/oidc_client_secret ]; then ok "The sign-in client's secret is in secrets/oidc_client_secret"; else bad "secrets/oidc_client_secret is missing or empty: put the sign-in client's secret in it."; fi
+  # secrets/ can belong to the container's user, and then only it (and root) can look inside.
+  local sealed=0
+  if [ -d secrets ] && [ ! -x secrets ]; then sealed=1; fi
+  if [ -s secrets/oidc_client_secret ]; then
+    ok "The sign-in client's secret is in secrets/oidc_client_secret"
+  elif [ "$sealed" = 1 ]; then
+    note "secrets/ belongs to the container's user, so this user can't look inside it; the server can."
+  else
+    bad "secrets/oidc_client_secret is missing or empty: put the sign-in client's secret in it."
+  fi
   if [ ! -d data ]; then
     bad "There's no data/ folder: run deploy/setup.sh."
   elif ! docker_desktop && ! owned_by_container; then
@@ -182,8 +191,28 @@ check() {
     bad "Nothing answers on 127.0.0.1:$p: start it with deploy/setup.sh, and read docker compose logs amble if it won't start."
   fi
 
+  # A Tailscale name can resolve to Funnel's public relay on a computer that doesn't use Tailscale's
+  # DNS, and the relay only carries Funnel's ports; Tailscale itself says where the name really is.
+  local via=() hostport host port tsip
+  hostport=${u#*://}
+  hostport=${hostport%%/*}
+  host=${hostport%%:*}
+  port=${hostport##*:}
+  if [ "$port" = "$hostport" ]; then
+    case "$u" in https://*) port=443 ;; *) port=80 ;; esac
+  fi
+  case "$host" in
+    *.ts.net)
+      if command -v tailscale >/dev/null 2>&1; then
+        # By the machine's own name: given the whole name, tailscale ip asks that same DNS first.
+        tsip=$(tailscale ip -4 "${host%%.*}" 2>/dev/null | head -1 || true)
+        if [ -n "$tsip" ]; then via=(--resolve "$host:$port:$tsip"); fi
+      fi
+      ;;
+  esac
+
   reachable=0
-  if [ -n "$u" ] && curl -fsS --max-time 10 "$u/healthz" >/dev/null 2>&1; then
+  if [ -n "$u" ] && curl "${via[@]}" -fsS --max-time 10 "$u/healthz" >/dev/null 2>&1; then
     reachable=1
     ok "Reachable at $u (from this computer)"
   elif [ -n "$u" ]; then
@@ -201,7 +230,7 @@ check() {
   # Google answers a sign-in for an address it doesn't know right away, so ask it.
   if [ "$reachable" = 1 ] && [ "$i" = https://accounts.google.com ]; then
     local start page
-    start=$(curl -sS -o /dev/null --max-time 10 -w '%{redirect_url}' "$u/auth/login?direct=1" 2>/dev/null || true)
+    start=$(curl "${via[@]}" -sS -o /dev/null --max-time 10 -w '%{redirect_url}' "$u/auth/login?direct=1" 2>/dev/null || true)
     case "$start" in
       https://accounts.google.com/*)
         # The page Google ends on, then the address it ended at on the last line.
@@ -225,6 +254,8 @@ check() {
 
   if [ -s secrets/ai_api_key ] || [ -s secrets/anthropic_api_key ]; then
     ok "An AI key is in secrets/"
+  elif [ "$sealed" = 1 ]; then
+    :
   else
     note "No AI key in secrets/: an admin can set the household's model in the app (Settings, AI), or leave AI off."
   fi
@@ -349,6 +380,11 @@ ok "Wrote .env"
 mkdir -p data secrets
 chmod 700 secrets 2>/dev/null || true
 put_secret() {
+  # Once secrets/ belongs to the container's user, another user can't change what's in it.
+  if [ ! -w secrets ]; then
+    note "secrets/ belongs to the container's user, so secrets/$1 stays as it is. To change it: sudo cp <the file> secrets/$1"
+    return
+  fi
   (umask 077 && printf '%s' "$2" >"secrets/$1") 2>/dev/null || die "Couldn't write secrets/$1: run this as the folder's owner, or with sudo."
 }
 if [ -n "$secret" ]; then put_secret oidc_client_secret "$secret"; fi
@@ -359,7 +395,10 @@ if ! docker_desktop && ! owned_by_container; then
     chown -R 1000:1000 data secrets
   else
     note "The container runs as uid 1000, so data/ and secrets/ have to belong to it: sudo chown -R 1000:1000 data secrets"
-    sudo chown -R 1000:1000 data secrets || die "Couldn't hand data/ and secrets/ to uid 1000; run that sudo line yourself, then this script again."
+    # Without someone at the keyboard, sudo can't ask for a password, so it isn't allowed to.
+    asking=-n
+    if [ "$yes" = 0 ] && [ -t 0 ]; then asking=; fi
+    sudo $asking chown -R 1000:1000 data secrets || die "Couldn't hand data/ and secrets/ to uid 1000; run that sudo line yourself, then this script again."
   fi
   ok "data/ and secrets/ belong to the container's user"
 fi

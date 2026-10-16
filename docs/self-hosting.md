@@ -81,6 +81,8 @@ deploy/setup.sh --yes --url https://server.tail1234.ts.net --admin you@example.c
 
 `deploy/setup.sh --help` lists every flag, including `--issuer` and `--provider-name` for providers other than Google. Once the secret is in `secrets/oidc_client_secret`, you can delete the file you saved it in.
 
+On Linux the server runs as user 1000, the first account on most systems. If you're someone else, the script asks for `sudo` once to hand `data/` and `secrets/` to that user. With `--yes` it won't wait for a password: it stops and says what to run, and you run that line yourself, then the script again.
+
 The server now answers on `127.0.0.1:18085` on the server itself (choose another port with `--port`). Only the server can reach that address until the next step.
 
 ### 5. Put the address in front of it
@@ -96,7 +98,7 @@ The server now answers on `127.0.0.1:18085` on the server itself (choose another
 
   Under a path, the proxy can pass the path on or strip it; Amble handles both.
 
-Then run `deploy/setup.sh --check`. When it says `Reachable at` your address and `Google accepts sign-ins`, this step is done. It checks from the server itself, so if a phone still can't open the address, check that the phone is on Tailscale or can reach your network.
+Then run `deploy/setup.sh --check`. When it says `Reachable at` your address and `Google accepts sign-ins`, this step is done. It checks from the server itself, so if a phone still can't open the address, check that the phone is on Tailscale or can reach your network. For a Tailscale address it asks Tailscale where the name is, since a server that doesn't use Tailscale's DNS would otherwise look it up on the internet, where only Funnel's ports answer.
 
 ### 6. Sign in
 

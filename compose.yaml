@@ -5,7 +5,8 @@
 services:
   amble:
     build: .
-    image: amble:local
+    # AMBLE_IMAGE names the image when one computer runs more than one copy (a test beside the real one).
+    image: ${AMBLE_IMAGE:-amble:local}
     restart: unless-stopped
     read_only: true
     # Runs as the image's "node" user (uid 1000); ./data must be writable by it.
