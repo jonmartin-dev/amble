@@ -2,7 +2,6 @@ import sqlite3InitModule, { type Sqlite3Static } from '@sqlite.org/sqlite-wasm';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createAi } from './ai/client.ts';
 import { openDatabase } from './db/index.ts';
-import { FileTooBig, type FileStore } from './domain/files.ts';
 import { createLocalApp, deviceConfig, isDeviceEmail } from './local.ts';
 import { createLocalPush } from './notify/local-push.ts';
 import type { PushMessage } from './notify/devices.ts';
@@ -11,31 +10,7 @@ import { readMigrationFiles } from 'drizzle-orm/migrator';
 import { applyMigrations } from './db/open.ts';
 import { asBetterSqlite, WasmClient } from './db/wasm.ts';
 import { fileURLToPath } from 'node:url';
-
-/** Files kept in memory, as a stand-in for the browser's private file system. */
-export function memoryFiles(): FileStore {
-  const stored = new Map<string, Uint8Array>();
-  return {
-    async save(body, limit) {
-      if (!body) throw new Error('empty');
-      const bytes = new Uint8Array(await new Response(body).arrayBuffer());
-      if (bytes.length > limit) throw new FileTooBig('too big');
-      const sha256 = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map((b) => b.toString(16).padStart(2, '0')).join('');
-      stored.set(sha256, bytes);
-      return { sha256, size: bytes.length };
-    },
-    async get(sha256) {
-      const bytes = stored.get(sha256);
-      if (!bytes) return null;
-      return { size: bytes.length, stream: () => new Blob([bytes as BlobPart]).stream(), bytes: async () => bytes };
-    },
-    async sweep(used) {
-      let n = 0;
-      for (const sha of stored.keys()) if (!used.has(sha) && stored.delete(sha)) n++;
-      return n;
-    },
-  };
-}
+import { memoryFiles } from './lib/memory-files.ts';
 
 let sqlite3: Sqlite3Static;
 let db: Db;

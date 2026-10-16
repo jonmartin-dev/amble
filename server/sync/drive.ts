@@ -30,6 +30,8 @@ export interface DriveFile {
   size?: string;
   trashed?: boolean;
   appProperties?: Record<string, string>;
+  /** Shown to every app that can open the file, unlike appProperties. */
+  properties?: Record<string, string>;
   owners?: { emailAddress?: string; displayName?: string }[];
   capabilities?: { canEdit?: boolean; canShare?: boolean };
 }
@@ -42,7 +44,7 @@ export interface DrivePermission {
   displayName?: string;
 }
 
-const FILE_FIELDS = 'id,name,md5Checksum,modifiedTime,size,trashed,appProperties,owners(emailAddress,displayName),capabilities(canEdit,canShare)';
+const FILE_FIELDS = 'id,name,md5Checksum,modifiedTime,size,trashed,appProperties,properties,owners(emailAddress,displayName),capabilities(canEdit,canShare)';
 
 export function createDrive(token: string, fetchImpl: typeof fetch = fetch) {
   async function call(url: string, init: RequestInit = {}) {
@@ -102,6 +104,14 @@ export function createDrive(token: string, fetchImpl: typeof fetch = fetch) {
         body: bytes as BodyInit,
       });
     },
+
+    /** Sets some of a file's properties, leaving its contents alone. */
+    setProperties: (id: string, properties: Record<string, string>) =>
+      json<DriveFile>(`${API}/files/${encodeURIComponent(id)}?fields=${FILE_FIELDS}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ properties }),
+      }),
 
     /** Lets someone else's Google account edit a file. Google emails them a link to it. */
     share: (id: string, email: string, message: string) =>

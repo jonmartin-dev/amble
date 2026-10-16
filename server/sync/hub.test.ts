@@ -10,23 +10,17 @@ import { config, type Config } from '../config.ts';
 import { openDatabase, SCHEMA } from '../db/index.ts';
 import { aiUsage, members } from '../db/schema.ts';
 import { seedStarterGroups } from '../db/seed.ts';
-import type { FileStore } from '../domain/files.ts';
 import { createTasks, listTasks } from '../domain/tasks.ts';
+import { memoryFiles } from '../lib/memory-files.ts';
 import { createLocalApp, deviceAdopt, deviceConfig } from '../local.ts';
 import { createLocalPush } from '../notify/local-push.ts';
 import { APP_RETURN } from './hub.ts';
 import { createServerSync } from './server.ts';
-import { createSyncService } from './service.ts';
+import { createSyncService, filesThroughServer } from './service.ts';
 import { createGoogle } from '../lib/google.ts';
 
 const HOME = 'https://home.example';
 const serverConfig: Config = { ...config, publicUrl: HOME, basePath: '', publicOrigin: HOME, appOrigins: [HOME], devLogin: false, ai: { ...config.ai, apiKey: '' } };
-
-const noFiles: FileStore = {
-  save: async () => ({ sha256: '0'.repeat(64), size: 1 }),
-  get: async () => null,
-  sweep: async () => 0,
-};
 
 /** The household's server, with Sam and Ali in it. */
 function server(ai?: Ai) {
@@ -35,14 +29,17 @@ function server(ai?: Ai) {
   const sam = db.insert(members).values({ email: 'sam@example.com', name: 'Sam Lee', timezone: 'America/Chicago', role: 'admin' }).returning().get();
   const ali = db.insert(members).values({ email: 'ali@example.com', name: 'Ali Kim', timezone: 'America/Chicago' }).returning().get();
   const sync = createServerSync({ db, config: serverConfig, google: createGoogle(serverConfig), schema: SCHEMA });
-  const app = createApp({ db, config: serverConfig, oidc: createOidc(serverConfig), sync, ...(ai && { ai }) });
-  // The network as the phone sees it: only the server answers.
+  const files = memoryFiles();
+  const app = createApp({ db, config: serverConfig, oidc: createOidc(serverConfig), sync, files, ...(ai && { ai }) });
+  // The network as the phone sees it: only the server answers. `asked` is every path asked for.
+  const asked: string[] = [];
   const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = input instanceof Request ? input.url : String(input);
     if (!url.startsWith(`${HOME}/`)) throw new TypeError('fetch failed');
+    asked.push(new URL(url).pathname);
     return app.request(input instanceof Request ? input : url, init);
   }) as typeof fetch;
-  return { db, sam, ali, sync, app, fetchImpl, cookie: (memberId: string) => `almanac_session=${createSession(db, memberId, 'browser')}` };
+  return { db, sam, ali, sync, app, files, asked, fetchImpl, cookie: (memberId: string) => `almanac_session=${createSession(db, memberId, 'browser')}` };
 }
 type Server = ReturnType<typeof server>;
 
@@ -50,15 +47,24 @@ type Server = ReturnType<typeof server>;
 function phone(home: Server) {
   const db = openDatabase(':memory:');
   const cfg = deviceConfig('https://localhost', '', 'America/Chicago');
-  const sync = createSyncService({ db, schema: SCHEMA, fetchImpl: home.fetchImpl, adopt: deviceAdopt(db, cfg) });
+  const files = memoryFiles();
+  const sync = createSyncService({ db, schema: SCHEMA, fetchImpl: home.fetchImpl, adopt: deviceAdopt(db, cfg), files });
   // No model of its own: it uses the server's, once it syncs with one.
   const ai = createAi(cfg, db, home.fetchImpl, { seal: (k) => k, open: (k) => k }, () => sync.remoteAi());
-  const app = createLocalApp({ db, config: cfg, ai, push: createLocalPush(db, async () => true), files: noFiles, sync, fetchImpl: home.fetchImpl });
+  const app = createLocalApp({
+    db,
+    config: cfg,
+    ai,
+    push: createLocalPush(db, async () => true),
+    files: filesThroughServer(files, sync, cfg.maxFileBytes),
+    sync,
+    fetchImpl: home.fetchImpl,
+  });
   const call = async (method: string, path: string, body?: unknown) => {
     const res = await app.request(`https://localhost/api${path}`, { method, headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
     return { status: res.status, json: res.status === 204 ? null : await res.json() };
   };
-  return { db, sync, ai, call, titles: async () => ((await call('GET', '/tasks')).json.tasks as { title: string }[]).map((t) => t.title).sort() };
+  return { db, sync, ai, app, files, call, titles: async () => ((await call('GET', '/tasks')).json.tasks as { title: string }[]).map((t) => t.title).sort() };
 }
 
 /** What happens in the browser between the phone and the server: signing in there, then Continue. */
@@ -163,6 +169,45 @@ describe('syncing with the household’s own server', () => {
 
     expect((await p.call('DELETE', '/sync')).json).toMatchObject({ on: false });
     expect((await home.app.request(`${HOME}/sync/state`, { headers: { authorization: `Bearer ${serverToken}` } })).status).toBe(401);
+  });
+
+  it('shares files on tasks through the server: sent after a round, fetched the first time someone opens them', async () => {
+    const home = server();
+    const sams = phone(home);
+    await sams.call('POST', '/sync/server/connect', { url: HOME, ...(await signIn(home, home.sam.id)) });
+    const { task } = (await sams.call('POST', '/tasks', { title: 'Fix the dishwasher' })).json;
+    const manual = new TextEncoder().encode('Hold the start button for three seconds.');
+    const added = await sams.app.request(`https://localhost/api/tasks/${task.id}/files?name=manual.txt`, { method: 'POST', headers: { 'content-type': 'text/plain' }, body: manual });
+    expect(added.status).toBe(201);
+    const [sha256] = [...sams.files.stored.keys()];
+
+    await sams.call('POST', '/sync/run', {});
+    expect(home.files.stored.get(sha256!)).toEqual(manual);
+    // Known to be there now: the next round doesn't ask about it again.
+    home.asked.length = 0;
+    await sams.call('POST', '/sync/run', {});
+    expect(home.asked.filter((p) => p.startsWith('/sync/files'))).toEqual([]);
+
+    // Ali's phone has the file's details from the household, and the bytes the first time they open it.
+    const alis = phone(home);
+    await alis.call('POST', '/sync/server/connect', { url: HOME, ...(await signIn(home, home.ali.id)) });
+    const { files } = (await alis.call('GET', `/tasks/${task.id}`)).json.task as { files: { id: string }[] };
+    const opened = await alis.app.request(`https://localhost/api/files/${files[0]!.id}`);
+    expect(opened.status).toBe(200);
+    expect(await opened.text()).toBe('Hold the start button for three seconds.');
+    expect(alis.files.stored.get(sha256!)).toEqual(manual);
+
+    // The server keeps only bytes a file on a task points at, and gives out only those.
+    const token = (JSON.parse((alis.db.$client.prepare(`SELECT value FROM server_settings WHERE key = 'sync'`).get() as { value: string }).value) as { serverToken: string }).serverToken;
+    const auth = { authorization: `Bearer ${token}` };
+    const stray = 'f'.repeat(64);
+    expect((await home.app.request(`${HOME}/sync/files/${stray}`, { method: 'PUT', headers: auth, body: 'something else' })).status).toBe(404);
+    expect((await home.app.request(`${HOME}/sync/files/${stray}`, { headers: auth })).status).toBe(404);
+    expect((await home.app.request(`${HOME}/sync/files/${sha256}`)).status).toBe(401);
+    // Bytes sent as a file they aren't are turned down.
+    home.files.stored.delete(sha256!);
+    expect((await home.app.request(`${HOME}/sync/files/${sha256}`, { method: 'PUT', headers: auth, body: 'not the manual' })).status).toBe(400);
+    expect(home.files.stored.has(sha256!)).toBe(false);
   });
 
   it("gives a phone with no AI model of its own the server's, which keeps the key and counts the cost", async () => {

@@ -25,7 +25,7 @@ Status: early but usable. The day list, backlog, task details, smart add, repeat
 - Planning help: a task due later shows the day with the most room before it, Plan my week lays out the next seven days around your calendar (tell it "keep Saturday free" and it does), and Tidy up suggests regrouping, merging duplicates and splitting tasks that are really several
 - Backlog in collapsible groups with search, a quick-add sheet, and a task page for notes, steps, links, files, deadlines, time of day, must-do and estimates
 - Reminders, only when you ask: pick a time on a task (or say "remind me Thursday at 6" in quick add) and your phone shows it at that time, even with Amble closed, with Done and Snooze on it. One set elsewhere, in a browser or by Claude, reaches the phone through the household's sync. In a browser, reminders show while Amble is open. Nothing else in Amble ever notifies you
-- Files on tasks: photos, receipts, manuals and PDFs, up to 25 MB each, kept on the device that added them
+- Files on tasks: photos, receipts, manuals and PDFs, up to 25 MB each, shared through your own server, or kept on the device that added them when the household syncs through Google Drive
 - Moving a task shows the next two weeks with how full each day already is
 - Smart add: type anything into quick add ("call mom tomorrow evening, out of milk and eggs, Alex should mow every Saturday") and an AI model turns it into tasks, list items and changes to existing tasks, using what's already in the household. You review and edit each one before anything is saved. Optional, and it works with any provider's key: Claude Haiku, GPT-6 Luna, Gemini Flash-Lite or GLM Flash (both with free tiers), anything on OpenRouter, or a model on your own machine through Ollama or LM Studio. Set it up in Settings, AI, with a monthly spending cap. A phone that syncs with your own server can use the server's model instead, with no key of its own
 - Repeating tasks: on a schedule (every Sunday, the 1st, the 2nd Thursday, weekdays, seasonal months) or a set time after the last one was done, with skip and pause
@@ -98,7 +98,7 @@ For the Claude desktop app, add the same command under `mcpServers` in its confi
 
 ## Self-host a server
 
-A server is one more copy of the household, on a computer you keep. It serves the web app at its own address, keeps the household in step for devices that choose Use my own server, hosts the connector for Claude and ChatGPT, lends its AI model to phones without one, and can join a household that syncs through Google Drive.
+A server is one more copy of the household, on a computer you keep. It serves the web app at its own address, keeps the household in step for devices that choose Use my own server, shares photos and files on tasks between them, hosts the connector for Claude and ChatGPT, and lends its AI model to phones without one. A household that started in Google Drive can move onto it: the server joins the Drive file, and each device is offered a move to the server. Once a household has a server, the server is how it syncs.
 
 ```sh
 cp .env.example .env    # set AMBLE_PUBLIC_URL, the emails, OIDC_CLIENT_ID, and AMBLE_DEV_LOGIN=0
@@ -112,7 +112,7 @@ The server listens on `127.0.0.1:18085` (change with `AMBLE_PORT`); put your rev
 
 The server signs people in, and only people on its list: devices that sync with it, the connector, and its own page. For Google sign-in, create an OAuth client of type "Web application" with the redirect URI `<AMBLE_PUBLIC_URL>/auth/callback`, and set the consent screen's publishing status to "In production" so the server's Google Drive connection doesn't expire after 7 days. Any other OpenID Connect provider works too; [docs/sign-in.md](docs/sign-in.md) has the steps for Authelia, Authentik and Keycloak, and what to check when sign-in fails. Set `AMBLE_PRIVACY_CONTACT` to put a contact on the app's `/privacy` page, which Google's consent screen links to.
 
-To use the web app at the server's address, open `<AMBLE_PUBLIC_URL>` and choose Use my own server; the address is already filled in. Google Drive sync in that browser needs the server's address in your Google Cloud setup ([docs/google-drive.md](docs/google-drive.md#google-cloud-setup)) and `AMBLE_GOOGLE_API_KEY` for the file picker. A web app hosted somewhere else can sync with the server too, once its address is in `AMBLE_APP_ORIGINS`.
+To add a phone, open the server's page (`<AMBLE_PUBLIC_URL>/server`, or Settings, Sync and backup on a device already in step with it) and scan its code: in the Android app under Use my own server, Scan the code, or with the phone's camera to open the web app ready to join. To use the web app at the server's address, open `<AMBLE_PUBLIC_URL>` and choose Join through it; the address is already filled in. Google Drive sync in that browser needs the server's address in your Google Cloud setup ([docs/google-drive.md](docs/google-drive.md#google-cloud-setup)) and `AMBLE_GOOGLE_API_KEY` for the file picker. A web app hosted somewhere else can sync with the server too, once its address is in `AMBLE_APP_ORIGINS`.
 
 Back up `data/`: it holds the database. `node server/backup.ts` inside the container writes a consistent copy of the database to `data/snapshots/almanac-latest.db` for file-level backups.
 

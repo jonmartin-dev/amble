@@ -3,10 +3,10 @@
 // A device signs in once through the server's own sign-in, which sends it back with a code, and
 // swaps that for a lasting token. Then each round is two calls: what the server has (if it
 // changed), and what the device has, which the server merges into its own copy and answers with
-// the whole household. Everything is a bearer token, never a cookie, so any address the app is
-// served from may call it.
+// the whole household. Files on tasks come and go here too, since Drive can't share them.
+// Everything is a bearer token, never a cookie, so any address the app is served from may call it.
 import { createHash, randomBytes } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { eq, or } from 'drizzle-orm';
 import { AiUnavailable, ask, effortFor, type Ai } from '../ai/client.ts';
 import type { Context, Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
@@ -15,7 +15,8 @@ import { z } from 'zod';
 import { createSession, deleteSession, resolveSession } from '../auth/sessions.ts';
 import type { Config } from '../config.ts';
 import type { Db } from '../db/index.ts';
-import { members, type Member } from '../db/schema.ts';
+import { attachments, members, type Member } from '../db/schema.ts';
+import { FileTooBig, tooBigMessage, type FileStore } from '../domain/files.ts';
 import type { Env } from '../env.ts';
 import { html, page } from '../pages.ts';
 import { pack, unpack } from './drive.ts';
@@ -27,6 +28,7 @@ export const APP_RETURN = 'dev.jonmartin.amble://signed-in';
 const CODE_TTL_MS = 5 * 60 * 1000;
 // The whole household, gzipped, is far smaller than this.
 const MAX_STATE_BYTES = 64 * 1024 * 1024;
+const SHA256 = /^[0-9a-f]{64}$/;
 
 interface Pending {
   memberId: string;
@@ -38,7 +40,10 @@ interface Pending {
 const s256 = (verifier: string) => createHash('sha256').update(verifier).digest('base64url');
 const bearer = (c: Context<Env>) => /^Bearer (.+)$/i.exec(c.req.header('authorization') ?? '')?.[1] ?? null;
 
-export function registerSyncHub(app: Hono<Env>, { db, config, service, schema, ai }: { db: Db; config: Config; service: SyncService; schema: string; ai: Ai }) {
+export function registerSyncHub(
+  app: Hono<Env>,
+  { db, config, service, schema, ai, files }: { db: Db; config: Config; service: SyncService; schema: string; ai: Ai; files: FileStore },
+) {
   const base = config.basePath;
   const codes = new Map<string, Pending>();
 
@@ -125,6 +130,61 @@ export function registerSyncHub(app: Hono<Env>, { db, config, service, schema, a
     }
     const { state, etag } = current();
     return answer(c, state, etag);
+  });
+
+  // ---- files on tasks ------------------------------------------------------------------------
+  // Drive can't share them (drive.file only opens what Amble made or someone picked), so a household
+  // with a server keeps them here. A device sends the bytes of files added on it, named by their
+  // SHA-256, and fetches the ones it lacks when someone opens them. Only bytes a file on a task
+  // points at are taken or given out, so this never becomes storage for anything else.
+
+  const onATask = (sha256: string) =>
+    SHA256.test(sha256) &&
+    db.select({ id: attachments.id }).from(attachments).where(or(eq(attachments.sha256, sha256), eq(attachments.previewSha256, sha256))).get() != null;
+
+  // Which of the files a device has the server needs, and which it has already.
+  app.post('/sync/files/check', async (c) => {
+    if (!deviceMember(c)) return c.json({ error: 'Sign in again.' }, 401);
+    const parsed = z.object({ have: z.array(z.string().regex(SHA256)).max(10_000) }).safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: "That request doesn't look right." }, 400);
+    const need: string[] = [];
+    const stored: string[] = [];
+    for (const sha256 of new Set(parsed.data.have)) {
+      if (!onATask(sha256)) continue;
+      ((await files.get(sha256)) ? stored : need).push(sha256);
+    }
+    return c.json({ need, stored });
+  });
+
+  app.put('/sync/files/:sha256', async (c) => {
+    if (!deviceMember(c)) return c.json({ error: 'Sign in again.' }, 401);
+    const sha256 = c.req.param('sha256');
+    if (!onATask(sha256)) return c.json({ error: 'No file on a task has those bytes.' }, 404);
+    if (await files.get(sha256)) return c.body(null, 204);
+    if (Number(c.req.header('content-length')) > config.maxFileBytes) return c.json({ error: tooBigMessage(config.maxFileBytes) }, 413);
+    try {
+      // Bytes that turn out to be something else are kept under their own hash, which no file points
+      // at, so the daily sweep takes them away.
+      const saved = await files.save(c.req.raw.body, config.maxFileBytes);
+      if (saved.sha256 !== sha256) return c.json({ error: "Those bytes aren't the file they were sent as." }, 400);
+    } catch (err) {
+      if (err instanceof FileTooBig) return c.json({ error: tooBigMessage(config.maxFileBytes) }, 413);
+      throw err;
+    }
+    return c.body(null, 204);
+  });
+
+  app.get('/sync/files/:sha256', async (c) => {
+    if (!deviceMember(c)) return c.json({ error: 'Sign in again.' }, 401);
+    const sha256 = c.req.param('sha256');
+    const file = onATask(sha256) ? await files.get(sha256) : null;
+    if (!file) return c.json({ error: "The server doesn't have that file." }, 404);
+    return c.body(file.stream(), 200, {
+      'Content-Type': 'application/octet-stream',
+      'Content-Length': String(file.size),
+      // The bytes for a hash never change.
+      'Cache-Control': 'private, max-age=31536000, immutable',
+    });
   });
 
   // A device with no model of its own asks the server's: the server keeps the key, meters the call

@@ -38,6 +38,8 @@ dependencies {
     implementation project(':capacitor-android')
     // Google sign-in for Drive sync (GoogleDrivePlugin).
     implementation "com.google.android.gms:play-services-auth:22.0.0"
+    // Scanning the code to join the household's server (CodeScannerPlugin), with no camera permission.
+    implementation "com.google.android.gms:play-services-code-scanner:16.1.0"
     // The background check for reminders set elsewhere (ReminderCheck).
     implementation "androidx.work:work-runtime:2.11.2"
     testImplementation "junit:junit:$junitVersion"

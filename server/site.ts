@@ -1,8 +1,9 @@
 // The server's own pages, beside the app it serves: signing in (for the connector, devices
-// syncing here, and this page), and one page for what only the server has: Claude and ChatGPT,
-// its Google Drive sync, and its AI model.
+// syncing here, and this page), and one page for what only the server has: a code for phones to
+// join by, Claude and ChatGPT, bringing a household over from Google Drive, and its AI model.
 import type { Context, Hono } from 'hono';
 import { aiProvider } from '../shared/ai.ts';
+import { joinLink, qrPath } from '../shared/qr.ts';
 import { modelName, monthSpendUsd, type Ai } from './ai/client.ts';
 import type { Oidc } from './auth/oidc.ts';
 import { allowedEmails } from './auth/members.ts';
@@ -11,7 +12,7 @@ import type { Connector } from './connector.ts';
 import type { Db } from './db/index.ts';
 import type { Member } from './db/schema.ts';
 import type { Env } from './env.ts';
-import { html, page, type Html } from './pages.ts';
+import { html, Html, page } from './pages.ts';
 import type { ServerSync } from './sync/server.ts';
 import { SyncSetupError } from './sync/service.ts';
 
@@ -38,6 +39,11 @@ export function registerSite(app: Hono<Env>, { db, config, oidc, sync, ai, conne
   const base = config.basePath;
   const url = (p: string) => `${base}${p}`;
   const show = (c: Context<Env>, title: string, body: Html, status: 200 | 400 | 404 = 200) => c.html(page(title, body, { base }), status);
+  // The code phones scan to join (shared/qr.ts), dark on white whatever the theme, as scanners want.
+  const code = qrPath(joinLink(config.publicUrl));
+  const joinCode = new Html(
+    `<svg viewBox="0 0 ${code.size} ${code.size}" shape-rendering="crispEdges" role="img" aria-label="Code to join this server" style="width:13rem;height:13rem;background:#fff;border-radius:1rem;display:block;margin:1rem auto"><path d="${code.d}" fill="#000"/></svg>`,
+  );
 
   // The old address of the sign-in page, in the server's app.
   app.get('/signin', (c) => c.redirect(url(`/auth/signin${new URL(c.req.url).search}`)));
@@ -74,7 +80,8 @@ ${!oidc.enabled && dev.length === 0 ? html`<p class="muted">Sign-in isn't set up
     const problem = c.req.query('error');
     const connections = connector.connections(me.id);
 
-    // Google Drive: what the server syncs with, and how to change it.
+    // Google Drive: a household that started there, brought over to this server. While the server
+    // is in the household file too, devices still on Drive keep in step, and are offered a move here.
     let drive: Html | string = '';
     if (admin && sync.enabled) {
       const status = sync.service.status();
@@ -83,12 +90,13 @@ ${!oidc.enabled && dev.length === 0 ? html`<p class="muted">Sign-in isn't set up
         drive = html`<div class="card"><p><strong>${status.target?.name ?? 'Google Drive'}</strong></p>
 <p class="muted">As ${google?.email ?? 'Google'} · last synced ${status.syncedAt ? when(new Date(status.syncedAt)) : 'not yet'}</p>
 ${status.error ? html`<p class="warn">${status.error}</p>` : ''}</div>
+<p>This server keeps in step with the household's file in Google Drive, so devices still syncing there see the same things. Each of them is offered a move here in Settings, Sync and backup. Once they've all moved, stop syncing with Drive.</p>
 <div class="actions">
 <form method="post" action="${url('/server/drive/run')}"><button class="quiet">Sync now</button></form>
 <form method="post" action="${url('/server/drive/stop')}" onsubmit="return confirm('Stop syncing this server with Google Drive? Its data stays, and so does the file in Drive.')"><button class="quiet">Stop syncing</button></form>
 </div>`;
       } else if (!google) {
-        drive = html`<p>Keep this server in step with a household that keeps Amble in Google Drive, so Claude and ChatGPT see the same tasks as everyone's phones.</p>
+        drive = html`<p>If your household already keeps Amble in Google Drive, connect it here to bring everything onto this server. Then each device moves here from Settings, Sync and backup.</p>
 <div class="actions"><a class="button primary" href="${url('/auth/drive')}">Connect Google Drive</a></div>`;
       } else {
         let households: { id: string; name: string; owners?: { displayName?: string; emailAddress?: string }[] }[] = [];
@@ -97,13 +105,12 @@ ${status.error ? html`<p class="warn">${status.error}</p>` : ''}</div>
         } catch (err) {
           drive = html`<p class="warn">${err instanceof Error ? err.message : "Couldn't reach Google Drive."}</p>`;
         }
-        drive = html`${drive}<p>Connected as ${google.email}. Join the household's file, or make one from what's on this server.</p>
+        drive = html`${drive}<p>Connected as ${google.email}. Join the household's file to bring it here.</p>
 <ul>${households.map(
           (h) => html`<li class="card row"><span>${h.name}<br><span class="muted">${h.owners?.[0]?.displayName ?? h.owners?.[0]?.emailAddress ?? ''}</span></span>
 <form method="post" action="${url('/server/drive/join')}"><input type="hidden" name="fileId" value="${h.id}"><button class="quiet">Join</button></form></li>`,
         )}</ul>
-${households.length === 0 ? html`<p class="muted">No household files ${google.email} can open yet.</p>` : ''}
-<div class="actions"><form method="post" action="${url('/server/drive/create')}"><button class="primary">Make a household from this server</button></form></div>`;
+${households.length === 0 ? html`<p class="muted">No household files ${google.email} can open yet.</p>` : ''}`;
       }
     }
 
@@ -120,9 +127,13 @@ ${notice ? html`<p class="card" role="status">${notice}</p>` : ''}
 ${problem ? html`<p class="warn" role="alert">${SIGN_IN_ERRORS[problem] ?? problem}</p>` : ''}
 
 <h2>Amble</h2>
-<p>Amble runs on each phone and computer, and keeps in step with this server.</p>
+<p>Amble runs on each phone and computer, and keeps in step with this server, photos and files on tasks included.</p>
 <div class="actions"><a class="button primary" href="${url('/')}">Open Amble</a></div>
-<p class="muted">In the Android app, choose <em>Use my own server</em> and enter <code>${config.publicUrl}</code>.</p>
+
+<h2>Add a phone</h2>
+<p>In the Amble app, choose <em>Use my own server</em>, then <em>Scan the code</em>. Or scan it with the phone's camera to use Amble in the browser.</p>
+${joinCode}
+<p class="muted">Or type the address: <code>${config.publicUrl}</code>. Everyone signs in with their own account.</p>
 
 <h2>Claude and ChatGPT</h2>
 <p>Add Amble as a custom connector in Claude or ChatGPT with this address, then sign in here when it asks:</p>
@@ -136,7 +147,7 @@ ${
     : html`<p class="muted">Nothing connected yet.</p>`
 }
 
-${admin && sync.enabled ? html`<h2>Google Drive</h2>${drive}` : ''}
+${admin && sync.enabled ? html`<h2>Coming from Google Drive</h2>${drive}` : ''}
 
 <h2>AI</h2>
 ${
@@ -174,14 +185,7 @@ ${
     '/server/drive/join',
     drive(async (form) => {
       await sync.connect({ mode: 'join', fileId: form.fileId ?? '' });
-      return 'Joined the household. This server keeps in step with it from now on.';
-    }),
-  );
-  app.post(
-    '/server/drive/create',
-    drive(async (_form, me) => {
-      await sync.connect({ mode: 'create', name: `${me.name.split(/\s+/)[0]}'s Amble household` });
-      return 'Made a household file in Google Drive. Share it from Amble on a device, and everyone joins it there.';
+      return 'Joined the household. Devices still on Drive are offered a move here in Settings, Sync and backup.';
     }),
   );
   app.post(

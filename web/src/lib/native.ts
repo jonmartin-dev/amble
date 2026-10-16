@@ -34,6 +34,15 @@ interface ReminderCheckPlugin {
 const ReminderCheck = registerPlugin<ReminderCheckPlugin>('ReminderCheck');
 
 const SystemColors = registerPlugin<{ palettes(): Promise<{ palettes: PhoneColors | null }> }>('SystemColors');
+const CodeScanner = registerPlugin<{ scan(): Promise<{ value: string | null }> }>('CodeScanner');
+
+/**
+ * Scans a QR code with Google's scanner (CodeScannerPlugin.java), which needs no camera permission:
+ * what it says, or null when the person backs out. Throws when the phone can't scan.
+ */
+export async function scanCode(): Promise<string | null> {
+  return (await CodeScanner.scan()).value;
+}
 
 /** Reads the phone's Material You colors again (they change with the wallpaper); true if they did. */
 async function refreshPhoneColors() {

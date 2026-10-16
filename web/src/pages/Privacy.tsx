@@ -41,7 +41,7 @@ export function Privacy() {
           whoever made the household, shared with the people they add; everyone in it has the whole file, including lists marked as
           only theirs, which Amble keeps out of others' view but doesn't keep out of the file. Amble asks Google only for its own
           files: the hidden folder, and files it made or that you picked for it. It can't see anything else in your Drive. Photos and
-          files on tasks stay on the devices of whoever added them.
+          files on tasks stay on the devices of whoever added them, unless your household syncs with its own server.
         </p>
         <p>
           {native
@@ -49,7 +49,8 @@ export function Privacy() {
             : tokenEndpointHost
               ? `Google gives the app a key to your Drive that lasts about an hour, kept only in this tab, and a longer-lasting one this browser keeps for getting the next. Getting it goes through ${tokenEndpointHost}, which adds Amble's Google sign-in secret on the way and keeps nothing.`
               : "Google gives the app a key to your Drive that lasts about an hour and is kept only in this tab. When it runs out, Google gives it a new one, asking you only if you've signed out of Google."}{' '}
-          If someone in the household runs their own Amble server and connects it, the server is one more copy of the household's file.
+          If someone in the household runs their own Amble server and connects it, the server is one more copy of the household's file,
+          and notes its address on the file so your devices can move to it.
         </p>
         <h2>Reminders</h2>
         <p>
@@ -80,7 +81,7 @@ export function Privacy() {
         <h2>Your household's own server</h2>
         <p>
           If your household runs an Amble server and you sync with it, it keeps a copy of the household's tasks and lists on that
-          computer, as a household file in Google Drive would. You sign in to it {server ? `with ${server.signIn}` : 'the way it lets you'}, and it keeps your
+          computer, as a household file in Google Drive would, and the photos and files added to tasks, so everyone's devices have them. You sign in to it {server ? `with ${server.signIn}` : 'the way it lets you'}, and it keeps your
           name, email address and when you last signed in. It's a computer someone in your household keeps, not Amble's: Amble has no
           servers of its own.
           {server?.ai

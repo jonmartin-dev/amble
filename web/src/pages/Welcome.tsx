@@ -1,6 +1,7 @@
 // The first screens: what Amble is, then three ways to start. On this device only (Amble asks what
-// to call you), from Google Drive, or with the household's own server. Also the screens for when
-// another tab has the database, the browser won't give Amble storage, or a page breaks.
+// to call you), from Google Drive, or with the household's own server; opened from a server, that
+// server rather than Drive. Also the screens for when another tab has the database, the browser
+// won't give Amble storage, or a page breaks.
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { AnimatePresence, motion } from 'motion/react';
@@ -39,6 +40,10 @@ function Frame({ children }: { children: React.ReactNode }) {
 
 type Step = 'intro' | 'you' | 'ai';
 
+// Opened from the code on a server's page (shared/qr.ts): straight to joining it.
+const joining = servedBy != null && new URLSearchParams(location.search).has('join');
+if (joining) history.replaceState(null, '', location.pathname);
+
 /** One plain point on the first screen. */
 function Point({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
   return (
@@ -68,11 +73,13 @@ function StepIn({ step, children }: { step: Step; children: React.ReactNode }) {
 export function Welcome() {
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const [step, setStep] = useState<Step>('intro');
+  const [step, setStep] = useState<Step>(joining ? 'you' : 'intro');
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [server, setServer] = useState(false);
+  // Came from the code: joining comes first, with starting alone a step aside.
+  const [joinFirst, setJoinFirst] = useState(joining);
 
   // Sync is on now: the views and the sync loop (which read "off" when the app opened) catch up.
   const joined = () => Promise.all([qc.invalidateQueries(), refreshStatus().catch(() => null)]);
@@ -82,6 +89,7 @@ export function Welcome() {
     if (outcome.ok) void joined();
     else {
       setStep('you');
+      setJoinFirst(false);
       setServer(true);
       setError(outcome.error);
     }
@@ -167,7 +175,19 @@ export function Welcome() {
           </StepIn>
         )}
 
-        {step === 'you' && (
+        {step === 'you' && joinFirst && here && (
+          <StepIn step="you">
+            <p className="mt-3 text-lg">Join your household on {here}. You sign in there with your own account.</p>
+            <div className="mt-6">
+              <ServerForm action="welcome-server" />
+            </div>
+            <button type="button" onClick={() => setJoinFirst(false)} className={`mt-4 ${quiet}`}>
+              Start on this device instead
+            </button>
+          </StepIn>
+        )}
+
+        {step === 'you' && !(joinFirst && here) && (
           <StepIn step="you">
             <form onSubmit={start} className="mt-8 flex flex-col gap-3">
               <label className="flex flex-col gap-2">
@@ -200,7 +220,7 @@ export function Welcome() {
                   Join through {here}
                 </button>
               )}
-              {googleConfigured && (
+              {googleConfigured && !here && (
                 <>
                   <button type="button" onClick={() => void fromDrive()} disabled={saving} className={quiet}>
                     Sign in with Google

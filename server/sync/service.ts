@@ -4,12 +4,15 @@
 // Each round downloads it if it changed, merges it in, and writes it back if this copy has changes
 // it lacks. Two devices writing at once can overwrite each other; the next round notices its
 // changes are missing and writes them again. A server (server/sync/hub.ts) answers the same two
-// calls itself, merging what a device sends into its own copy, so nothing is ever overwritten.
+// calls itself, merging what a device sends into its own copy, so nothing is ever overwritten. It
+// also keeps the bytes of files on tasks, which Drive can't share: each device sends it the files
+// added there, and fetches the rest when someone opens them.
 import { eq } from 'drizzle-orm';
 import type { AiEffort, AiProviderId } from '../../shared/ai.ts';
 import type { RemoteAi } from '../ai/client.ts';
 import type { Db } from '../db/open.ts';
-import { groups, listItems, members, serverSettings, tasks } from '../db/schema.ts';
+import { attachments, groups, listItems, members, serverSettings, tasks } from '../db/schema.ts';
+import type { FileStore, StoredFile } from '../domain/files.ts';
 import { latestReading, startCapture, stamp, stopCapture } from './capture.ts';
 import { createDrive, DriveAuthError, DriveError, HOUSEHOLD_MIME, pack, unpack, type Drive, type DriveFile } from './drive.ts';
 import { Clock, newSite } from './hlc.ts';
@@ -17,6 +20,12 @@ import { exportState, mergeState, missingMine, NewerSchema, type SyncState } fro
 
 export const PERSONAL_FILE = 'almanac.state';
 export const HOUSEHOLD_PROPERTY = { key: 'almanac', value: 'household' };
+/**
+ * The household file's note of the household's own server, when one syncs with it: devices still
+ * syncing through Drive offer to move to the server, which shares files too. A public property, so
+ * a server and a phone built with different Google clients both see it.
+ */
+export const SERVER_PROPERTY = 'ambleServer';
 
 export interface SyncTarget {
   kind: 'personal' | 'household' | 'server';
@@ -43,6 +52,10 @@ interface Settings {
   serverToken?: string | null;
   /** The server's AI model, which this device uses if it has none of its own. */
   serverAi?: { provider: AiProviderId; model: string; effort: AiEffort } | null;
+  /** Files here (by SHA-256) the server is known to have, so they aren't asked about every round. */
+  filesSent?: string[];
+  /** The household's own server, as the household file says, for a device syncing through Drive. */
+  householdServer?: string | null;
 }
 
 export interface SyncStatus {
@@ -53,6 +66,8 @@ export interface SyncStatus {
   error: string | null;
   /** Changes here that the Drive file doesn't have yet. */
   waiting: boolean;
+  /** The household's own server, when this device syncs through Drive and the household also has one. */
+  householdServer: string | null;
 }
 
 export class SyncSetupError extends Error {}
@@ -90,13 +105,19 @@ export function createSyncService({
   fetchImpl = fetch,
   adopt,
   hub = false,
+  serverUrl,
+  files,
 }: {
   db: Db;
   schema: string;
   fetchImpl?: typeof fetch;
   adopt?: Adopt;
+  /** This device's own file store, whose files go to the household's server when it syncs with one. */
+  files?: FileStore;
   /** This copy is a server that devices sync with directly, so it records changes whether or not it also syncs through Drive. */
   hub?: boolean;
+  /** That server's address, which it notes on the household file it syncs with. */
+  serverUrl?: string;
 }) {
   const read = (): Settings | null => (db.select().from(serverSettings).where(eq(serverSettings.key, KEY)).get()?.value as Settings | undefined) ?? null;
   const write = (s: Settings) =>
@@ -129,13 +150,13 @@ export function createSyncService({
 
   // ---- the household's own server ------------------------------------------------------------
 
-  async function serverCall(url: string, token: string, path: string, init: RequestInit = {}) {
+  async function serverCall(url: string, token: string, path: string, init: RequestInit = {}, timeoutMs = 30_000) {
     let res: Response;
     try {
       res = await fetchImpl(`${url}${path}`, {
         ...init,
         headers: { authorization: `Bearer ${token}`, ...init.headers },
-        signal: AbortSignal.timeout(30_000),
+        signal: AbortSignal.timeout(timeoutMs),
       });
     } catch {
       throw new SyncSetupError(`Couldn't reach ${new URL(url).host}. Check the address, and that this device can reach it.`);
@@ -190,7 +211,44 @@ export function createSyncService({
       uploaded = true;
     }
     save({ syncedAt: Date.now(), error: null });
+    // After the household, so the server knows the files these bytes belong to. A file that doesn't
+    // make it waits for the next round; the rest of sync doesn't wait on it.
+    await sendFiles(target.url, token).catch((err: unknown) => console.warn("Files didn't reach the server:", err));
     return { merged, uploaded };
+  }
+
+  /** Every file's bytes the household's files point at, by SHA-256: the files and their previews. */
+  function filesInUse() {
+    const used = new Set<string>();
+    for (const a of db.select({ sha: attachments.sha256, preview: attachments.previewSha256 }).from(attachments).all()) {
+      used.add(a.sha);
+      if (a.preview) used.add(a.preview);
+    }
+    return used;
+  }
+
+  /** Sends the server the files kept on this device that it doesn't have yet. */
+  async function sendFiles(url: string, token: string) {
+    if (!files) return;
+    const used = filesInUse();
+    const known = settings?.filesSent ?? [];
+    const sent = new Set(known.filter((sha) => used.has(sha)));
+    const have: string[] = [];
+    for (const sha of used) if (!sent.has(sha) && (await files.get(sha))) have.push(sha);
+    if (have.length) {
+      const res = await serverCall(url, token, '/sync/files/check', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ have }) });
+      const { need, stored } = (await res.json()) as { need: string[]; stored: string[] };
+      for (const sha of stored) sent.add(sha);
+      for (const sha of need) {
+        const file = await files.get(sha);
+        if (!file) continue;
+        // Up to 25 MB, so a slow connection gets longer than the usual half a minute.
+        await serverCall(url, token, `/sync/files/${sha}`, { method: 'PUT', headers: { 'content-type': 'application/octet-stream' }, body: (await file.bytes()) as BodyInit }, 5 * 60_000);
+        sent.add(sha);
+        save({ filesSent: [...sent] });
+      }
+    }
+    if (sent.size !== known.length || have.length) save({ filesSent: [...sent] });
   }
 
   async function upload(drive: Drive, target: SyncTarget) {
@@ -205,6 +263,15 @@ export function createSyncService({
     if (file.trashed) throw new SyncSetupError(`"${file.name}" is in the trash in Google Drive. Take it out, or stop syncing and start again.`);
     // Someone renamed the file in Drive: the Sync page says what it's called now.
     if (file.name && file.name !== target.name) save({ target: { ...target, name: file.name } });
+    if (target.kind === 'household') {
+      // A server notes itself on the file; a device notes which server the household has.
+      if (hub && serverUrl && file.properties?.[SERVER_PROPERTY] !== serverUrl) {
+        await drive.setProperties(target.fileId, { [SERVER_PROPERTY]: serverUrl }).catch((err: unknown) => console.warn("Couldn't note this server on the household file:", err));
+      } else if (!hub) {
+        const noted = file.properties?.[SERVER_PROPERTY] ?? null;
+        if (noted !== (settings?.householdServer ?? null)) save({ householdServer: noted });
+      }
+    }
     let merged = 0;
     let remoteSites = settings?.sites ?? {};
     if (file.md5Checksum !== settings?.md5) {
@@ -255,6 +322,7 @@ export function createSyncService({
         syncedAt: settings?.syncedAt ? new Date(settings.syncedAt).toISOString() : null,
         error: settings?.error ?? null,
         waiting: on && missingMine(db, clock, { v: 1, schema, sites: settings?.sites ?? {}, tables: {} }),
+        householdServer: settings?.target?.kind === 'household' ? (settings.householdServer ?? null) : null,
       };
     },
 
@@ -372,6 +440,15 @@ export function createSyncService({
       });
     },
 
+    /** A file's bytes from the household's server, for one this device doesn't have; null without a server, or when it lacks them too. */
+    async fileFromServer(sha256: string): Promise<ReadableStream<Uint8Array> | null> {
+      const target = settings?.target;
+      const token = settings?.serverToken;
+      if (target?.kind !== 'server' || !target.url || !token) return null;
+      const res = await fetchImpl(`${target.url}/sync/files/${sha256}`, { headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(5 * 60_000) }).catch(() => null);
+      return res?.ok && res.body ? res.body : null;
+    },
+
     /** The household's server's AI model, for a device with none of its own: where to ask, and what it is. */
     remoteAi(): RemoteAi | null {
       const target = settings?.target;
@@ -429,7 +506,7 @@ export function createSyncService({
           await fetchImpl(`${target.url}/sync/token`, { method: 'DELETE', headers: { authorization: `Bearer ${settings.serverToken}` }, signal: AbortSignal.timeout(10_000) }).catch(() => {});
         }
         if (!hub) stopCapture(db);
-        save({ target: null, account: null, md5: null, sites: {}, syncedAt: null, error: null, serverToken: null, serverAi: null });
+        save({ target: null, account: null, md5: null, sites: {}, syncedAt: null, error: null, serverToken: null, serverAi: null, filesSent: [], householdServer: null });
       });
     },
   };
@@ -437,6 +514,44 @@ export function createSyncService({
 }
 
 export type SyncService = ReturnType<typeof createSyncService>;
+
+// How long a file the server didn't have either goes unasked for, so a page showing it doesn't ask
+// again on every look.
+const MISSED_MS = 5 * 60_000;
+
+/**
+ * A device's file store that, when it syncs with the household's server, fills in files added on
+ * other devices: the first time one is opened here it comes from the server, and stays.
+ */
+export function filesThroughServer(store: FileStore, sync: Pick<SyncService, 'fileFromServer'>, limit: number): FileStore {
+  const fetching = new Map<string, Promise<StoredFile | null>>();
+  const missed = new Map<string, number>();
+  async function fetchOne(sha256: string) {
+    const body = await sync.fileFromServer(sha256);
+    if (!body) {
+      missed.set(sha256, Date.now());
+      return null;
+    }
+    // Kept under the hash of what actually came, so bytes that aren't this file are never served as it.
+    const saved = await store.save(body, limit);
+    return saved.sha256 === sha256 ? store.get(sha256) : null;
+  }
+  return {
+    ...store,
+    async get(sha256) {
+      const here = await store.get(sha256);
+      if (here || Date.now() - (missed.get(sha256) ?? 0) < MISSED_MS) return here;
+      let pending = fetching.get(sha256);
+      if (!pending) {
+        pending = fetchOne(sha256)
+          .catch(() => null)
+          .finally(() => fetching.delete(sha256));
+        fetching.set(sha256, pending);
+      }
+      return pending;
+    },
+  };
+}
 
 /**
  * Moves everything one member did or owns onto another, then removes the first: for a device that

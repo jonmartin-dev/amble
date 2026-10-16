@@ -18,6 +18,8 @@ import { createSession, deleteSession, resolveSession, SESSION_COOKIE, SESSION_T
 import type { Config } from './config.ts';
 import { registerConnector } from './connector.ts';
 import { SCHEMA } from './db/index.ts';
+import type { FileStore } from './domain/files.ts';
+import { createFileStore } from './lib/disk-files.ts';
 import { createGoogle } from './lib/google.ts';
 import { registerSite, safeReturnTo } from './site.ts';
 import { registerSyncHub } from './sync/hub.ts';
@@ -36,6 +38,7 @@ export function createApp({
   fetchImpl,
   ai = createAi(config, db),
   sync = createServerSync({ db, config, google: createGoogle(config), schema: SCHEMA }),
+  files = createFileStore(config.dataDir),
 }: {
   db: Db;
   config: Config;
@@ -44,6 +47,8 @@ export function createApp({
   ai?: Ai;
   /** Keeping the server in step with a household's devices through Google Drive. */
   sync?: ServerSync;
+  /** Where the bytes of files on tasks are kept, for devices to share them through the server. */
+  files?: FileStore;
   /** For fetching client metadata documents; tests swap it out. */
   fetchImpl?: typeof fetch;
 }) {
@@ -179,7 +184,7 @@ self.addEventListener('activate', (e) => e.waitUntil((async () => {
         if (!(err instanceof SyncSetupError)) throw err;
         return c.redirect(appUrl(`/server?error=${encodeURIComponent(err.message)}`));
       }
-      return c.redirect(appUrl(`/server?done=${encodeURIComponent('Connected Google Drive. Now join the household, or make one.')}`));
+      return c.redirect(appUrl(`/server?done=${encodeURIComponent('Connected Google Drive. Now join the household’s file.')}`));
     }
     if (!isAllowed(db, config, identity.email)) {
       console.warn(`Sign-in refused for ${identity.email}: not on the allowlist`);
@@ -207,7 +212,7 @@ self.addEventListener('activate', (e) => e.waitUntil((async () => {
   });
 
   // Devices syncing straight with this server, and signing them in.
-  registerSyncHub(app, { db, config, service: sync.service, schema: SCHEMA, ai });
+  registerSyncHub(app, { db, config, service: sync.service, schema: SCHEMA, ai, files });
 
   // OAuth, discovery, consent and /mcp for the assistant connector.
   const connector = registerConnector(app, { db, config, fetchImpl });

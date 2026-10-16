@@ -28,7 +28,14 @@ export function createServerSync({ db, config, google, schema, fetchImpl = fetch
   const secret = config.oidc.clientSecret;
   // Joining a household the server's own groups might already be in by name: they fold into it.
   // Devices can sync with the server directly too (server/sync/hub.ts), so it always records changes.
-  const service = createSyncService({ db, schema, fetchImpl, hub: true, adopt: (_account, localGroups, remote) => remote && foldDuplicateGroups(db, localGroups) });
+  const service = createSyncService({
+    db,
+    schema,
+    fetchImpl,
+    hub: true,
+    serverUrl: config.publicUrl,
+    adopt: (_account, localGroups, remote) => remote && foldDuplicateGroups(db, localGroups),
+  });
   let access: { token: string; expiresAt: number } | null = null;
   let soon: ReturnType<typeof setTimeout> | undefined;
 

@@ -1,6 +1,7 @@
 // Settings → Sync and backup, on a device: keeping a copy in the person's Google Drive, making that
 // a household others can join, and joining one someone shared; or syncing with the household's
-// own server instead.
+// own server instead. Once a household has a server, that's the way: opened from one, Drive isn't
+// offered, and a device still on Drive is offered a move to it.
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import CloudSync from '~icons/material-symbols/cloud-sync-outline-rounded';
@@ -8,13 +9,14 @@ import Groups from '~icons/material-symbols/groups-outline-rounded';
 import PersonAdd from '~icons/material-symbols/person-add-outline-rounded';
 import Warning from '~icons/material-symbols/warning-outline-rounded';
 import { ListGroup, SectionTitle, SubpageHeader } from '../components/ui.tsx';
-import { api, ApiError } from '../lib/api.ts';
+import { api, ApiError, servedBy } from '../lib/api.ts';
 import { refreshStatus, syncNow, useDriveSync, type DriveSyncStatus } from '../lib/drive-sync.ts';
 import { forgetRefreshToken, forgetToken, googleConfigured, pickHouseholdFile, resumeAfterGoogle, tokenFromTap } from '../lib/google.ts';
 import { refreshViews } from '../lib/mutations.ts';
 import { useMe } from '../lib/queries.ts';
 import { signInToServer, useServerReturn } from '../lib/server-sync.ts';
 import { useSnackbar } from '../lib/snackbar.tsx';
+import { JoinCode } from '../components/JoinCode.tsx';
 import { ServerForm } from '../components/ServerForm.tsx';
 
 interface Person {
@@ -63,9 +65,11 @@ export function SyncSettings() {
     void refreshStatus().catch(() => {});
   }, []);
 
-  // Back from signing in on the household's server.
+  // Back from signing in on the household's server. A device that was on Drive needs Google no more.
   useServerReturn('sync-server', (outcome) => {
     if (outcome.ok) {
+      forgetToken();
+      forgetRefreshToken();
       snack({ message: 'Syncing with your server.' });
       void qc.invalidateQueries();
       void refreshStatus().catch(() => {});
@@ -142,6 +146,10 @@ export function SyncSettings() {
 
   const household = status?.target?.kind === 'household';
   const owner = household && status?.target?.owner === status?.account?.email;
+  // Opened from the household's server, or on Drive in a household that has one: the server is the way.
+  const offered = !onServer ? (servedBy?.url ?? status?.householdServer ?? null) : null;
+  const offeredHost = offered ? new URL(offered).host : null;
+  const serverWay = onServer || (!status?.on && offered != null);
 
   return (
     <>
@@ -150,16 +158,23 @@ export function SyncSettings() {
       <section className="mt-4 rounded-[2rem] bg-secondary-container p-5 text-on-secondary-container">
         <div className="flex items-center gap-3">
           <CloudSync className="size-6" aria-hidden />
-          <h2 className="display text-xl font-medium">{onServer ? 'In step with your server' : 'Keep it in your Google Drive'}</h2>
+          <h2 className="display text-xl font-medium">{serverWay ? 'In step with your server' : 'Keep it in your Google Drive'}</h2>
         </div>
         <p className="mt-2">
-          {onServer
-            ? 'Your household runs its own Amble server, and this device keeps in step with it, along with everyone else’s.'
+          {serverWay
+            ? 'Your household runs its own Amble server, and this device keeps in step with it, along with everyone else’s, photos and files on tasks included.'
             : 'Amble keeps a copy in your own Google Drive and brings your other devices and your household in step with it. It can only see the files it makes there, and nothing goes anywhere else.'}
         </p>
       </section>
 
-      {!status?.on ? (
+      {!status?.on && offered ? (
+        <div className="mt-6 flex flex-col items-start gap-3">
+          <button type="button" disabled={busy} onClick={() => void signInToServer(offered, 'sync-server')} className={button}>
+            Sync with {offeredHost}
+          </button>
+          <p className="px-1 text-sm text-on-surface-variant">You sign in there once, with your own account. What’s on this device comes along.</p>
+        </div>
+      ) : !status?.on ? (
         <div className="mt-6 flex flex-col items-start gap-3">
           {googleConfigured ? (
             <>
@@ -187,6 +202,7 @@ export function SyncSettings() {
               Sync with your household's own server
             </button>
           )}
+          <p className="px-1 text-sm text-on-surface-variant">A server shares photos and files on tasks too, which Google Drive can’t.</p>
         </div>
       ) : onServer ? (
         <>
@@ -213,9 +229,15 @@ export function SyncSettings() {
           )}
           <SectionTitle>Household</SectionTitle>
           <p className="px-1 text-on-surface-variant">
-            Everyone in the household signs in to {status.target?.name} with their own account. To add someone, add them in People with
-            the email they sign in with, and they choose “Use my own server” in Amble.
+            Everyone in the household signs in to {status.target?.name} with their own account, and photos and files on tasks are shared
+            through it. To add someone, add them in People with the email they sign in with. Then, in Amble on their phone, they choose
+            “Use my own server” and scan this code, or scan it with the phone’s camera to use Amble in the browser.
           </p>
+          {status.target?.url && (
+            <div className="mt-3">
+              <JoinCode url={status.target.url} />
+            </div>
+          )}
           <SectionTitle>Stop</SectionTitle>
           <button type="button" disabled={busy} onClick={stop} className={quiet}>
             Stop syncing on this device
@@ -241,6 +263,19 @@ export function SyncSettings() {
           <p className="mt-2 px-1 text-sm text-on-surface-variant">
             It syncs when Amble opens, every minute while it’s open, and soon after each change.
           </p>
+
+          {offered && (
+            <section className="mt-6 flex flex-col items-start gap-3 rounded-3xl bg-surface-low p-5">
+              <h3 className="font-medium">Your household has its own server</h3>
+              <p className="text-on-surface-variant">
+                {offeredHost} keeps everyone in step, and shares photos and files on tasks, which Google Drive can’t. Move this device to it:
+                you sign in there once, and this device stops using Drive.
+              </p>
+              <button type="button" disabled={busy} onClick={() => void signInToServer(offered, 'sync-server')} className={button}>
+                Move to {offeredHost}
+              </button>
+            </section>
+          )}
 
           <SectionTitle>Household</SectionTitle>
           {!household ? (
@@ -319,7 +354,8 @@ export function SyncSettings() {
                 ))}
               <p className="mt-3 px-1 text-sm text-on-surface-variant">
                 Everyone in the household has the whole file in their Drive. Private lists stay out of their view in Amble, but the file
-                itself holds them. Photos and files on tasks stay on the devices of whoever added them.
+                itself holds them. Photos and files on tasks stay on the devices of whoever added them, unless the household syncs with its
+                own server.
               </p>
             </>
           )}

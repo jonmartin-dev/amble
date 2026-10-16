@@ -11,6 +11,7 @@ interface FakeFile {
   md5: string;
   modified: number;
   appProperties: Record<string, string>;
+  properties: Record<string, string>;
   /** Writers by email; the owner is one. */
   writers: Map<string, string>;
   /** People whose Amble can open it: its maker, and anyone who picked it. */
@@ -38,6 +39,7 @@ export function createFakeDrive() {
       size: String(f.bytes.length),
       trashed: false,
       appProperties: f.appProperties,
+      properties: f.properties,
       owners: [{ emailAddress: f.owner, displayName: users.get(f.owner)?.name ?? f.owner }],
       capabilities: { canEdit: f.writers.has(email), canShare: f.owner === email },
     };
@@ -97,6 +99,7 @@ export function createFakeDrive() {
         md5: '',
         modified: 0,
         appProperties: meta.appProperties ?? {},
+        properties: {},
         writers: new Map([[me, user.name]]),
         opened: new Set([me]),
       };
@@ -129,7 +132,9 @@ export function createFakeDrive() {
     if (method === 'GET') return json(view(f, me));
     if (method === 'PATCH') {
       if (!f.writers.has(me)) return fail(403, 'The user does not have sufficient permissions for this file.');
-      await save(f, body);
+      // To the upload address, new contents; to the file's own, new details.
+      if (url.pathname.startsWith('/upload/')) await save(f, body);
+      else Object.assign(f.properties, (JSON.parse(new TextDecoder().decode(body)) as { properties?: Record<string, string> }).properties);
       return json(view(f, me));
     }
     return fail(405, 'Not allowed.');

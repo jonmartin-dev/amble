@@ -18,7 +18,7 @@ Since the household moved into Drive, the server is just another copy that syncs
 | Work while every device is closed | Size guesses, the morning's wording and reminders run as background jobs | They run whenever Amble is open instead |
 | Calendar load | Reading Google Calendar needs a client secret and a refresh token, which only the server has | No calendar in the day's load (see [Calendar](#calendar)) |
 | One AI key for the household, with a monthly cap | The server holds the key | Each device sets up its own |
-| Files shared between people | Files uploaded through the server's page are stored on the server | Files stay on the device that added them, as they already do with Drive |
+| Files shared between people | Devices syncing with the server send it their files, and fetch the others' when they're opened (built 2026-10-16) | Files stay on the device that added them, as they already do with Drive |
 | Drive access that renews in place in a browser | A refresh token takes Google's client secret, which a static page can't hold | A browser renews with a quick trip to Google while nobody's using the page (see [Keeping a browser signed in to Drive](#keeping-a-browser-signed-in-to-drive)) |
 | A household with no Google at all | Sign-in with any OpenID provider, data on the server | Everything syncs through Google Drive |
 
@@ -89,7 +89,7 @@ Roughly 1,500 to 2,500 lines out and 400 in, mostly deletions. A few focused day
 ## Moving an existing server household
 
 - **Already syncing through Drive:** each person opens the web app, chooses "I already use Amble" and joins the household. The server keeps syncing as before.
-- **Only on the server:** connect the server to Drive (Settings, Sync, "Make a household from this server"), share the file, and have each person join. Without Google, this waits for sync to the server.
+- **Only on the server:** have each device sync with the server (Use my own server). Later (2026-10-16) the server's Drive option became one way: bringing a Drive household onto the server, not making one from it.
 - **Files on tasks:** whatever was uploaded through the server's page stays on the server. Offer a way to download them before the page goes.
 - **Sessions and push registrations:** dropped. People turn reminders on again on each device.
 

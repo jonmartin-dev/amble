@@ -15,6 +15,8 @@ export interface DriveSyncStatus {
   syncedAt: string | null;
   error: string | null;
   waiting: boolean;
+  /** The household's own server, when this device syncs through Drive and the household has one. */
+  householdServer: string | null;
 }
 
 export interface DriveSyncState {

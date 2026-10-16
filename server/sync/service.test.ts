@@ -119,6 +119,22 @@ describe('sync through Google Drive', () => {
     expect(tomatoes).toMatchObject({ groupName: 'Home', createdById: aliMember.id, createdByName: 'Ali' });
   });
 
+  it('tells devices on the household file when the household has its own server', async () => {
+    const drive = createFakeDrive();
+    const sam = drive.user('sam@example.com', 'Sam Lee');
+    const phone = device(drive, sam);
+    await phone.call('POST', '/device/start', { name: 'Sam' });
+    const fileId = (await phone.connect({ mode: 'create', name: 'Lee household' })).json.target.fileId;
+    expect((await phone.call('GET', '/sync')).json.householdServer).toBeNull();
+
+    // Sam's server joins the file, and notes itself on it.
+    const server = createSyncService({ db: openDatabase(':memory:'), schema: SCHEMA, fetchImpl: drive.fetch, hub: true, serverUrl: 'https://home.example' });
+    await server.connect(sam, { mode: 'join', fileId });
+    expect(server.status().householdServer).toBeNull();
+    await phone.run();
+    expect((await phone.call('GET', '/sync')).json.householdServer).toBe('https://home.example');
+  });
+
   it("sends a change again when another device wrote over the file without it", async () => {
     const drive = createFakeDrive();
     const sam = drive.user('sam@example.com', 'Sam');

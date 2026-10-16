@@ -14,7 +14,7 @@ import { createLocalApp, deviceAdopt, deviceConfig } from '../../../server/local
 import { createLocalPush } from '../../../server/notify/local-push.ts';
 import { createReminderSender } from '../../../server/notify/reminders.ts';
 import type { PushMessage } from '../../../server/notify/devices.ts';
-import { createSyncService } from '../../../server/sync/service.ts';
+import { createSyncService, filesThroughServer } from '../../../server/sync/service.ts';
 import journal from '../../../drizzle/meta/_journal.json';
 import { createOpfsFiles } from './files.ts';
 import type { FromWorker, ToWorker } from './protocol.ts';
@@ -85,8 +85,9 @@ async function start() {
   const files = await createOpfsFiles();
   // The newest migration this build has: another device's copy from a newer one can't be merged.
   const schema = journal.entries.at(-1)!.tag;
-  sync = createSyncService({ db, schema, adopt: deviceAdopt(db, config) });
-  const app = createLocalApp({ db, config, ai, push, files, sync });
+  sync = createSyncService({ db, schema, adopt: deviceAdopt(db, config), files });
+  // With the household's server, a file added on another device comes from there the first time it's opened.
+  const app = createLocalApp({ db, config, ai, push, files: filesThroughServer(files, sync, config.maxFileBytes), sync });
 
   const estimator = createEstimator(db, ai, timezone);
   const briefings = createBriefings(db, ai, timezone);
