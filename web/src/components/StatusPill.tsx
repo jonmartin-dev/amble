@@ -7,7 +7,9 @@ import Sync from '~icons/material-symbols/sync-rounded';
 import Upgrade from '~icons/material-symbols/upgrade-rounded';
 import { appUrl } from '../lib/api.ts';
 import { onDevice } from '../lib/device.ts';
-import { syncNow, useDriveSync } from '../lib/drive-sync.ts';
+import { refreshStatus, syncNow, useDriveSync } from '../lib/drive-sync.ts';
+import { signInToServer, useServerReturn } from '../lib/server-sync.ts';
+import { useSnackbar } from '../lib/snackbar.tsx';
 import { expressive } from '../lib/motion.ts';
 import { applyUpdate, useUpdateReady } from '../lib/pwa.ts';
 import { useSyncState } from '../lib/sync.ts';
@@ -34,6 +36,12 @@ export function StatusPill() {
   const sync = useSyncState();
   const update = useUpdateReady();
   const drive = useDriveSync();
+  const snack = useSnackbar();
+  // Back from signing in to the household's server again.
+  useServerReturn('server-again', (outcome) => {
+    if (!outcome.ok) snack({ message: outcome.error });
+    void refreshStatus().then(() => syncNow());
+  });
   const [slowSync, setSlowSync] = useState(false);
   const [synced, setSynced] = useState(false);
   const wasBehind = useRef(false);
@@ -73,8 +81,16 @@ export function StatusPill() {
       action: { label: 'Sign in', run: () => window.location.assign(appUrl(`/auth/login?return=${encodeURIComponent(location.pathname)}`)) },
     };
   } else if (onDevice) {
-    // Changes go straight into the database on this device; only Drive sync can be waiting.
-    if (drive.needsGoogle && drive.status?.on) {
+    // Changes go straight into the database on this device; only syncing can be waiting.
+    const server = drive.status?.target?.kind === 'server' ? drive.status.target.url : null;
+    if (server && drive.status?.error === 'Your server needs you to sign in again.') {
+      status = {
+        key: 'drive',
+        icon: <Login className="size-[18px]" aria-hidden />,
+        text: 'Sync paused',
+        action: { label: 'Sign in', run: () => void signInToServer(server, 'server-again') },
+      };
+    } else if (drive.needsGoogle && drive.status?.on) {
       status = {
         key: 'drive',
         icon: <Sync className="size-[18px]" aria-hidden />,

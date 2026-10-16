@@ -78,12 +78,14 @@ async function start() {
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const config = deviceConfig(self.location.origin, basePath, timezone);
   // The key is kept on the device as everything else is; it never leaves it except to the provider.
-  const ai = createAi(config, db, (input, init) => fetch(input, init), { seal: (key) => key, open: (key) => key });
+  // With none here, a device that syncs with the household's own server uses the server's model.
+  let sync: ReturnType<typeof createSyncService> | undefined;
+  const ai = createAi(config, db, (input, init) => fetch(input, init), { seal: (key) => key, open: (key) => key }, () => sync?.remoteAi() ?? null);
   const push = createLocalPush(db, showNotification);
   const files = await createOpfsFiles();
   // The newest migration this build has: another device's copy from a newer one can't be merged.
   const schema = journal.entries.at(-1)!.tag;
-  const sync = createSyncService({ db, schema, adopt: deviceAdopt(db, config) });
+  sync = createSyncService({ db, schema, adopt: deviceAdopt(db, config) });
   const app = createLocalApp({ db, config, ai, push, files, sync });
 
   const estimator = createEstimator(db, ai, timezone);

@@ -1,7 +1,9 @@
 // The household's AI calls: one model, from whichever provider the admin set up, every call
 // metered, and a monthly cap so a self-hoster is never surprised by the bill. Anthropic is spoken
 // to through its own SDK; everyone else through the OpenAI-style chat completions API that most
-// providers offer (OpenAI, Gemini, Z.ai, OpenRouter, Ollama and the rest).
+// providers offer (OpenAI, Gemini, Z.ai, OpenRouter, Ollama and the rest). A device that syncs
+// with the household's own server, and has no model of its own, asks the server's
+// (server/sync/hub.ts), which keeps the key and the cap.
 import Anthropic from '@anthropic-ai/sdk';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { and, eq, gte, sql } from 'drizzle-orm';
@@ -29,8 +31,17 @@ export interface AiSetup {
   monthlyCapUsd: number;
   /** US dollars per million tokens, in and out, when Amble or the admin knows them. */
   prices: [number, number] | null;
-  /** Saved in Settings, or read from the server's environment. */
-  source: 'settings' | 'environment';
+  /** Saved in Settings, read from the server's environment, or the household's server's, which a device asks. */
+  source: 'settings' | 'environment' | 'server';
+}
+
+/** The household's server's model, for a device with none of its own: where to ask, and what it is. */
+export interface RemoteAi {
+  url: string;
+  token: string;
+  provider: AiProviderId;
+  model: string;
+  effort: AiEffort;
 }
 
 export interface AiUsage {
@@ -44,6 +55,10 @@ export interface AiRequest<T extends z.ZodType> {
   system: string;
   content: string;
   schema: T;
+  /** The answer's JSON Schema, when it came from elsewhere (a device asking the server); else made from `schema`. */
+  jsonSchema?: Record<string, unknown>;
+  /** Which feature asks, for the server a device asks to meter it by. */
+  feature?: string;
   /** Null sends no effort at all. */
   effort: Effort | null;
   maxTokens: number;
@@ -66,6 +81,8 @@ export interface Ai {
   save(settings: AiSettings | null): void;
   /** Whether a key saved in the app can still be opened, for Settings to say so. */
   keyState(): 'none' | 'saved' | 'unreadable';
+  /** The household's server's model, which this device would use without one of its own. */
+  server(): AiSetup | null;
 }
 
 /** How a saved key is kept: sealed on the server; on a device, as the device keeps everything else. */
@@ -122,8 +139,21 @@ export function fromEnvironment(config: Config): AiSetup | null {
   };
 }
 
-export function createAi(config: Config, db?: Db, fetchImpl: typeof fetch = fetch, keys: KeyBox = sealedKeys(config.oidc.clientSecret)): Ai {
+export function createAi(
+  config: Config,
+  db?: Db,
+  fetchImpl: typeof fetch = fetch,
+  keys: KeyBox = sealedKeys(config.oidc.clientSecret),
+  /** The household's server's model, when this is a device syncing with one. */
+  remote?: () => RemoteAi | null,
+): Ai {
   let cached: { setup: AiSetup | null } | null = null;
+
+  // The server keeps the cap and counts what it costs, so here it's neither capped nor priced.
+  const fromServer = (): AiSetup | null => {
+    const r = remote?.();
+    return r ? { provider: r.provider, model: r.model, baseUrl: '', apiKey: '', effort: r.effort, monthlyCapUsd: Infinity, prices: null, source: 'server' } : null;
+  };
 
   const read = (): AiSetup | null => {
     const row = db?.select().from(serverSettings).where(eq(serverSettings.key, 'ai')).get();
@@ -138,12 +168,17 @@ export function createAi(config: Config, db?: Db, fetchImpl: typeof fetch = fetc
   const ai: Ai = {
     setup() {
       cached ??= { setup: read() };
-      return cached.setup;
+      return cached.setup ?? fromServer();
     },
     get available() {
       return ai.setup() != null;
     },
     complete(setup, req) {
+      if (setup.source === 'server') {
+        const r = remote?.();
+        if (!r) throw new Error('This device stopped syncing with the server.');
+        return serverCall(r, req, fetchImpl);
+      }
       return setup.provider === 'anthropic' ? anthropicCall(setup, req) : chatCall(setup, req, fetchImpl);
     },
     save(settings) {
@@ -160,6 +195,7 @@ export function createAi(config: Config, db?: Db, fetchImpl: typeof fetch = fetc
       db.insert(serverSettings).values({ key: 'ai', value }).onConflictDoUpdate({ target: serverSettings.key, set: { value } }).run();
     },
     keyState: () => (db ? savedKeyState(db, config, keys) : 'none'),
+    server: fromServer,
   };
   return ai;
 }
@@ -185,7 +221,7 @@ export function effortFor(setup: AiSetup, wanted: Effort): Effort | null {
 
 const anthropicClients = new Map<string, Anthropic>();
 
-async function anthropicCall<T extends z.ZodType>(setup: AiSetup, req: AiRequest<T>): Promise<AiAnswer<z.output<T>>> {
+function anthropicFor(setup: AiSetup) {
   let client = anthropicClients.get(setup.apiKey);
   if (!client) {
     // Smart add waits on this call, so fail fast and fall back rather than hang.
@@ -194,6 +230,44 @@ async function anthropicCall<T extends z.ZodType>(setup: AiSetup, req: AiRequest
     client = new Anthropic({ apiKey: setup.apiKey, timeout: 45_000, maxRetries: 1, dangerouslyAllowBrowser: onDevice });
     anthropicClients.set(setup.apiKey, client);
   }
+  return client;
+}
+
+/** A call with a JSON Schema that came from elsewhere: the answer is checked against `schema` afterwards. */
+async function anthropicRawCall<T extends z.ZodType>(setup: AiSetup, req: AiRequest<T> & { jsonSchema: Record<string, unknown> }): Promise<AiAnswer<z.output<T>>> {
+  const response = await anthropicFor(setup).messages.create({
+    model: setup.model,
+    max_tokens: req.maxTokens,
+    output_config: { ...(req.effort && { effort: req.effort }), format: { type: 'json_schema', schema: req.jsonSchema } },
+    system: req.system,
+    messages: [{ role: 'user', content: req.content }],
+  });
+  const u = response.usage;
+  const usage = { input: u.input_tokens + (u.cache_creation_input_tokens ?? 0), output: u.output_tokens, cached: u.cache_read_input_tokens ?? 0 };
+  if (response.stop_reason !== 'end_turn') return { output: null, problem: `stopped early (${response.stop_reason})`, usage };
+  const text = response.content.map((b) => (b.type === 'text' ? b.text : '')).join('');
+  return checked(req.schema, text, usage);
+}
+
+/** Parses an answer's JSON and holds it to the schema. */
+function checked<T extends z.ZodType>(schema: T, text: string, usage: AiUsage): AiAnswer<z.output<T>> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonIn(text));
+  } catch {
+    return { output: null, problem: 'answered with something other than JSON', usage };
+  }
+  const result = schema.safeParse(parsed);
+  if (!result.success) {
+    const where = result.error.issues[0]?.path.join('.') || 'the answer';
+    return { output: null, problem: `answered with JSON that doesn't fit (${where}: ${result.error.issues[0]?.message})`, usage };
+  }
+  return { output: result.data as z.output<T>, problem: null, usage };
+}
+
+async function anthropicCall<T extends z.ZodType>(setup: AiSetup, req: AiRequest<T>): Promise<AiAnswer<z.output<T>>> {
+  if (req.jsonSchema) return anthropicRawCall(setup, { ...req, jsonSchema: req.jsonSchema });
+  const client = anthropicFor(setup);
   const response = await client.messages.parse({
     model: setup.model,
     max_tokens: req.maxTokens,
@@ -284,7 +358,7 @@ function errorMessage(body: string) {
 async function chatCall<T extends z.ZodType>(setup: AiSetup, req: AiRequest<T>, fetchImpl: typeof fetch): Promise<AiAnswer<z.output<T>>> {
   const id = `${setup.baseUrl}|${setup.model}`;
   const q: Quirks = { ...(quirks.get(id) ?? { json: aiProvider(setup.provider)?.json ?? 'schema', effort: true, maxTokens: 'max_completion_tokens' }) };
-  const schema = strictSchema(req.schema);
+  const schema = req.jsonSchema ?? strictSchema(req.schema);
   const url = `${setup.baseUrl.replace(/\/+$/, '')}/chat/completions`;
 
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -332,20 +406,25 @@ async function chatCall<T extends z.ZodType>(setup: AiSetup, req: AiRequest<T>, 
     if (choice?.message?.refusal) return { output: null, problem: `declined: ${choice.message.refusal.slice(0, 200)}`, usage };
     const raw = choice?.message?.content;
     const text = typeof raw === 'string' ? raw : Array.isArray(raw) ? raw.map((p) => p.text ?? '').join('') : '';
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(jsonIn(text));
-    } catch {
-      return { output: null, problem: 'answered with something other than JSON', usage };
-    }
-    const checked = req.schema.safeParse(parsed);
-    if (!checked.success) {
-      const where = checked.error.issues[0]?.path.join('.') || 'the answer';
-      return { output: null, problem: `answered with JSON that doesn't fit (${where}: ${checked.error.issues[0]?.message})`, usage };
-    }
-    return { output: checked.data as z.output<T>, problem: null, usage };
+    return checked(req.schema, text, usage);
   }
   throw new Error("refused every way Amble knows to ask for JSON");
+}
+
+// ---- the household's server, for a device --------------------------------------------------------
+
+/** Asks the household's server's model. The server meters it; the answer is checked here, against the real schema. */
+async function serverCall<T extends z.ZodType>(r: RemoteAi, req: AiRequest<T>, fetchImpl: typeof fetch): Promise<AiAnswer<z.output<T>>> {
+  const res = await fetchImpl(`${r.url}/sync/ai`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${r.token}` },
+    body: JSON.stringify({ feature: req.feature ?? 'device', system: req.system, content: req.content, schema: strictSchema(req.schema), effort: req.effort, maxTokens: req.maxTokens }),
+    signal: AbortSignal.timeout(60_000),
+  });
+  const body = (await res.json().catch(() => null)) as { output?: unknown; usage?: AiUsage; error?: string } | null;
+  if (!res.ok) throw new Error(body?.error ?? `the server answered ${res.status}`);
+  const usage = body?.usage ?? { input: 0, output: 0, cached: 0 };
+  return checked(req.schema, JSON.stringify(body?.output ?? null), usage);
 }
 
 // ---- metering ----------------------------------------------------------------------------------

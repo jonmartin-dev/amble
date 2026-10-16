@@ -33,5 +33,6 @@ export function fakeAi(answer: (req: FakeRequest) => unknown): Ai & { requests: 
       throw new Error('fakeAi has no settings');
     },
     keyState: () => 'none',
+    server: () => null,
   };
 }

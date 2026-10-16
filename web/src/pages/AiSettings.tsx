@@ -48,6 +48,9 @@ export function AiSettings() {
   const { data: ai } = useAi();
   const admin = me?.role === 'admin';
   const [draft, setDraft] = useState<Draft>(() => blank('anthropic'));
+  // On a device using the household's server's model, the form for one of its own waits for a tap.
+  const [own, setOwn] = useState(false);
+  const fromServer = ai?.source === 'server';
   // What trying it said. `tried` is false when the server refused before asking the model.
   const [result, setResult] = useState<{ ok: true; ms: number | null } | { ok: false; error: string; tried: boolean } | null>(null);
 
@@ -129,12 +132,14 @@ export function AiSettings() {
             <p className="display mt-1 text-2xl font-medium">{ai.modelName}</p>
             <p className="mt-1 text-sm text-on-surface-variant">
               {ai.providerName}
-              {ai.source === 'environment' ? ', set in the server’s environment' : ''}
+              {ai.source === 'environment' ? ', set in the server’s environment' : fromServer ? ', from your server' : ''}
             </p>
             <p className="mt-3 text-sm">
-              {ai.priced
-                ? `$${ai.monthSpendUsd.toFixed(2)} of the $${ai.monthlyCapUsd} cap this month. Past it, AI features pause until next month.`
-                : 'Spending isn’t counted for this model, so the monthly cap doesn’t apply.'}
+              {fromServer
+                ? 'Your server keeps the key, and counts what it costs against its own monthly cap.'
+                : ai.priced
+                  ? `$${ai.monthSpendUsd.toFixed(2)} of the $${ai.monthlyCapUsd} cap this month. Past it, AI features pause until next month.`
+                  : 'Spending isn’t counted for this model, so the monthly cap doesn’t apply.'}
             </p>
           </>
         ) : (
@@ -151,7 +156,13 @@ export function AiSettings() {
         )}
       </section>
 
-      {admin && (
+      {admin && fromServer && !own && (
+        <button type="button" onClick={() => setOwn(true)} className="mt-4 rounded-full px-4 py-2.5 text-sm font-medium text-primary hover:bg-surface-high">
+          Use a key on this device instead
+        </button>
+      )}
+
+      {admin && (!fromServer || own) && (
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -269,7 +280,9 @@ export function AiSettings() {
             spellCheck={false}
             className={field}
           />
-          <p className="mt-2 px-1 text-sm text-on-surface-variant">It stays on the server, sealed, and is only ever sent to {provider.id === 'custom' ? 'that address' : provider.name}.</p>
+          <p className="mt-2 px-1 text-sm text-on-surface-variant">
+            {onDevice ? 'It stays on this device' : 'It stays on the server, sealed,'} and is only ever sent to {provider.id === 'custom' ? 'that address' : provider.name}.
+          </p>
 
           <SectionTitle>How hard it thinks</SectionTitle>
           <ButtonGroup value={draft.effort} options={EFFORTS} onChange={(effort) => update({ effort })} label="How hard it thinks" size="sm" />
@@ -358,7 +371,7 @@ export function AiSettings() {
                 onClick={() => remove.mutate()}
                 className="rounded-full px-4 py-2.5 text-sm font-medium text-primary hover:bg-surface-high"
               >
-                {ai.environment ? 'Use the server’s setting' : 'Turn off'}
+                {ai.server ? 'Use your server’s AI' : ai.environment ? 'Use the server’s setting' : 'Turn off'}
               </button>
             )}
             <button

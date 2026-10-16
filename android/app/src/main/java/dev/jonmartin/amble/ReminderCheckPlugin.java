@@ -15,22 +15,28 @@ import org.json.JSONObject;
 @CapacitorPlugin(name = "ReminderCheck")
 public class ReminderCheckPlugin extends Plugin {
 
-    /** Checks the household's file in Drive for this person's reminders: { fileId, email, memberId }. */
+    /**
+     * Checks the household for this person's reminders: in Drive { fileId, email, memberId }, or on
+     * the household's own server { server, token, memberId }.
+     */
     @PluginMethod
     public void start(PluginCall call) {
         String fileId = call.getString("fileId");
+        String server = call.getString("server");
         String memberId = call.getString("memberId");
-        if (fileId == null || memberId == null) {
+        if ((fileId == null && server == null) || memberId == null) {
             call.reject("Which household?", "FAILED");
             return;
         }
         String email = call.getString("email");
+        String token = call.getString("token");
         Context context = getContext();
         SharedPreferences prefs = ReminderCheck.prefs(context);
-        // Just turned on, or another household or person: start over from the file.
+        // Just turned on, or another household or person: start over from the household.
         boolean fresh =
             !prefs.getBoolean(ReminderCheck.ON, false) ||
-            !fileId.equals(prefs.getString(ReminderCheck.FILE_ID, null)) ||
+            !Objects.equals(fileId, prefs.getString(ReminderCheck.FILE_ID, null)) ||
+            !Objects.equals(server, prefs.getString(ReminderCheck.SERVER, null)) ||
             !memberId.equals(prefs.getString(ReminderCheck.MEMBER_ID, null)) ||
             !Objects.equals(email, prefs.getString(ReminderCheck.EMAIL, null));
         if (fresh) {
@@ -41,6 +47,8 @@ public class ReminderCheckPlugin extends Plugin {
             .edit()
             .putBoolean(ReminderCheck.ON, true)
             .putString(ReminderCheck.FILE_ID, fileId)
+            .putString(ReminderCheck.SERVER, server)
+            .putString(ReminderCheck.SERVER_TOKEN, token)
             .putString(ReminderCheck.MEMBER_ID, memberId)
             .putString(ReminderCheck.EMAIL, email)
             .apply();

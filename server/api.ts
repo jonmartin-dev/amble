@@ -827,7 +827,7 @@ export function registerApi(
       monthlyCapUsd: setup?.monthlyCapUsd ?? config.ai.monthlyCapUsd,
       // What the admin needs to change it. The key itself never leaves the server.
       settings:
-        admin && setup
+        admin && setup && setup.source !== 'server'
           ? {
               provider: setup.provider,
               model: setup.model,
@@ -839,6 +839,12 @@ export function registerApi(
             }
           : null,
       keyUnreadable: admin && !setup && ai.keyState() === 'unreadable',
+      // On a device that syncs with the household's server: the server's model, which this one
+      // uses unless it has its own.
+      server: (() => {
+        const s = ai.server();
+        return s ? { providerName: aiProvider(s.provider)?.name ?? s.provider, modelName: modelName(s) } : null;
+      })(),
     });
   });
 

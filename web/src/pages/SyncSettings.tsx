@@ -1,5 +1,6 @@
-// Settings → Sync and backup, on a device with no server: keeping a copy in the person's Google
-// Drive, making that a household others can join, and joining one someone shared.
+// Settings → Sync and backup, on a device: keeping a copy in the person's Google Drive, making that
+// a household others can join, and joining one someone shared; or syncing with the household's
+// own server instead.
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import CloudSync from '~icons/material-symbols/cloud-sync-outline-rounded';
@@ -13,7 +14,9 @@ import { refreshStatus, syncNow, useDriveSync, type DriveSyncStatus } from '../l
 import { forgetRefreshToken, forgetToken, googleConfigured, pickHouseholdFile, resumeAfterGoogle, tokenFromTap } from '../lib/google.ts';
 import { refreshViews } from '../lib/mutations.ts';
 import { useMe } from '../lib/queries.ts';
+import { signInToServer, useServerReturn } from '../lib/server-sync.ts';
 import { useSnackbar } from '../lib/snackbar.tsx';
+import { ServerForm } from '../components/ServerForm.tsx';
 
 interface Person {
   id: string;
@@ -194,10 +197,20 @@ function DeviceSync() {
   const [busy, setBusy] = useState(false);
   const [people, setPeople] = useState<Person[] | null>(null);
   const [adding, setAdding] = useState<{ email: string; name: string } | null>(null);
+  const [server, setServer] = useState(false);
 
   useEffect(() => {
     void refreshStatus().catch(() => {});
   }, []);
+
+  // Back from signing in on the household's server.
+  useServerReturn('sync-server', (outcome) => {
+    if (outcome.ok) {
+      snack({ message: 'Syncing with your server.' });
+      void qc.invalidateQueries();
+      void refreshStatus().catch(() => {});
+    } else snack({ message: outcome.error });
+  });
 
   const run = async (label: string, work: () => Promise<unknown>) => {
     setBusy(true);
@@ -256,26 +269,16 @@ function DeviceSync() {
     // Once, when the page opens.
   }, []);
 
+  const onServer = status?.target?.kind === 'server';
   const stop = () => {
-    if (!confirm('Stop syncing on this device? What’s here stays here, and the copy in Google Drive stays for your other devices.')) return;
+    const where = onServer ? 'on your server' : 'in Google Drive';
+    if (!confirm(`Stop syncing on this device? What’s here stays here, and the copy ${where} stays for your other devices.`)) return;
     void run('Stopping', async () => {
       await api('/sync', { method: 'DELETE' });
       forgetToken();
       forgetRefreshToken();
     });
   };
-
-  if (!googleConfigured) {
-    return (
-      <>
-        <SubpageHeader title="Sync and backup" />
-        <p className="mt-4 flex gap-3 rounded-3xl bg-surface-low p-5 text-on-surface-variant">
-          <Warning className="size-6 shrink-0" aria-hidden />
-          This copy of Amble wasn't built with a Google sign-in client, so it can't sync through Google Drive.
-        </p>
-      </>
-    );
-  }
 
   const household = status?.target?.kind === 'household';
   const owner = household && status?.target?.owner === status?.account?.email;
@@ -287,24 +290,77 @@ function DeviceSync() {
       <section className="mt-4 rounded-[2rem] bg-secondary-container p-5 text-on-secondary-container">
         <div className="flex items-center gap-3">
           <CloudSync className="size-6" aria-hidden />
-          <h2 className="display text-xl font-medium">Keep it in your Google Drive</h2>
+          <h2 className="display text-xl font-medium">{onServer ? 'In step with your server' : 'Keep it in your Google Drive'}</h2>
         </div>
         <p className="mt-2">
-          Amble keeps a copy in your own Google Drive and brings your other devices and your household in step with it. It can only see
-          the files it makes there, and nothing goes anywhere else.
+          {onServer
+            ? 'Your household runs its own Amble server, and this device keeps in step with it, along with everyone else’s.'
+            : 'Amble keeps a copy in your own Google Drive and brings your other devices and your household in step with it. It can only see the files it makes there, and nothing goes anywhere else.'}
         </p>
       </section>
 
       {!status?.on ? (
         <div className="mt-6 flex flex-col items-start gap-3">
-          <button type="button" disabled={busy} onClick={() => void connect('personal')} className={button}>
-            Sync with Google Drive
-          </button>
-          <button type="button" disabled={busy} onClick={() => void join()} className={quiet}>
-            Join a household someone shared with you
-          </button>
-          <p className="px-1 text-sm text-on-surface-variant">Google asks once whether Amble can keep its files in your Drive.</p>
+          {googleConfigured ? (
+            <>
+              <button type="button" disabled={busy} onClick={() => void connect('personal')} className={button}>
+                Sync with Google Drive
+              </button>
+              <button type="button" disabled={busy} onClick={() => void join()} className={quiet}>
+                Join a household someone shared with you
+              </button>
+              <p className="px-1 text-sm text-on-surface-variant">Google asks once whether Amble can keep its files in your Drive.</p>
+            </>
+          ) : (
+            <p className="flex gap-3 rounded-3xl bg-surface-low p-5 text-on-surface-variant">
+              <Warning className="size-6 shrink-0" aria-hidden />
+              This copy of Amble wasn't built with a Google sign-in client, so it can't sync through Google Drive.
+            </p>
+          )}
+          <SectionTitle>Or your own server</SectionTitle>
+          {server ? (
+            <div className="w-full">
+              <ServerForm action="sync-server" onCancel={() => setServer(false)} />
+            </div>
+          ) : (
+            <button type="button" disabled={busy} onClick={() => setServer(true)} className={quiet}>
+              Sync with your household's own server
+            </button>
+          )}
         </div>
+      ) : onServer ? (
+        <>
+          <SectionTitle>This device</SectionTitle>
+          <ListGroup
+            rows={[
+              {
+                icon: <CloudSync className="size-6" />,
+                title: status.target?.name ?? 'Your server',
+                subtitle: `${status.account?.email ?? ''} · ${syncedLabel(status, syncing, false)}`,
+                trailing: (
+                  <button type="button" disabled={busy || syncing} onClick={() => void run('Syncing', () => syncNow())} className={quiet}>
+                    Sync now
+                  </button>
+                ),
+              },
+            ]}
+          />
+          <p className="mt-2 px-1 text-sm text-on-surface-variant">It syncs when Amble opens, every minute while it’s open, and soon after each change.</p>
+          {status.error === 'Your server needs you to sign in again.' && status.target?.url && (
+            <button type="button" disabled={busy} onClick={() => void signInToServer(status.target!.url!, 'sync-server')} className={`mt-3 ${button}`}>
+              Sign in again
+            </button>
+          )}
+          <SectionTitle>Household</SectionTitle>
+          <p className="px-1 text-on-surface-variant">
+            Everyone in the household signs in to {status.target?.name} with their own account. To add someone, add them in People with
+            the email they sign in with, and they choose “Use my own server” in Amble.
+          </p>
+          <SectionTitle>Stop</SectionTitle>
+          <button type="button" disabled={busy} onClick={stop} className={quiet}>
+            Stop syncing on this device
+          </button>
+        </>
       ) : (
         <>
           <SectionTitle>This device</SectionTitle>

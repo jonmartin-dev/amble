@@ -77,7 +77,7 @@ describe('the Google token endpoint for a web app', () => {
       publicOrigin: 'https://server.example.com',
       oidc: { ...config.oidc, clientId: '', clientSecret: '' },
       google: { clientId: 'client', clientSecret: 'shh' },
-      googleTokenOrigins: ['https://server.example.com', APP],
+      appOrigins: ['https://server.example.com', APP],
     };
     const app = createApp({ db: openDatabase(':memory:'), config: server, oidc: createOidc(server), fetchImpl: google });
     const res = await app.request('https://server.example.com/amble/google/token', {

@@ -8,6 +8,7 @@ import { Capacitor, registerPlugin } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { loadRatio, loadWord } from '../components/ui.tsx';
 import { api, type Task, type Today, type UpcomingReminder } from './api.ts';
+import { acceptServerReturn } from './server-sync.ts';
 import { applyTheme, loadLocalTheme, setPhoneColors, themeVariables, type PhoneColors } from './theme.ts';
 
 /** Running inside the Android app. */
@@ -25,7 +26,7 @@ const HANDED_KEY = 'almanac-phone-reminders';
 const KEEP_MS = 7 * 24 * 60 * 60 * 1000;
 
 interface ReminderCheckPlugin {
-  start(options: { fileId: string; email: string | null; memberId: string }): Promise<void>;
+  start(options: { fileId?: string; email?: string | null; server?: string; token?: string; memberId: string }): Promise<void>;
   stop(): Promise<void>;
   handOver(options: { reminders: Record<string, number> }): Promise<void>;
   shown(): Promise<{ reminders: Record<string, number> }>;
@@ -164,9 +165,8 @@ async function reschedule() {
  */
 export async function checkInBackground() {
   if (!native) return;
-  const sync = await api<{ on: boolean; target: { fileId: string } | null; account: { email: string } | null }>('/sync');
-  const { member } = await api<{ member: { id: string } | null }>('/session');
-  if (sync.on && sync.target && member) await ReminderCheck.start({ fileId: sync.target.fileId, email: sync.account?.email ?? null, memberId: member.id });
+  const where = await api<{ fileId?: string; email?: string | null; server?: string; token?: string; memberId: string } | null>('/sync/background');
+  if (where) await ReminderCheck.start(where);
   else await ReminderCheck.stop();
 }
 
@@ -302,7 +302,8 @@ function reminderAction(action: string, taskId: string, reminderId: string | nul
 /**
  * Where a link from the widget or the background check's notifications goes:
  * dev.jonmartin.amble://task/<id>, ://add or ://today. A notification's Done and Snooze add ?do=,
- * with the reminder and the notification.
+ * with the reminder and the notification. ://signed-in is the household's server sending the
+ * person back after they signed in there.
  */
 function followLink(url: string, open: (path: string) => void, changed: () => void) {
   let link: URL;
@@ -311,6 +312,7 @@ function followLink(url: string, open: (path: string) => void, changed: () => vo
   } catch {
     return;
   }
+  if (link.host === 'signed-in') return acceptServerReturn(link.searchParams);
   const id = link.pathname.replace(/^\//, '');
   const act = link.host === 'task' && id ? reminderAction(link.searchParams.get('do') ?? '', id, link.searchParams.get('reminder')) : null;
   if (act) {

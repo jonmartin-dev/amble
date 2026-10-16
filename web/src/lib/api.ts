@@ -298,7 +298,8 @@ export interface AiStatus {
   model: string | null;
   modelName: string | null;
   effort: AiEffort | null;
-  source: 'settings' | 'environment' | null;
+  /** Set up in the app, in the server's environment, or the household's server's model, which this device asks. */
+  source: 'settings' | 'environment' | 'server' | null;
   /** The server's environment sets a model too. */
   environment: boolean;
   /** Spending is counted, so the cap applies. */
@@ -316,6 +317,8 @@ export interface AiStatus {
     keyEnding: string | null;
   } | null;
   keyUnreadable: boolean;
+  /** On a device syncing with the household's server: the server's model, used unless this device has its own. */
+  server: { providerName: string; modelName: string } | null;
 }
 
 export type SmartAddResponse =

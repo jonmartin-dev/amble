@@ -1,9 +1,13 @@
-// Keeping a copy of Amble in step through Google Drive. One file holds the state: in Amble's
-// hidden folder in the person's own Drive when it's just them, or a shared "Amble household" file
-// when it's a household. Each round downloads it if it changed, merges it in, and writes it back if
-// this copy has changes it lacks. Two devices writing at once can overwrite each other; the next
-// round notices its changes are missing and writes them again.
+// Keeping a copy of Amble in step with the household's other copies, through Google Drive or the
+// household's own server. Through Drive, one file holds the state: in Amble's hidden folder in the
+// person's own Drive when it's just them, or a shared "Amble household" file when it's a household.
+// Each round downloads it if it changed, merges it in, and writes it back if this copy has changes
+// it lacks. Two devices writing at once can overwrite each other; the next round notices its
+// changes are missing and writes them again. A server (server/sync/hub.ts) answers the same two
+// calls itself, merging what a device sends into its own copy, so nothing is ever overwritten.
 import { eq } from 'drizzle-orm';
+import type { AiEffort, AiProviderId } from '../../shared/ai.ts';
+import type { RemoteAi } from '../ai/client.ts';
 import type { Db } from '../db/open.ts';
 import { groups, listItems, members, serverSettings, tasks } from '../db/schema.ts';
 import { latestReading, startCapture, stamp, stopCapture } from './capture.ts';
@@ -15,11 +19,14 @@ export const PERSONAL_FILE = 'almanac.state';
 export const HOUSEHOLD_PROPERTY = { key: 'almanac', value: 'household' };
 
 export interface SyncTarget {
-  kind: 'personal' | 'household';
+  kind: 'personal' | 'household' | 'server';
+  /** The Drive file, for personal and household. */
   fileId: string;
   name: string;
   /** Who made the household file, and so can share it. */
   owner: string | null;
+  /** The server's address, for server: like https://amble.example.com or http://192.168.1.20:18085. */
+  url?: string;
 }
 
 interface Settings {
@@ -32,6 +39,10 @@ interface Settings {
   sites: Record<string, string>;
   syncedAt: number | null;
   error: string | null;
+  /** This device's sign-in to the household's server, when it syncs with one. */
+  serverToken?: string | null;
+  /** The server's AI model, which this device uses if it has none of its own. */
+  serverAi?: { provider: AiProviderId; model: string; effort: AiEffort } | null;
 }
 
 export interface SyncStatus {
@@ -46,18 +57,47 @@ export interface SyncStatus {
 
 export class SyncSetupError extends Error {}
 
+/** The household's server turned this device's sign-in down (it signed out there, or was removed). */
+class ServerAuthError extends Error {}
+
+/** An address someone typed, as Amble keeps it: no trailing slash, and https unless they said http. */
+export function serverAddress(input: string): string {
+  const raw = input.trim().replace(/\/+$/, '');
+  let url: URL;
+  try {
+    url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`);
+  } catch {
+    throw new SyncSetupError("That doesn't look like an address. It's like https://amble.example.com.");
+  }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new SyncSetupError('The address starts with https:// or http://.');
+  return `${url.origin}${url.pathname.replace(/\/+$/, '')}`;
+}
+
 /** What a device does once it knows whose Google account it's syncing with (see server/local.ts). */
 export type Adopt = (account: { email: string; name: string | null }, localGroups: Set<string>, remote: SyncState | null) => void;
 
 const KEY = 'sync';
 
-/** Whether this copy keeps in step with a file in Drive, so the household's devices get its changes. */
+/** Whether this copy keeps in step with the household's other copies, so they get its changes. */
 export function syncsThroughDrive(db: Db) {
   const settings = db.select().from(serverSettings).where(eq(serverSettings.key, KEY)).get()?.value as Settings | undefined;
   return Boolean(settings?.target);
 }
 
-export function createSyncService({ db, schema, fetchImpl = fetch, adopt }: { db: Db; schema: string; fetchImpl?: typeof fetch; adopt?: Adopt }) {
+export function createSyncService({
+  db,
+  schema,
+  fetchImpl = fetch,
+  adopt,
+  hub = false,
+}: {
+  db: Db;
+  schema: string;
+  fetchImpl?: typeof fetch;
+  adopt?: Adopt;
+  /** This copy is a server that devices sync with directly, so it records changes whether or not it also syncs through Drive. */
+  hub?: boolean;
+}) {
   const read = (): Settings | null => (db.select().from(serverSettings).where(eq(serverSettings.key, KEY)).get()?.value as Settings | undefined) ?? null;
   const write = (s: Settings) =>
     db.insert(serverSettings).values({ key: KEY, value: s }).onConflictDoUpdate({ target: serverSettings.key, set: { value: s } }).run();
@@ -68,7 +108,7 @@ export function createSyncService({ db, schema, fetchImpl = fetch, adopt }: { db
   const clock = new Clock(site);
   clock.see(latestReading(db));
   // Set up again on every start, so the triggers follow any columns a migration added.
-  if (settings?.target) startCapture(db);
+  if (hub || settings?.target) startCapture(db);
 
   const save = (patch: Partial<Settings>) => {
     settings = { site, target: null, account: null, md5: null, sites: {}, syncedAt: null, error: null, ...settings, ...patch };
@@ -85,6 +125,72 @@ export function createSyncService({ db, schema, fetchImpl = fetch, adopt }: { db
 
   async function fetchState(drive: Drive, file: DriveFile): Promise<SyncState> {
     return unpack<SyncState>(await drive.download(file.id));
+  }
+
+  // ---- the household's own server ------------------------------------------------------------
+
+  async function serverCall(url: string, token: string, path: string, init: RequestInit = {}) {
+    let res: Response;
+    try {
+      res = await fetchImpl(`${url}${path}`, {
+        ...init,
+        headers: { authorization: `Bearer ${token}`, ...init.headers },
+        signal: AbortSignal.timeout(30_000),
+      });
+    } catch {
+      throw new SyncSetupError(`Couldn't reach ${new URL(url).host}. Check the address, and that this device can reach it.`);
+    }
+    if (res.status === 401) throw new ServerAuthError('Signed out.');
+    if (!res.ok && res.status !== 304) {
+      const body = (await res.json().catch(() => null)) as { error?: string } | null;
+      throw new SyncSetupError(body?.error ?? `Your server answered ${res.status}.`);
+    }
+    // Every answer says which AI model the server has, if any.
+    const model = res.headers.get('amble-ai');
+    if (model != null) {
+      let serverAi: Settings['serverAi'] = null;
+      try {
+        serverAi = model ? (JSON.parse(decodeURIComponent(model)) as Settings['serverAi']) : null;
+      } catch {
+        // Something else answered; leave it out.
+      }
+      if (JSON.stringify(serverAi) !== JSON.stringify(settings?.serverAi ?? null)) save({ serverAi });
+    }
+    return res;
+  }
+
+  /** Sends this copy's state; the server merges it in and answers with the whole household, which comes in here too. */
+  async function sendToServer(url: string, token: string) {
+    const state = exportState(db, clock, schema);
+    const res = await serverCall(url, token, '/sync/state', { method: 'PUT', headers: { 'content-type': 'application/gzip' }, body: (await pack(state)) as BodyInit });
+    const back = await unpack<SyncState>(new Uint8Array(await res.arrayBuffer()));
+    const merged = mergeState(db, clock, back, schema).changed;
+    save({ md5: res.headers.get('etag'), sites: back.sites });
+    return merged;
+  }
+
+  /** What the server has, if it changed since the last round: merged in here. */
+  async function takeFromServer(url: string, token: string) {
+    const known = settings?.md5;
+    const res = await serverCall(url, token, '/sync/state', { headers: known ? { 'if-none-match': known } : {} });
+    if (res.status === 304) return { merged: 0, remote: null };
+    const remote = await unpack<SyncState>(new Uint8Array(await res.arrayBuffer()));
+    const merged = mergeState(db, clock, remote, schema).changed;
+    save({ md5: res.headers.get('etag'), sites: remote.sites });
+    return { merged, remote };
+  }
+
+  async function serverRound(target: SyncTarget) {
+    const token = settings?.serverToken;
+    if (!target.url || !token) throw new ServerAuthError('No sign-in.');
+    let { merged } = await takeFromServer(target.url, token);
+    let uploaded = false;
+    if (missingMine(db, clock, { v: 1, schema, sites: settings?.sites ?? {}, tables: {} })) {
+      merged += await sendToServer(target.url, token);
+      uploaded = true;
+    }
+    save({ syncedAt: Date.now(), error: null });
+    return { merged, uploaded };
   }
 
   async function upload(drive: Drive, target: SyncTarget) {
@@ -120,6 +226,8 @@ export function createSyncService({ db, schema, fetchImpl = fetch, adopt }: { db
     const message =
       err instanceof DriveAuthError
         ? 'Google needs you to sign in again.'
+        : err instanceof ServerAuthError
+          ? 'Your server needs you to sign in again.'
         : err instanceof NewerSchema
           ? 'Another device has a newer Amble. Update this one to keep syncing.'
           : err instanceof SyncSetupError || err instanceof DriveError
@@ -135,7 +243,7 @@ export function createSyncService({ db, schema, fetchImpl = fetch, adopt }: { db
 
     /** Gives this copy's waiting changes their time; call it after every request that writes. */
     stamp() {
-      if (settings?.target) stamp(db, clock);
+      if (hub || settings?.target) stamp(db, clock);
     },
 
     status(): SyncStatus {
@@ -212,17 +320,71 @@ export function createSyncService({ db, schema, fetchImpl = fetch, adopt }: { db
       });
     },
 
-    /** One round of sync. Returns how many rows changed here, so the app knows to refresh. */
-    run(token: string) {
+    /**
+     * Starts syncing with the household's own server, once someone signed in there and the server
+     * sent this device back with a code. What the server has comes in first, then this copy's own.
+     */
+    connectServer(how: { url: string; code: string; verifier: string; redirectUri: string }) {
+      return serial(async () => {
+        const url = serverAddress(how.url);
+        let res: Response;
+        try {
+          res = await fetchImpl(`${url}/sync/token`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ code: how.code, code_verifier: how.verifier, redirect_uri: how.redirectUri }),
+            signal: AbortSignal.timeout(30_000),
+          });
+        } catch {
+          throw new SyncSetupError(`Couldn't reach ${new URL(url).host}. Check the address, and that this device can reach it.`);
+        }
+        const body = (await res.json().catch(() => null)) as { token?: string; member?: { email: string; name: string }; name?: string; error?: string } | null;
+        if (!res.ok || !body?.token || !body.member) throw new SyncSetupError(body?.error ?? "Your server didn't let this device in. Try again.");
+        const account = { email: body.member.email.toLowerCase(), name: body.member.name };
+
+        const localGroups = new Set(db.select({ id: groups.id }).from(groups).all().map((g) => g.id));
+        startCapture(db);
+        save({ md5: null, sites: {} });
+        const { remote } = await takeFromServer(url, body.token);
+        adopt?.(account, localGroups, remote);
+        const target: SyncTarget = { kind: 'server', fileId: '', name: body.name || new URL(url).host, owner: null, url };
+        save({ target, account, serverToken: body.token, error: null });
+        await serverRound(target);
+        return service.status();
+      }).catch((err) => {
+        if (err instanceof SyncSetupError) throw err;
+        throw new SyncSetupError(failed(err));
+      });
+    },
+
+    /** One round of sync. Returns how many rows changed here, so the app knows to refresh. A Drive round needs a Google token. */
+    run(token?: string) {
       return serial(async () => {
         const target = settings?.target;
         if (!target) return { merged: 0, uploaded: false, error: null as string | null };
         try {
+          if (target.kind === 'server') return { ...(await serverRound(target)), error: null };
+          if (!token) throw new DriveAuthError(401, 'No token.');
           return { ...(await round(createDrive(token, fetchImpl), target)), error: null };
         } catch (err) {
           return { merged: 0, uploaded: false, error: failed(err) };
         }
       });
+    },
+
+    /** The household's server's AI model, for a device with none of its own: where to ask, and what it is. */
+    remoteAi(): RemoteAi | null {
+      const target = settings?.target;
+      if (target?.kind !== 'server' || !target.url || !settings?.serverToken || !settings.serverAi) return null;
+      return { url: target.url, token: settings.serverToken, ...settings.serverAi };
+    },
+
+    /** Where a phone's background check reads the household from: the Drive file, or the server and this device's sign-in there. */
+    background() {
+      const target = settings?.target;
+      if (!target) return null;
+      if (target.kind === 'server') return target.url && settings?.serverToken ? { server: target.url, token: settings.serverToken } : null;
+      return { fileId: target.fileId, email: settings?.account?.email ?? null };
     },
 
     /** Household files this Google account made or picked, for choosing one to join. */
@@ -258,11 +420,16 @@ export function createSyncService({ db, schema, fetchImpl = fetch, adopt }: { db
       service.stamp();
     },
 
-    /** Stops syncing this copy. The Drive file stays, for other devices and for coming back. */
+    /** Stops syncing this copy. The Drive file, or the server's copy, stays for other devices and for coming back. */
     off() {
       return serial(async () => {
-        stopCapture(db);
-        save({ target: null, account: null, md5: null, sites: {}, syncedAt: null, error: null });
+        const target = settings?.target;
+        // Signs this device out of the server, if it can still reach it.
+        if (target?.kind === 'server' && target.url && settings?.serverToken) {
+          await fetchImpl(`${target.url}/sync/token`, { method: 'DELETE', headers: { authorization: `Bearer ${settings.serverToken}` }, signal: AbortSignal.timeout(10_000) }).catch(() => {});
+        }
+        if (!hub) stopCapture(db);
+        save({ target: null, account: null, md5: null, sites: {}, syncedAt: null, error: null, serverToken: null, serverAi: null });
       });
     },
   };

@@ -20,6 +20,7 @@ import { registerApi } from './api.ts';
 import { registerConnector } from './connector.ts';
 import { queuedWrites } from './requests.ts';
 import { SCHEMA } from './db/index.ts';
+import { registerSyncHub } from './sync/hub.ts';
 import { createServerSync, type ServerSync } from './sync/server.ts';
 import { SyncSetupError } from './sync/service.ts';
 import { z } from 'zod';
@@ -102,7 +103,7 @@ self.addEventListener('activate', (e) => e.waitUntil((async () => {
   // Google's token calls (server/google-token.ts). Before the middleware below, since it changes nothing here.
   const { clientId, clientSecret } = config.google;
   if (clientId && clientSecret) {
-    app.on(['POST', 'OPTIONS'], '/google/token', (c) => googleToken(c.req.raw, { clientId, clientSecret, origins: config.googleTokenOrigins, fetchImpl }));
+    app.on(['POST', 'OPTIONS'], '/google/token', (c) => googleToken(c.req.raw, { clientId, clientSecret, origins: config.appOrigins, fetchImpl }));
   }
 
   // Whatever a request changed (the app's, or an assistant's through the connector) goes out to
@@ -216,6 +217,9 @@ self.addEventListener('activate', (e) => e.waitUntil((async () => {
     deleteCookie(c, SESSION_COOKIE, { path: cookiePath });
     return c.body(null, 204);
   });
+
+  // Devices syncing straight with this server, and signing them in.
+  registerSyncHub(app, { db, config, service: sync.service, schema: SCHEMA, ai });
 
   // OAuth, discovery and /mcp for the assistant connector. Its signed-in API goes in below the guard.
   const registerConnectorApi = registerConnector(app, { db, config, fetchImpl });

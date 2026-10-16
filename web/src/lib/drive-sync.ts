@@ -1,6 +1,6 @@
-// Keeping this device in step with Google Drive while Amble is open: a round when it opens, every
-// minute while it's on screen, and soon after each change. The worker does the merging; this only
-// brings it a Google token. When a browser's token runs out and can't be refreshed in place, it
+// Keeping this device in step with Google Drive, or the household's own server, while Amble is
+// open: a round when it opens, every minute while it's on screen, and soon after each change. The
+// worker does the merging; for Drive this only brings it a Google token. When a browser's token runs out and can't be refreshed in place, it
 // renews with a quick trip to Google at a moment nobody's using the page (google.ts), and asks for a
 // tap only if that trip needed the person.
 import { useSyncExternalStore } from 'react';
@@ -11,7 +11,7 @@ import { native } from './native.ts';
 
 export interface DriveSyncStatus {
   on: boolean;
-  target: { kind: 'personal' | 'household'; fileId: string; name: string; owner: string | null } | null;
+  target: { kind: 'personal' | 'household' | 'server'; fileId: string; name: string; owner: string | null; url?: string } | null;
   account: { email: string; name: string | null } | null;
   syncedAt: string | null;
   error: string | null;
@@ -82,6 +82,14 @@ export function syncNow({ tap = false } = {}): Promise<void> {
     try {
       const status = state.status ?? (await refreshStatus());
       if (!status.on) return;
+      // A server needs no Google token: the device keeps its own sign-in there.
+      if (status.target?.kind === 'server') {
+        set({ syncing: true, needsGoogle: false });
+        const result = await api<{ merged: number }>('/sync/run', { method: 'POST', body: '{}' });
+        if (result.merged > 0) onMerged?.();
+        await refreshStatus();
+        return;
+      }
       // The Android app can get a fresh token itself when Google turns one down, so it tries twice.
       for (let attempt = 0; attempt < (native ? 2 : 1); attempt++) {
         const token = await syncToken(tap, status.account?.email);
@@ -119,10 +127,10 @@ export function syncSoon() {
 
 /** Starts syncing for as long as the app is open. `merged` refreshes the screen after others' changes. */
 export function startDriveSync(merged: () => void) {
-  if (!onDevice || !googleConfigured) return () => {};
+  if (!onDevice) return () => {};
   onMerged = merged;
   // Back from Google after a tap on "Continue": the token is in hand now.
-  resumeAfterGoogle('sync');
+  if (googleConfigured) resumeAfterGoogle('sync');
   void refreshStatus()
     .then((s) => {
       if (s.on) return syncNow();

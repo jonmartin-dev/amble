@@ -14,7 +14,7 @@ import type { FileStore } from './domain/files.ts';
 import type { Env } from './env.ts';
 import type { Push } from './notify/devices.ts';
 import { queuedWrites } from './requests.ts';
-import { adoptMember, foldDuplicateGroups, SyncSetupError, type Adopt, type SyncService } from './sync/service.ts';
+import { adoptMember, foldDuplicateGroups, serverAddress, SyncSetupError, type Adopt, type SyncService } from './sync/service.ts';
 
 /** Members made on a device have no email until they sign in with one; this stands in for it. */
 export const DEVICE_EMAIL_DOMAIN = 'device.invalid';
@@ -90,6 +90,7 @@ export function createLocalApp({
   push,
   files,
   sync,
+  fetchImpl = fetch,
 }: {
   db: Db;
   config: Config;
@@ -97,6 +98,8 @@ export function createLocalApp({
   push: Push;
   files: FileStore;
   sync?: SyncService;
+  /** For finding the household's server; tests pass their own. */
+  fetchImpl?: typeof fetch;
 }) {
   const app = new Hono<Env>();
 
@@ -114,7 +117,7 @@ export function createLocalApp({
     }),
   );
 
-  if (sync) registerSync(app, sync, db);
+  if (sync) registerSync(app, sync, db, fetchImpl);
 
   app.post('/api/device/start', async (c) => {
     const parsed = z
@@ -138,11 +141,22 @@ export function createLocalApp({
 
 const token = z.object({ token: z.string().min(10).max(4000) });
 
+/** Whether an Amble server answers at an address. */
+async function isAmble(url: string, fetchImpl: typeof fetch) {
+  try {
+    const res = await fetchImpl(`${url}/sync/hello`, { signal: AbortSignal.timeout(8000) });
+    return res.ok && ((await res.json()) as { amble?: number }).amble === 1;
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Sync through Google Drive. The app gets the access token from Google in the page and hands it
- * over with each call; it stays on the device.
+ * Sync through Google Drive or the household's own server. For Drive the app gets the access
+ * token from Google in the page and hands it over with each call; it stays on the device. A
+ * server's sign-in is kept here, since the device holds everything else too.
  */
-function registerSync(app: Hono<Env>, sync: SyncService, db: Db) {
+function registerSync(app: Hono<Env>, sync: SyncService, db: Db, fetchImpl: typeof fetch) {
   const parse = async <T extends z.ZodType>(c: Context<Env>, schema: T) => {
     const parsed = schema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) throw new SyncSetupError("That request doesn't look right.");
@@ -182,14 +196,44 @@ function registerSync(app: Hono<Env>, sync: SyncService, db: Db) {
     }),
   );
 
+  // Finds the server at an address someone typed: https unless they said http, then http for an
+  // address on the home network that has no https.
+  app.post(
+    '/api/sync/server/find',
+    answer(async (c) => {
+      const { address } = await parse(c, z.object({ address: z.string().trim().min(1).max(500) }));
+      const url = serverAddress(address);
+      const tries = /^https?:\/\//i.test(address) ? [url] : [url, url.replace(/^https:/, 'http:')];
+      for (const t of tries) if (await isAmble(t, fetchImpl)) return c.json({ url: t });
+      throw new SyncSetupError(`No Amble server answered at ${new URL(url).host}. Check the address, and that this device can reach it.`);
+    }),
+  );
+
+  // Back from signing in on the server, with a code to swap for this device's sign-in.
+  app.post(
+    '/api/sync/server/connect',
+    answer(async (c) => {
+      const how = await parse(c, z.object({ url: z.string().max(500), code: z.string().max(200), verifier: z.string().max(200), redirectUri: z.string().max(2000) }));
+      return c.json(await sync.connectServer(how));
+    }),
+  );
+
   app.use('/api/sync/*', async (c, next) => {
     if (!deviceMember(db)) return c.json({ error: 'Set up Amble on this device first.' }, 401);
     await next();
   });
 
+  // Where the Android app's background check reads the household from (ReminderCheck.java), as this person.
+  app.get('/api/sync/background', (c) => {
+    const where = sync.background();
+    const member = deviceMember(db);
+    return c.json(where && member ? { ...where, memberId: member.id } : null);
+  });
+
+  // A round of sync: Drive needs the page's Google token, a server doesn't.
   app.post(
     '/api/sync/run',
-    answer(async (c) => c.json(await sync.run((await parse(c, token)).token))),
+    answer(async (c) => c.json(await sync.run((await parse(c, z.object({ token: z.string().min(10).max(4000).optional() }))).token))),
   );
 
   app.post(
@@ -233,7 +277,7 @@ export function deviceConfig(origin: string, basePath: string, timezone: string)
     allowedEmails: [],
     oidc: { issuer: '', providerName: '', clientId: '', clientSecret: '' },
     google: { clientId: '', clientSecret: '' },
-    googleTokenOrigins: [],
+    appOrigins: [],
     maxFileBytes: 25 * 1024 * 1024,
     devLogin: false,
     oauthClientHosts: [],

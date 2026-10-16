@@ -8,8 +8,10 @@ const config: CapacitorConfig = {
   appName: 'Amble',
   webDir: 'dist/device',
   android: {
-    // The app's own pages and nothing else: links to other sites open in the browser.
-    allowMixedContent: false,
+    // A household's own server on the home network is often plain http (http://192.168.1.20:18085),
+    // which the app's https page could otherwise not reach for sync. Links to other sites still
+    // open in the browser.
+    allowMixedContent: true,
   },
   plugins: {
     LocalNotifications: {

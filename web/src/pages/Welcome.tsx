@@ -1,5 +1,6 @@
-// The first screen on a device with no server: Amble asks what to call you and starts. Also the
-// screens for when another tab has the database, or the browser won't give Amble storage.
+// The first screen: three ways to start. On this device only (Amble asks what to call you), from
+// Google Drive ("I already use Amble"), or with the household's own server. Also the screens for
+// when another tab has the database, or the browser won't give Amble storage.
 import { useQueryClient } from '@tanstack/react-query';
 import { motion } from 'motion/react';
 import { useEffect, useState } from 'react';
@@ -7,6 +8,8 @@ import ErrorIcon from '~icons/material-symbols/error-outline-rounded';
 import { api, ApiError, appUrl, type Member } from '../lib/api.ts';
 import { deviceFailure, useHere, type DeviceState } from '../lib/device.ts';
 import { googleConfigured, resumeAfterGoogle, tokenFromTap } from '../lib/google.ts';
+import { useServerReturn } from '../lib/server-sync.ts';
+import { ServerForm } from '../components/ServerForm.tsx';
 import { joinHousehold } from './SyncSettings.tsx';
 import { expressive } from '../lib/motion.ts';
 
@@ -32,6 +35,13 @@ export function Welcome() {
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [server, setServer] = useState(false);
+
+  // Back from signing in on the household's server: the device has its data now.
+  useServerReturn('welcome-server', (outcome) => {
+    if (outcome.ok) void qc.invalidateQueries();
+    else setError(outcome.error);
+  });
 
   /** A second device: whatever this Google account syncs comes in, and the device is theirs. */
   const fromDrive = async () => {
@@ -116,7 +126,22 @@ export function Welcome() {
             <p className="text-center text-sm text-on-surface-variant">Signs in with Google to bring in what you have, or join a household someone shared.</p>
           </>
         )}
+        {!server && (
+          <button
+            type="button"
+            onClick={() => setServer(true)}
+            disabled={saving}
+            className="rounded-full px-6 py-3 font-medium text-primary transition-transform active:scale-[0.97] disabled:opacity-40"
+          >
+            Use my own server
+          </button>
+        )}
       </form>
+      {server && (
+        <div className="mt-3">
+          <ServerForm action="welcome-server" onCancel={() => setServer(false)} />
+        </div>
+      )}
     </Frame>
   );
 }

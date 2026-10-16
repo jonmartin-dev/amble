@@ -48,10 +48,11 @@ import org.json.JSONObject;
 /**
  * The phone's background check for reminders set somewhere else: through Claude, or in Amble in a
  * browser. About every 15 minutes (the shortest Android allows for background work), while
- * reminders are on and the household syncs through Google Drive, it reads the household's file as
- * the app does and sets an alarm (ReminderAlarm) for each of this person's coming reminders the
- * app hasn't scheduled itself. The app tells it what it scheduled whenever it runs
- * (ReminderCheckPlugin), so nothing shows twice. Nothing but Drive is involved.
+ * reminders are on and the household syncs, it reads the household as the app does, from its file
+ * in Google Drive or from the household's own server, and sets an alarm (ReminderAlarm) for each
+ * of this person's coming reminders the app hasn't scheduled itself. The app tells it what it
+ * scheduled whenever it runs (ReminderCheckPlugin), so nothing shows twice. Nothing but Drive or
+ * the household's server is involved.
  */
 public class ReminderCheck extends Worker {
 
@@ -60,7 +61,10 @@ public class ReminderCheck extends Worker {
     static final String FILE_ID = "fileId";
     static final String EMAIL = "email";
     static final String MEMBER_ID = "memberId";
-    /** The file's checksum when it was last read, so an unchanged file isn't downloaded again. */
+    /** The household's own server, when it syncs with one instead of Drive, and this phone's sign-in there. */
+    static final String SERVER = "server";
+    static final String SERVER_TOKEN = "serverToken";
+    /** The file's checksum (or the server's version) when it was last read, so an unchanged household isn't downloaded again. */
     static final String MD5 = "md5";
     /** { reminder id: time } the app scheduled itself, as JSON. */
     static final String HANDED = "handed";
@@ -119,10 +123,20 @@ public class ReminderCheck extends Worker {
         Context context = getApplicationContext();
         SharedPreferences prefs = prefs(context);
         String fileId = prefs.getString(FILE_ID, null);
+        String server = prefs.getString(SERVER, null);
         String memberId = prefs.getString(MEMBER_ID, null);
-        if (!prefs.getBoolean(ON, false) || fileId == null || memberId == null) return Result.success();
+        if (!prefs.getBoolean(ON, false) || (fileId == null && server == null) || memberId == null) return Result.success();
         JSONObject found = read(prefs, FOUND);
         try {
+            if (server != null) {
+                JSONObject state = fromServer(server, prefs.getString(SERVER_TOKEN, ""), prefs);
+                if (state != null) {
+                    found = coming(state, memberId);
+                    Log.i(TAG, "Read the household from its server: " + found.length() + " coming reminders");
+                }
+                arm(context, prefs, found);
+                return Result.success();
+            }
             String token = token(context, prefs.getString(EMAIL, null));
             if (token == null) {
                 Log.i(TAG, "Google wants a sign-in first; the app asks next time it opens");
@@ -151,6 +165,24 @@ public class ReminderCheck extends Worker {
         if (email != null) request.setAccount(new Account(email, "com.google"));
         AuthorizationResult result = Tasks.await(Identity.getAuthorizationClient(context).authorize(request.build()), 30, TimeUnit.SECONDS);
         return result.hasResolution() ? null : result.getAccessToken();
+    }
+
+    /** The household from its own server, or null when it hasn't changed since the last check. */
+    private static JSONObject fromServer(String server, String token, SharedPreferences prefs) throws IOException, JSONException {
+        HttpURLConnection connection = (HttpURLConnection) new URL(server + "/sync/state").openConnection();
+        connection.setConnectTimeout(TIMEOUT_MS);
+        connection.setReadTimeout(TIMEOUT_MS);
+        connection.setRequestProperty("Authorization", "Bearer " + token);
+        String known = prefs.getString(MD5, null);
+        if (known != null) connection.setRequestProperty("If-None-Match", known);
+        int status = connection.getResponseCode();
+        if (status == 304) return null;
+        // Signed out there: the app asks the person to sign in again next time it opens.
+        if (status != 200) throw new IOException("The server said " + status);
+        JSONObject state = new JSONObject(text(new GZIPInputStream(connection.getInputStream())));
+        String etag = connection.getHeaderField("ETag");
+        if (etag != null) prefs.edit().putString(MD5, etag).apply();
+        return state;
     }
 
     private static InputStream get(Context context, String token, String url) throws IOException {

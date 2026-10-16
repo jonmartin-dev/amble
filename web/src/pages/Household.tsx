@@ -7,6 +7,7 @@ import { SectionTitle, SubpageHeader } from '../components/ui.tsx';
 import { Link } from '@tanstack/react-router';
 import { api, type HouseholdMember } from '../lib/api.ts';
 import { onDevice } from '../lib/device.ts';
+import { useDriveSync } from '../lib/drive-sync.ts';
 import { expressive } from '../lib/motion.ts';
 import { useMe, useMembers } from '../lib/queries.ts';
 import { useSnackbar } from '../lib/snackbar.tsx';
@@ -19,6 +20,8 @@ export function Household() {
   const [adding, setAdding] = useState<{ email: string; name: string } | null>(null);
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
   const admin = me?.role === 'admin';
+  // With the household's own server, people sign in there: adding them here lets them in.
+  const onServer = useDriveSync().status?.target?.kind === 'server';
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ['members'] });
     void qc.invalidateQueries({ queryKey: ['session'] });
@@ -119,7 +122,7 @@ export function Household() {
         ))}
       </ul>
 
-      {onDevice ? (
+      {onDevice && !onServer ? (
         <>
           <SectionTitle>Add someone</SectionTitle>
           <p className="px-1 text-on-surface-variant">

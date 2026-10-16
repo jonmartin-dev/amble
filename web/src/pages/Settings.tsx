@@ -47,9 +47,11 @@ export function Settings() {
   const drive = useDriveSync().status;
   const syncSummary = !drive?.on
     ? 'Off: everything stays on this device'
-    : drive.target?.kind === 'household'
-      ? `Household, through ${drive.account?.email ?? 'Google Drive'}`
-      : `Backed up to ${drive.account?.email ?? 'Google Drive'}`;
+    : drive.target?.kind === 'server'
+      ? `With your server, ${drive.target.name}`
+      : drive.target?.kind === 'household'
+        ? `Household, through ${drive.account?.email ?? 'Google Drive'}`
+        : `Backed up to ${drive.account?.email ?? 'Google Drive'}`;
   const smartOn = me?.smartAdd ?? true;
   const counted = calendars?.calendars.filter((c) => c.counts).length ?? 0;
   const calendarSummary = !calendars

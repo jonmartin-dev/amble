@@ -53,6 +53,7 @@ import { DeviceBlocked, Welcome } from './pages/Welcome.tsx';
 import { SyncSettings } from './pages/SyncSettings.tsx';
 import { startDriveSync, syncSoon } from './lib/drive-sync.ts';
 import { takeGoogleReturn } from './lib/google.ts';
+import { takeServerReturn } from './lib/server-sync.ts';
 import { onDevice, onDeviceChange, useDeviceState } from './lib/device.ts';
 import { native, QUICK_ADD, startPhone, updateTodayWidget } from './lib/native.ts';
 import { Stats } from './pages/Stats.tsx';
@@ -321,6 +322,8 @@ const routeTree = rootRoute.addChildren([
 // Back from Google's sign-in (Drive sync on a device): keep the token and restore the address
 // before the router reads it.
 if (onDevice) takeGoogleReturn();
+// Back from signing in on the household's server, the same way.
+if (onDevice) takeServerReturn();
 
 // Apply the saved theme before the first paint so there's no flash of the default colors.
 applyTheme(loadLocalTheme());
