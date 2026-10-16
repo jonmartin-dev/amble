@@ -107,6 +107,28 @@
   --font-sans: 'Google Sans Flex Variable', system-ui, sans-serif;
 }
 
+/*
+ * Anything that acts on a click shows the hand on a computer. Tailwind leaves buttons with the
+ * arrow, which reads as not clickable. In the base layer, so cursor-grab and the like still win.
+ */
+@layer base {
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']),
+  [role='radio']:not([aria-disabled='true']),
+  [role='checkbox']:not([aria-disabled='true']),
+  [role='switch']:not([aria-disabled='true']),
+  [role='tab'],
+  [role='option'],
+  [role='menuitem'],
+  a[href],
+  summary,
+  select:not(:disabled),
+  label:has(> input:is([type='checkbox'], [type='radio'], [type='file'], [type='color']):not(:disabled)),
+  input:is([type='checkbox'], [type='radio'], [type='file'], [type='color'], [type='range']):not(:disabled) {
+    cursor: pointer;
+  }
+}
+
 html,
 body {
   background: var(--md-surface);
