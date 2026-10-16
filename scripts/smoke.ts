@@ -118,6 +118,8 @@ await check('completing moves it to done, and Undo brings it back', async (p) =>
 await check('the task page edits steps, links and notes', async (p) => {
   await p.getByRole('main').getByText(TASK).click();
   await p.waitForURL(/\/task\//);
+  // A new task shows when, due and reminder; the rest is behind More details, which then stays open.
+  await p.getByRole('button', { name: /^More details/ }).click();
   await p.getByLabel('Add a step').fill('Find the post office hours');
   await p.getByLabel('Add a step').press('Enter');
   await until(p, 'Find the post office hours');

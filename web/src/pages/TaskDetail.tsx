@@ -2,6 +2,7 @@ import { useNavigate, useRouter } from '@tanstack/react-router';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useState, type ReactNode } from 'react';
 import Close from '~icons/material-symbols/close-rounded';
+import ExpandMore from '~icons/material-symbols/expand-more-rounded';
 import Delete from '~icons/material-symbols/delete-outline-rounded';
 import Event from '~icons/material-symbols/event-outline-rounded';
 import EventBusy from '~icons/material-symbols/event-busy-outline-rounded';
@@ -74,6 +75,45 @@ function Detail({ task }: { task: Task }) {
   const back = () => (window.history.length > 1 ? router.history.back() : void navigate({ to: '/' }));
   const others = household?.members.filter((m) => m.id !== me?.id) ?? [];
   const done = task.status === 'done';
+  // When, the deadline and a reminder are what most tasks need. The rest waits behind More details,
+  // except whatever already has something in it; once opened, it stays open.
+  const [more, setMore] = useState(readMore);
+  const showMore = (open: boolean) => {
+    setMore(open);
+    try {
+      localStorage.setItem(MORE_KEY, open ? '1' : '');
+    } catch {
+      // Private browsing: it just won't be remembered.
+    }
+  };
+  const filled = {
+    time: task.timeOfDay !== null,
+    repeat: task.repeat !== null,
+    group: task.groupId !== null,
+    person: task.assigneeId !== me?.id,
+    size: task.estimateSource === 'user' && task.estimateMinutes !== null,
+    priority: task.mustDo,
+    notes: !!task.notes,
+    steps: task.subtasks.length > 0,
+    links: task.links.length > 0,
+    files: task.files.length > 0,
+  };
+  const shows = (part: keyof typeof filled) => more || filled[part];
+  const tucked = (
+    [
+      ['time', 'time of day'],
+      ['repeat', 'repeat'],
+      ['group', 'group'],
+      ['size', 'how long'],
+      ['priority', 'must do'],
+      ['notes', 'notes'],
+      ['steps', 'steps'],
+      ['links', 'links'],
+      ['files', 'files'],
+    ] as [keyof typeof filled, string][]
+  )
+    .filter(([part]) => !filled[part])
+    .map(([, words]) => words);
   // Due later and not on a day yet: the day with the most room before the deadline.
   const wantsDay = task.status === 'open' && !task.plannedDate && !!task.dueDate && task.dueDate >= today;
   const { data: gap } = useTaskGap(task.id, wantsDay);
@@ -159,22 +199,24 @@ function Detail({ task }: { task: Task }) {
           </button>
         </Field>
 
-        <Field icon={<Schedule className="size-5" />} label="Time of day">
-          <ChipRow>
-            {(
-              [
-                [null, 'Any time'],
-                ['morning', 'Morning'],
-                ['afternoon', 'Afternoon'],
-                ['evening', 'Evening'],
-              ] as [TimeOfDay | null, string][]
-            ).map(([t, label]) => (
-              <Chip key={t ?? 'any'} selected={task.timeOfDay === t} onClick={() => patch({ timeOfDay: t })}>
-                {label}
-              </Chip>
-            ))}
-          </ChipRow>
-        </Field>
+        {shows('time') && (
+          <Field icon={<Schedule className="size-5" />} label="Time of day">
+            <ChipRow>
+              {(
+                [
+                  [null, 'Any time'],
+                  ['morning', 'Morning'],
+                  ['afternoon', 'Afternoon'],
+                  ['evening', 'Evening'],
+                ] as [TimeOfDay | null, string][]
+              ).map(([t, label]) => (
+                <Chip key={t ?? 'any'} selected={task.timeOfDay === t} onClick={() => patch({ timeOfDay: t })}>
+                  {label}
+                </Chip>
+              ))}
+            </ChipRow>
+          </Field>
+        )}
 
         <Field icon={<EventBusy className="size-5" />} label="Due">
           <div className="flex items-center gap-2">
@@ -201,54 +243,58 @@ function Detail({ task }: { task: Task }) {
           <ReminderField task={task} onMore={() => setReminding(true)} />
         </Field>
 
-        <Field icon={<RepeatIcon className="size-5" />} label="Repeats">
-          <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={() => setRepeating(true)} className="rounded-full bg-surface-high px-4 py-2 text-sm font-medium">
-              {task.repeat ? describeRepeat(task.repeat, repeatOn(task.repeat) === 'due' ? task.dueDate : task.plannedDate) : "Doesn't repeat"}
-            </button>
-            {task.repeat && task.status === 'open' && (
-              <>
-                <button type="button" onClick={() => actions.skip(task)} className="rounded-full px-3 py-2 text-sm font-medium text-primary hover:bg-surface-high">
-                  Skip next
-                </button>
-                {task.pausedUntil && task.pausedUntil > today ? (
-                  <Chip selected onClick={() => patch({ pausedUntil: null })} icon={<Close />}>
-                    Paused until {dayLabel(task.pausedUntil, today, true)}
+        {shows('repeat') && (
+          <Field icon={<RepeatIcon className="size-5" />} label="Repeats">
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" onClick={() => setRepeating(true)} className="rounded-full bg-surface-high px-4 py-2 text-sm font-medium">
+                {task.repeat ? describeRepeat(task.repeat, repeatOn(task.repeat) === 'due' ? task.dueDate : task.plannedDate) : "Doesn't repeat"}
+              </button>
+              {task.repeat && task.status === 'open' && (
+                <>
+                  <button type="button" onClick={() => actions.skip(task)} className="rounded-full px-3 py-2 text-sm font-medium text-primary hover:bg-surface-high">
+                    Skip next
+                  </button>
+                  {task.pausedUntil && task.pausedUntil > today ? (
+                    <Chip selected onClick={() => patch({ pausedUntil: null })} icon={<Close />}>
+                      Paused until {dayLabel(task.pausedUntil, today, true)}
+                    </Chip>
+                  ) : (
+                    <label className="relative cursor-pointer rounded-full px-3 py-2 text-sm font-medium text-primary hover:bg-surface-high">
+                      Pause
+                      <input
+                        type="date"
+                        min={today}
+                        onChange={(e) => e.target.value && patch({ pausedUntil: e.target.value })}
+                        onClick={(e) => (e.target as HTMLInputElement).showPicker?.()}
+                        className="absolute inset-0 opacity-0"
+                        aria-label="Pause until"
+                      />
+                    </label>
+                  )}
+                </>
+              )}
+            </div>
+          </Field>
+        )}
+
+        {shows('group') && (
+          <Field icon={<Folder className="size-5" />} label="Group">
+            <ChipRow>
+              <Chip selected={task.groupId === null} onClick={() => patch({ groupId: null })}>
+                None
+              </Chip>
+              {groups
+                ?.filter((g) => g.kind === 'tasks')
+                .map((g) => (
+                  <Chip key={g.id} selected={task.groupId === g.id} onClick={() => patch({ groupId: g.id })} icon={<GroupIcon name={g.icon} className="size-4" />}>
+                    {g.name}
                   </Chip>
-                ) : (
-                  <label className="relative cursor-pointer rounded-full px-3 py-2 text-sm font-medium text-primary hover:bg-surface-high">
-                    Pause
-                    <input
-                      type="date"
-                      min={today}
-                      onChange={(e) => e.target.value && patch({ pausedUntil: e.target.value })}
-                      onClick={(e) => (e.target as HTMLInputElement).showPicker?.()}
-                      className="absolute inset-0 opacity-0"
-                      aria-label="Pause until"
-                    />
-                  </label>
-                )}
-              </>
-            )}
-          </div>
-        </Field>
+                ))}
+            </ChipRow>
+          </Field>
+        )}
 
-        <Field icon={<Folder className="size-5" />} label="Group">
-          <ChipRow>
-            <Chip selected={task.groupId === null} onClick={() => patch({ groupId: null })}>
-              None
-            </Chip>
-            {groups
-              ?.filter((g) => g.kind === 'tasks')
-              .map((g) => (
-                <Chip key={g.id} selected={task.groupId === g.id} onClick={() => patch({ groupId: g.id })} icon={<GroupIcon name={g.icon} className="size-4" />}>
-                  {g.name}
-                </Chip>
-              ))}
-          </ChipRow>
-        </Field>
-
-        {(others.length > 0 || task.assigneeId !== me?.id) && (
+        {(others.length > 0 || task.assigneeId !== me?.id) && shows('person') && (
           <Field icon={<Person className="size-5" />} label="For">
             <ChipRow>
               <Chip selected={task.assigneeId === me?.id} onClick={() => actions.assign(task.id, me!.id)}>
@@ -298,111 +344,147 @@ function Detail({ task }: { task: Task }) {
           </Field>
         )}
 
-        <Field icon={<Timer className="size-5" />} label={task.estimateSource === 'ai' && task.estimateMinutes ? "Takes about (Amble's guess)" : 'Takes about'}>
-          <ChipRow>
-            {[null, 5, 15, 30, 60, 120, ...(task.estimateMinutes && ![5, 15, 30, 60, 120].includes(task.estimateMinutes) ? [task.estimateMinutes] : [])]
-              .sort((a, b) => (a ?? 0) - (b ?? 0))
-              .map((m) => (
-              <Chip key={m ?? 'none'} selected={task.estimateMinutes === m} onClick={() => patch({ estimateMinutes: m })}>
-                {m ? minutesLabel(m) : 'Not sure'}
-              </Chip>
-            ))}
-          </ChipRow>
-        </Field>
+        {shows('size') && (
+          <Field icon={<Timer className="size-5" />} label={task.estimateSource === 'ai' && task.estimateMinutes ? "Takes about (Amble's guess)" : 'Takes about'}>
+            <ChipRow>
+              {[null, 5, 15, 30, 60, 120, ...(task.estimateMinutes && ![5, 15, 30, 60, 120].includes(task.estimateMinutes) ? [task.estimateMinutes] : [])]
+                .sort((a, b) => (a ?? 0) - (b ?? 0))
+                .map((m) => (
+                <Chip key={m ?? 'none'} selected={task.estimateMinutes === m} onClick={() => patch({ estimateMinutes: m })}>
+                  {m ? minutesLabel(m) : 'Not sure'}
+                </Chip>
+              ))}
+            </ChipRow>
+          </Field>
+        )}
 
-        <Field icon={<Flag className="size-5" />} label="Priority">
-          <Chip selected={task.mustDo} onClick={() => patch({ mustDo: !task.mustDo })}>
-            Must do
-          </Chip>
-        </Field>
+        {shows('priority') && (
+          <Field icon={<Flag className="size-5" />} label="Priority">
+            <Chip selected={task.mustDo} onClick={() => patch({ mustDo: !task.mustDo })}>
+              Must do
+            </Chip>
+          </Field>
+        )}
       </div>
 
-      <SectionTitle>Notes</SectionTitle>
-      <textarea
-        value={notes.value}
-        onChange={(e) => notes.onChange(e.target.value)}
-        onBlur={notes.onBlur}
-        placeholder="Anything worth remembering"
-        aria-label="Notes"
-        className="field-sizing-content min-h-24 w-full resize-none rounded-[1.75rem] bg-surface-low px-5 py-4 outline-none placeholder:text-on-surface-variant"
-      />
+      {tucked.length > 0 && (
+        <button
+          type="button"
+          onClick={() => showMore(!more)}
+          aria-expanded={more}
+          className="mt-2 flex w-full items-center gap-3 rounded-full px-4 py-3 text-left text-sm text-on-surface-variant"
+        >
+          <span className="min-w-0 flex-1">
+            <span className="font-medium text-primary">{more ? 'Fewer details' : 'More details'}</span>
+            {!more && <span className="block truncate">{tucked.join(', ').replace(/^./, (c) => c.toUpperCase())}</span>}
+          </span>
+          <ExpandMore className={`size-6 shrink-0 text-primary transition-transform ${more ? 'rotate-180' : ''}`} aria-hidden />
+        </button>
+      )}
 
-      <SectionTitle>Steps</SectionTitle>
-      <ul className="flex flex-col gap-1 rounded-[1.75rem] bg-surface-low p-2">
-        {task.subtasks.map((s) => (
-          <li key={s.id} className="flex items-center gap-3 rounded-2xl px-2 py-2">
-            <Checkbox
-              checked={s.done}
-              size={24}
-              label={s.title}
-              onChange={() => patch(s.done ? { uncheckSubtasks: [s.id] } : { checkSubtasks: [s.id] })}
-            />
-            <span className={`flex-1 ${s.done ? 'text-on-surface-variant line-through' : ''}`}>{s.title}</span>
-            <button type="button" onClick={() => patch({ removeSubtasks: [s.id] })} aria-label={`Remove ${s.title}`} className="grid size-9 place-items-center rounded-full text-on-surface-variant hover:bg-surface-high">
-              <Close className="size-5" aria-hidden />
-            </button>
-          </li>
-        ))}
-        <li>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (newSubtask.trim()) patch({ addSubtasks: [newSubtask.trim()] });
-              setNewSubtask('');
-            }}
-          >
-            <input
-              value={newSubtask}
-              onChange={(e) => setNewSubtask(e.target.value)}
-              placeholder="Add a step"
-              aria-label="Add a step"
-              className="w-full rounded-2xl bg-transparent px-3 py-2.5 outline-none placeholder:text-on-surface-variant"
-            />
-          </form>
-        </li>
-      </ul>
+      {shows('notes') && (
+        <>
+          <SectionTitle>Notes</SectionTitle>
+          <textarea
+            value={notes.value}
+            onChange={(e) => notes.onChange(e.target.value)}
+            onBlur={notes.onBlur}
+            placeholder="Anything worth remembering"
+            aria-label="Notes"
+            className="field-sizing-content min-h-24 w-full resize-none rounded-[1.75rem] bg-surface-low px-5 py-4 outline-none placeholder:text-on-surface-variant"
+          />
+        </>
+      )}
 
-      <SectionTitle>Links</SectionTitle>
-      <ul className="flex flex-col gap-1 rounded-[1.75rem] bg-surface-low p-2">
-        {task.links.map((l) => (
-          <li key={l.id} className="flex items-center gap-3 rounded-2xl px-2 py-1">
-            <LinkIcon className="size-5 shrink-0 text-on-surface-variant" aria-hidden />
-            <a href={l.url} target="_blank" rel="noreferrer noopener" className="min-w-0 flex-1 truncate py-2 text-primary">
-              {l.title ?? l.url.replace(/^https?:\/\/(www\.)?/, '')}
-            </a>
-            <a href={l.url} target="_blank" rel="noreferrer noopener" aria-label="Open" className="grid size-9 place-items-center rounded-full text-on-surface-variant hover:bg-surface-high">
-              <OpenInNew className="size-5" aria-hidden />
-            </a>
-            <button type="button" onClick={() => patch({ removeLinks: [l.id] })} aria-label="Remove link" className="grid size-9 place-items-center rounded-full text-on-surface-variant hover:bg-surface-high">
-              <Close className="size-5" aria-hidden />
-            </button>
-          </li>
-        ))}
-        <li>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              const url = newLink.trim();
-              if (url) patch({ addLinks: [{ url: /^https?:\/\//i.test(url) ? url : `https://${url}` }] });
-              setNewLink('');
-            }}
-          >
-            <input
-              value={newLink}
-              onChange={(e) => setNewLink(e.target.value)}
-              placeholder="Paste a link"
-              aria-label="Add a link"
-              inputMode="url"
-              className="w-full rounded-2xl bg-transparent px-3 py-2.5 outline-none placeholder:text-on-surface-variant"
-            />
-          </form>
-        </li>
-      </ul>
+      {shows('steps') && (
+        <>
+          <SectionTitle>Steps</SectionTitle>
+          <ul className="flex flex-col gap-1 rounded-[1.75rem] bg-surface-low p-2">
+            {task.subtasks.map((s) => (
+              <li key={s.id} className="flex items-center gap-3 rounded-2xl px-2 py-2">
+                <Checkbox
+                  checked={s.done}
+                  size={24}
+                  label={s.title}
+                  onChange={() => patch(s.done ? { uncheckSubtasks: [s.id] } : { checkSubtasks: [s.id] })}
+                />
+                <span className={`flex-1 ${s.done ? 'text-on-surface-variant line-through' : ''}`}>{s.title}</span>
+                <button type="button" onClick={() => patch({ removeSubtasks: [s.id] })} aria-label={`Remove ${s.title}`} className="grid size-9 place-items-center rounded-full text-on-surface-variant hover:bg-surface-high">
+                  <Close className="size-5" aria-hidden />
+                </button>
+              </li>
+            ))}
+            <li>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (newSubtask.trim()) patch({ addSubtasks: [newSubtask.trim()] });
+                  setNewSubtask('');
+                }}
+              >
+                <input
+                  value={newSubtask}
+                  onChange={(e) => setNewSubtask(e.target.value)}
+                  placeholder="Add a step"
+                  aria-label="Add a step"
+                  className="w-full rounded-2xl bg-transparent px-3 py-2.5 outline-none placeholder:text-on-surface-variant"
+                />
+              </form>
+            </li>
+          </ul>
+        </>
+      )}
 
-      <SectionTitle>Files</SectionTitle>
-      <TaskFiles task={task} />
+      {shows('links') && (
+        <>
+          <SectionTitle>Links</SectionTitle>
+          <ul className="flex flex-col gap-1 rounded-[1.75rem] bg-surface-low p-2">
+            {task.links.map((l) => (
+              <li key={l.id} className="flex items-center gap-3 rounded-2xl px-2 py-1">
+                <LinkIcon className="size-5 shrink-0 text-on-surface-variant" aria-hidden />
+                <a href={l.url} target="_blank" rel="noreferrer noopener" className="min-w-0 flex-1 truncate py-2 text-primary">
+                  {l.title ?? l.url.replace(/^https?:\/\/(www\.)?/, '')}
+                </a>
+                <a href={l.url} target="_blank" rel="noreferrer noopener" aria-label="Open" className="grid size-9 place-items-center rounded-full text-on-surface-variant hover:bg-surface-high">
+                  <OpenInNew className="size-5" aria-hidden />
+                </a>
+                <button type="button" onClick={() => patch({ removeLinks: [l.id] })} aria-label="Remove link" className="grid size-9 place-items-center rounded-full text-on-surface-variant hover:bg-surface-high">
+                  <Close className="size-5" aria-hidden />
+                </button>
+              </li>
+            ))}
+            <li>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const url = newLink.trim();
+                  if (url) patch({ addLinks: [{ url: /^https?:\/\//i.test(url) ? url : `https://${url}` }] });
+                  setNewLink('');
+                }}
+              >
+                <input
+                  value={newLink}
+                  onChange={(e) => setNewLink(e.target.value)}
+                  placeholder="Paste a link"
+                  aria-label="Add a link"
+                  inputMode="url"
+                  className="w-full rounded-2xl bg-transparent px-3 py-2.5 outline-none placeholder:text-on-surface-variant"
+                />
+              </form>
+            </li>
+          </ul>
 
-      <History task={task} />
+        </>
+      )}
+
+      {shows('files') && (
+        <>
+          <SectionTitle>Files</SectionTitle>
+          <TaskFiles task={task} />
+        </>
+      )}
+
+      {more && <History task={task} />}
 
       <ReminderSheet task={task} open={reminding} onClose={() => setReminding(false)} />
       <MoveSheet task={moving ? task : null} today={today} onClose={() => setMoving(false)} />
@@ -415,6 +497,15 @@ function Detail({ task }: { task: Task }) {
       />
     </>
   );
+}
+
+const MORE_KEY = 'amble-task-more';
+function readMore() {
+  try {
+    return localStorage.getItem(MORE_KEY) === '1';
+  } catch {
+    return false;
+  }
 }
 
 const HISTORY_PREVIEW = 4;

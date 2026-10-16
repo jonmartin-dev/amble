@@ -452,6 +452,12 @@ export function ScrollRow({ className = '', children, ...rest }: HTMLAttributes<
   useEffect(() => {
     const row = ref.current;
     if (!row) return;
+    // The picked chip starts in view, rather than somewhere past the edge.
+    const picked = row.querySelector<HTMLElement>('[aria-pressed="true"], [aria-checked="true"], .chip-on');
+    if (picked) {
+      const edge = picked.getBoundingClientRect().right - row.getBoundingClientRect().right;
+      if (edge > 0) row.scrollLeft += edge + 32;
+    }
     const update = () => {
       const start = row.scrollLeft > 1;
       const end = row.scrollLeft + row.clientWidth < row.scrollWidth - 1;
