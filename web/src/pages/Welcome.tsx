@@ -147,6 +147,29 @@ export function Welcome() {
 }
 
 /** Shown instead of the app while the device's database isn't this tab's to use. */
+/** Amble on this device didn't answer when the app opened. A new version waiting is applied first (main.tsx). */
+export function StartFailed({ error }: { error: unknown }) {
+  return (
+    <Frame>
+      <div role="alert" className="mt-8 flex gap-3 rounded-3xl bg-warm-container p-4 text-on-warm-container">
+        <ErrorIcon className="mt-0.5 size-5 shrink-0" aria-hidden />
+        <div>
+          <p className="font-medium">Amble couldn't start on this device.</p>
+          <p className="mt-1 text-sm">Your things are still here. Trying again usually sorts it out.</p>
+          {error instanceof Error && <p className="mt-2 text-sm opacity-80">{error.message}</p>}
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={() => window.location.reload()}
+        className="mt-6 rounded-full bg-primary px-6 py-3 font-medium text-on-primary transition-transform active:scale-[0.97]"
+      >
+        Try again
+      </button>
+    </Frame>
+  );
+}
+
 export function DeviceBlocked({ state }: { state: DeviceState }) {
   if (state === 'failed') {
     return (

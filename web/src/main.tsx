@@ -25,7 +25,7 @@ import { EXPANDED, InPane, isDetail, useMedia } from './lib/layout.ts';
 import { refreshViews } from './lib/mutations.ts';
 import { CACHE_MAX_AGE_MS, CACHE_VERSION, claimDevice, idbPersister, prefetchForOffline, shouldSave } from './lib/persist.ts';
 import { syncPhoneReminders } from './lib/push.ts';
-import { registerServiceWorker } from './lib/pwa.ts';
+import { applyUpdate, registerServiceWorker, useUpdateReady } from './lib/pwa.ts';
 import { get, useSession } from './lib/queries.ts';
 import { SnackbarProvider, useSnackbar } from './lib/snackbar.tsx';
 import { startSync } from './lib/sync.ts';
@@ -47,7 +47,7 @@ import { Capacity } from './pages/Capacity.tsx';
 import { ConnectionsPage } from './pages/Connections.tsx';
 import { GroupsSettings } from './pages/GroupsSettings.tsx';
 import { Settings } from './pages/Settings.tsx';
-import { DeviceBlocked, Welcome } from './pages/Welcome.tsx';
+import { DeviceBlocked, StartFailed, Welcome } from './pages/Welcome.tsx';
 import { SyncSettings } from './pages/SyncSettings.tsx';
 import { startDriveSync, syncSoon } from './lib/drive-sync.ts';
 import { takeGoogleReturn } from './lib/google.ts';
@@ -125,17 +125,6 @@ function SyncBridge() {
   return null;
 }
 
-function Offline() {
-  return (
-    <div className="grid min-h-dvh place-items-center px-8 text-center">
-      <div>
-        <p className="display text-2xl font-medium">You're offline</p>
-        <p className="mt-2 text-on-surface-variant">Amble needs a connection the first time it opens on this device. After that it works offline too.</p>
-      </div>
-    </div>
-  );
-}
-
 // The four tabs stay built once they've been opened, and are built ahead in the background soon
 // after the app starts, so switching tabs only shows a page instead of building it. A hidden page
 // keeps its state (a search, the week being looked at) while its effects stop. Memoized, so the
@@ -149,9 +138,15 @@ function Root() {
   const qc = useQueryClient();
   const session = useSession();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const deviceState = useDeviceState();
+  // If Amble can't start and a new version is waiting, the new one may well be the fix.
+  const updateReady = useUpdateReady();
+  const stuck = deviceState === 'failed' || (!session.data && session.isError);
+  useEffect(() => {
+    if (stuck && updateReady) applyUpdate();
+  }, [stuck, updateReady]);
   // The page on screen. The location changes the moment a link is tapped, but the old page stays
   // until the new one is ready; keying on the location would build the old page again in between.
-  const deviceState = useDeviceState();
   const shown = useRouterState({ select: (s) => s.matches.at(-1)?.pathname ?? s.location.pathname });
   const navigate = useNavigate();
   const [adding, setAdding] = useState(false);
@@ -204,7 +199,7 @@ function Root() {
   if (pathname === '/privacy') return <Privacy />;
   if (deviceState !== 'ready' && deviceState !== 'starting') return <DeviceBlocked state={deviceState} />;
   if (session.isPending) return <div className="min-h-dvh" />;
-  if (!session.data && session.isError) return <Offline />;
+  if (!session.data && session.isError) return <StartFailed error={session.error} />;
   if (!session.data?.member) return <Welcome />;
 
   // On a list (open on its own or beside a page), + adds to it.
