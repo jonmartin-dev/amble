@@ -274,10 +274,12 @@ export function Sheet({
               if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
             }}
           />
-          {/* Rides up with the keyboard, centered on the page beside the rail. */}
+          {/* Rides up with the keyboard, centered on the page beside the rail. Only the sheet in it
+              takes touches, and not while it slides away, so a tap meant for the page behind it
+              isn't caught on the way out. */}
           <div
             ref={rideKeyboard}
-            className="sheet-keyboard fixed inset-x-0 bottom-0 z-30 mx-auto max-w-xl"
+            className="sheet-keyboard pointer-events-none fixed inset-x-0 bottom-0 z-30 mx-auto max-w-xl"
             style={{ left: 'var(--rail)', ...(!keyboardFromApp && view.keyboard && { transform: `translateY(${-view.keyboard}px)` }) }}
           >
             <SheetPanel
@@ -396,7 +398,7 @@ function SheetPanel({
       ref={ref}
       role="dialog"
       aria-label={label}
-      className={`${grow ? '' : 'sheet-in'} flex flex-col overflow-hidden rounded-t-[2rem] bg-surface-low shadow-2xl`}
+      className={`${grow ? '' : 'sheet-in'} pointer-events-auto flex flex-col overflow-hidden rounded-t-[2rem] bg-surface-low shadow-2xl`}
       animate={height ? { height } : undefined}
       transition={expressive.defaultSpatial}
       style={{ maxHeight }}
