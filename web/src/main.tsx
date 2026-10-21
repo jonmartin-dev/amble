@@ -13,7 +13,8 @@ import {
   useRouterState,
 } from '@tanstack/react-router';
 import { MotionConfig } from 'motion/react';
-import { Activity as Keep, memo, StrictMode, useCallback, useEffect, useState, type ComponentType } from 'react';
+import { Activity as Keep, memo, StrictMode, useEffect, useLayoutEffect, useRef, useState, type ComponentType } from 'react';
+import { flushSync } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import { AddSheet } from './components/AddSheet.tsx';
 import { DetailStage } from './components/DetailStage.tsx';
@@ -23,7 +24,7 @@ import { StatusPill } from './components/StatusPill.tsx';
 import { basePath } from './lib/api.ts';
 import { readCalendarsWhileOpen } from './lib/calendar.ts';
 import { EXPANDED, InPane, isDetail, useMedia } from './lib/layout.ts';
-import { peekOrigin, type Origin } from './lib/morph.ts';
+import { findRow, morph, peekOrigin } from './lib/morph.ts';
 import { useMotion } from './lib/motion-demo.ts';
 import { refreshViews } from './lib/mutations.ts';
 import { CACHE_MAX_AGE_MS, CACHE_VERSION, claimDevice, idbPersister, prefetchForOffline, shouldSave } from './lib/persist.ts';
@@ -170,34 +171,60 @@ function Root() {
     if (tab) setLastTab(tab);
   }, [tab]);
   const split = wide && isDetail(shown);
-  // Narrower, a task or list opens over the page it came from (DetailStage), growing out of the row
-  // that was tapped; while it moves, that page shows beneath it.
+  // Narrower, a task or list opens from the page it came from (DetailStage), the row that was tapped
+  // growing into it. It's built first, out of sight, and then the browser morphs one into the other
+  // (morph(), lib/morph.ts); closing is the same the other way. A page opened from another page
+  // takes its place without moving.
   const motion = useMotion();
   const staged = !wide;
-  const [stage, setStage] = useState<{ path: string; origin: Origin | null; leaving: boolean; swap: boolean } | null>(null);
+  const [stage, setStage] = useState<{ path: string; phase: 'building' | 'open' | 'leaving'; inSheet: boolean } | null>(null);
   const [overlay, setOverlay] = useState(false);
   // Only from one of the four pages, which stay built beneath it.
   const [seen, setSeen] = useState(shown);
   if (shown !== seen) {
     setSeen(shown);
-    if (staged && isDetail(shown) && stage && !stage.leaving) setStage({ path: shown, origin: null, leaving: false, swap: true });
+    if (staged && isDetail(shown) && stage && stage.phase !== 'leaving') setStage({ ...stage, path: shown, phase: 'open' });
     else if (staged && isDetail(shown) && seen in TABS) {
-      setStage({ path: shown, origin: peekOrigin(shown), leaving: false, swap: false });
+      setStage({ path: shown, phase: 'building', inSheet: !!peekOrigin(shown)?.inSheet });
       setOverlay(true);
-    } else if (stage && !stage.leaving && !isDetail(shown)) setStage({ ...stage, leaving: true });
+    } else if (stage && stage.phase !== 'leaving' && !isDetail(shown)) setStage({ ...stage, phase: 'leaving' });
   }
   if (stage && !staged) {
     setStage(null);
     setOverlay(false);
   }
-  const stageGone = useCallback(() => {
-    setStage(null);
-    setOverlay(false);
-  }, []);
+  const listScroll = useRef(0);
+  useLayoutEffect(() => {
+    if (stage?.phase === 'building') {
+      listScroll.current = window.scrollY;
+      morph('open', findRow(stage.path), () => {
+        flushSync(() => {
+          setStage((s) => s && { ...s, phase: 'open' });
+          setOverlay(false);
+        });
+        window.scrollTo(0, 0);
+        return document.querySelector('main');
+      });
+    } else if (stage?.phase === 'leaving') {
+      const from = overlay ? document.querySelector<HTMLElement>('[data-stage]') : document.querySelector('main');
+      morph('close', from, () => {
+        flushSync(() => {
+          setStage(null);
+          setOverlay(false);
+        });
+        window.scrollTo(0, listScroll.current);
+        return findRow(stage.path);
+      });
+    }
+    // Once for each step; `overlay` is read as it is when the step starts.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stage?.phase]);
   const listed = tab ?? (split ? lastTab : null);
   // The page a task or list opened over. It stays built and running beneath it, only out of sight
   // while the task sits in its place, so it comes back exactly as it was, without rising in again.
-  const under = stage && !stage.leaving ? lastTab : null;
+  const under = stage && stage.phase !== 'leaving' ? lastTab : null;
+  // Closing from in its place, the page it goes back to stays out of sight until the morph swaps them.
+  const waiting = stage?.phase === 'leaving' && !overlay ? listed : null;
   const [kept, setKept] = useState<ReadonlySet<string>>(() => new Set());
   useEffect(() => {
     if (listed && !kept.has(listed)) setKept(new Set(kept).add(listed));
@@ -247,7 +274,8 @@ function Root() {
             split
               ? // Its own scroll, so picking one task after another doesn't move the list.
                 'sticky top-0 h-dvh w-[min(26rem,44%)] shrink-0 overflow-y-auto overscroll-contain px-4 pb-10 [scrollbar-width:thin]'
-              : `mx-auto max-w-xl px-4 medium:max-w-2xl medium:px-6 medium:pb-12 ${subpage ? 'pb-12' : 'pb-36'}`
+              : // At least the screen's height, so a short page morphs into the whole screen.
+                `mx-auto min-h-dvh max-w-xl px-4 medium:max-w-2xl medium:px-6 medium:pb-12 ${subpage ? 'pb-12' : 'pb-36'}`
           }
           style={{ paddingTop: 'max(1.5rem, env(safe-area-inset-top))' }}
         >
@@ -257,7 +285,7 @@ function Root() {
             kept.has(path) || path === listed ? (
               <Keep key={path} mode={path === listed || path === under ? 'visible' : 'hidden'}>
                 <div
-                  className={`page-in ${path === under && !overlay ? 'hidden' : ''}`}
+                  className={`page-in ${(path === under && !overlay) || path === waiting ? 'hidden' : ''}`}
                   data-tab={path}
                   data-cascade={motion.cascade || undefined}
                   data-shown={path === listed || (path === under && overlay) || undefined}
@@ -275,13 +303,10 @@ function Root() {
           {stage && (
             <DetailStage
               key={stage.path}
-              path={stage.path}
-              origin={stage.origin}
               overlay={overlay}
               setOverlay={setOverlay}
-              entering={!stage.swap}
-              leaving={stage.leaving}
-              onGone={stageGone}
+              building={stage.phase === 'building'}
+              inSheet={stage.inSheet}
               onBack={() => (window.history.length > 1 ? window.history.back() : void navigate({ to: lastTab as '/' }))}
               backGesture={motion.back}
               pull={motion.pull}

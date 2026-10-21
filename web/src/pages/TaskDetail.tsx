@@ -1,6 +1,6 @@
 import { useNavigate, useRouter } from '@tanstack/react-router';
 import { AnimatePresence, motion } from 'motion/react';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import Close from '~icons/material-symbols/close-rounded';
 import ExpandMore from '~icons/material-symbols/expand-more-rounded';
 import Delete from '~icons/material-symbols/delete-outline-rounded';
@@ -75,19 +75,16 @@ function Detail({ task }: { task: Task }) {
   const back = () => (window.history.length > 1 ? router.history.back() : void navigate({ to: '/' }));
   const others = household?.members.filter((m) => m.id !== me?.id) ?? [];
   const done = task.status === 'done';
-  // When, the deadline and a reminder are what most tasks need. The rest waits behind More details,
-  // except whatever already has something in it; once opened, it stays open.
-  const [more, setMore] = useState(readMore);
-  const showMore = (open: boolean) => {
-    setMore(open);
-    try {
-      localStorage.setItem(MORE_KEY, open ? '1' : '');
-    } catch {
-      // Private browsing: it just won't be remembered.
-    }
-  };
+  // Only what's set on the task shows; everything else waits behind More details, opened task by
+  // task. Something cleared while the page is open stays until it's left, rather than vanishing
+  // under the finger that cleared it.
+  const [more, setMore] = useState(false);
+  const kept = useRef(new Set<keyof typeof filled>());
   const filled = {
+    day: task.plannedDate !== null,
     time: task.timeOfDay !== null,
+    due: task.dueDate !== null,
+    reminder: task.reminder !== null,
     repeat: task.repeat !== null,
     group: task.groupId !== null,
     person: task.assigneeId !== me?.id,
@@ -98,10 +95,14 @@ function Detail({ task }: { task: Task }) {
     links: task.links.length > 0,
     files: task.files.length > 0,
   };
-  const shows = (part: keyof typeof filled) => more || filled[part];
+  for (const part of Object.keys(filled) as (keyof typeof filled)[]) if (filled[part]) kept.current.add(part);
+  const shows = (part: keyof typeof filled) => more || kept.current.has(part);
   const tucked = (
     [
+      ['day', 'day'],
       ['time', 'time of day'],
+      ['due', 'due date'],
+      ['reminder', 'reminder'],
       ['repeat', 'repeat'],
       ['group', 'group'],
       ['size', 'how long'],
@@ -112,7 +113,7 @@ function Detail({ task }: { task: Task }) {
       ['files', 'files'],
     ] as [keyof typeof filled, string][]
   )
-    .filter(([part]) => !filled[part])
+    .filter(([part]) => !kept.current.has(part))
     .map(([, words]) => words);
   // Due later and not on a day yet: the day with the most room before the deadline.
   const wantsDay = task.status === 'open' && !task.plannedDate && !!task.dueDate && task.dueDate >= today;
@@ -192,12 +193,14 @@ function Detail({ task }: { task: Task }) {
         )}
       </AnimatePresence>
 
-      <div className="mt-4 divide-y divide-outline-variant/40 rounded-[1.75rem] bg-surface-low px-4">
-        <Field icon={<Event className="size-5" />} label="Planned for">
-          <button type="button" onClick={() => setMoving(true)} className="rounded-full bg-surface-high px-4 py-2 text-sm font-medium">
-            {task.plannedDate ? dayLabel(task.plannedDate, today, true).replace(/^./, (c) => c.toUpperCase()) : 'Someday (backlog)'}
-          </button>
-        </Field>
+      <div className="mt-4 divide-y divide-outline-variant/40 rounded-[1.75rem] bg-surface-low px-4 empty:hidden">
+        {shows('day') && (
+          <Field icon={<Event className="size-5" />} label="Planned for">
+            <button type="button" onClick={() => setMoving(true)} className="rounded-full bg-surface-high px-4 py-2 text-sm font-medium">
+              {task.plannedDate ? dayLabel(task.plannedDate, today, true).replace(/^./, (c) => c.toUpperCase()) : 'Someday (backlog)'}
+            </button>
+          </Field>
+        )}
 
         {shows('time') && (
           <Field icon={<Schedule className="size-5" />} label="Time of day">
@@ -218,30 +221,34 @@ function Detail({ task }: { task: Task }) {
           </Field>
         )}
 
-        <Field icon={<EventBusy className="size-5" />} label="Due">
-          <div className="flex items-center gap-2">
-            <label className="relative cursor-pointer rounded-full bg-surface-high px-4 py-2 text-sm font-medium">
-              {task.dueDate ? dayLabel(task.dueDate, today, true).replace(/^./, (c) => c.toUpperCase()) : 'No deadline'}
-              <input
-                type="date"
-                value={task.dueDate ?? ''}
-                onChange={(e) => patch({ dueDate: e.target.value || null })}
-                onClick={(e) => (e.target as HTMLInputElement).showPicker?.()}
-                className="absolute inset-0 opacity-0"
-                aria-label="Due date"
-              />
-            </label>
-            {task.dueDate && (
-              <button type="button" onClick={() => patch({ dueDate: null })} aria-label="Clear due date" className="grid size-9 place-items-center rounded-full hover:bg-surface-high">
-                <Close className="size-5" aria-hidden />
-              </button>
-            )}
-          </div>
-        </Field>
+        {shows('due') && (
+          <Field icon={<EventBusy className="size-5" />} label="Due">
+            <div className="flex items-center gap-2">
+              <label className="relative cursor-pointer rounded-full bg-surface-high px-4 py-2 text-sm font-medium">
+                {task.dueDate ? dayLabel(task.dueDate, today, true).replace(/^./, (c) => c.toUpperCase()) : 'No deadline'}
+                <input
+                  type="date"
+                  value={task.dueDate ?? ''}
+                  onChange={(e) => patch({ dueDate: e.target.value || null })}
+                  onClick={(e) => (e.target as HTMLInputElement).showPicker?.()}
+                  className="absolute inset-0 opacity-0"
+                  aria-label="Due date"
+                />
+              </label>
+              {task.dueDate && (
+                <button type="button" onClick={() => patch({ dueDate: null })} aria-label="Clear due date" className="grid size-9 place-items-center rounded-full hover:bg-surface-high">
+                  <Close className="size-5" aria-hidden />
+                </button>
+              )}
+            </div>
+          </Field>
+        )}
 
-        <Field icon={<Bell className="size-5" />} label="Remind me">
-          <ReminderField task={task} onMore={() => setReminding(true)} />
-        </Field>
+        {shows('reminder') && (
+          <Field icon={<Bell className="size-5" />} label="Remind me">
+            <ReminderField task={task} onMore={() => setReminding(true)} />
+          </Field>
+        )}
 
         {shows('repeat') && (
           <Field icon={<RepeatIcon className="size-5" />} label="Repeats">
@@ -370,7 +377,7 @@ function Detail({ task }: { task: Task }) {
       {tucked.length > 0 && (
         <button
           type="button"
-          onClick={() => showMore(!more)}
+          onClick={() => setMore(!more)}
           aria-expanded={more}
           className="mt-2 flex w-full items-center gap-3 rounded-full px-4 py-3 text-left text-sm text-on-surface-variant"
         >
@@ -497,15 +504,6 @@ function Detail({ task }: { task: Task }) {
       />
     </>
   );
-}
-
-const MORE_KEY = 'amble-task-more';
-function readMore() {
-  try {
-    return localStorage.getItem(MORE_KEY) === '1';
-  } catch {
-    return false;
-  }
 }
 
 const HISTORY_PREVIEW = 4;

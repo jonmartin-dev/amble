@@ -1,13 +1,13 @@
 // Where a page came from, so it can grow out of the thing that was tapped and shrink back into it
 // (Material's container transform). Anything marked data-morph="<path>" counts: a tap on it, or on
-// something inside it, notes its place on screen and a copy of how it looked.
+// something inside it, notes its place on screen.
+import { reduced } from './motion-demo.ts';
 
 export interface Origin {
   path: string;
   rect: DOMRect;
   radius: number;
   color: string;
-  ghost: HTMLElement;
   /** Tapped inside a sheet, which the page then has to cover. */
   inSheet: boolean;
   at: number;
@@ -23,22 +23,83 @@ export function peekOrigin(path: string): Origin | null {
 export function notePress(el: Element) {
   const marked = el.closest<HTMLElement>('[data-morph]');
   if (!marked) return;
-  last = { path: marked.dataset.morph!, rect: marked.getBoundingClientRect(), radius: radiusOf(marked), color: colorOf(marked), ghost: ghostOf(marked), inSheet: !!marked.closest('[role=dialog]'), at: Date.now() };
+  last = { path: marked.dataset.morph!, rect: marked.getBoundingClientRect(), radius: radiusOf(marked), color: colorOf(marked), inSheet: !!marked.closest('[role=dialog]'), at: Date.now() };
 }
 
 if (typeof document !== 'undefined') {
   document.addEventListener('click', (e) => e.target instanceof Element && notePress(e.target), { capture: true });
 }
 
-/** The thing a page can shrink back into: the same row, if it's still on screen. */
-export function findTarget(path: string, not: Element | null) {
+/** The row a page grows out of or shrinks back into: the one for `path`, if it's on screen. */
+export function findRow(path: string): HTMLElement | null {
   const vh = window.innerHeight;
   for (const el of document.querySelectorAll<HTMLElement>(`[data-morph="${CSS.escape(path)}"]`)) {
-    if (not?.contains(el)) continue;
     const rect = el.getBoundingClientRect();
-    if (rect.width && rect.bottom > 0 && rect.top < vh) return { el, rect, radius: radiusOf(el), color: colorOf(el), ghost: ghostOf(el) };
+    if (rect.width && rect.bottom > 0 && rect.top < vh) return el;
   }
   return null;
+}
+
+/**
+ * Morphs the page from one state to the next with the browser's View Transitions API: `from` (a
+ * row, or an open page) becomes whatever `update` returns, which it gets by changing the page
+ * (React's update included, with flushSync). The browser animates pictures of the two states on
+ * its own, so building the new page never holds up a frame. The look is in styles.css, under
+ * "card"; `kind` picks it. Without `from` the pages cross-fade, and without the API (or with the
+ * phone's animations off) the page just changes.
+ */
+export function morph(kind: 'open' | 'close', from: HTMLElement | null, update: () => HTMLElement | null) {
+  const start = typeof document !== 'undefined' && 'startViewTransition' in document ? document.startViewTransition.bind(document) : null;
+  if (!start || reduced()) {
+    // After the caller's own React work is done, which a flushSync inside it would trip over.
+    queueMicrotask(update);
+    return;
+  }
+  const root = document.documentElement;
+  const mine = (latest = {});
+  const spring = kind === 'open' ? OPEN : CLOSE;
+  // With nothing to grow from or shrink into, the two pages just cross-fade.
+  root.dataset.morph = from ? kind : 'fade';
+  root.style.setProperty('--card-ms', `${spring.duration}ms`);
+  root.style.setProperty('--card-easing', spring.easing);
+  if (from) from.style.viewTransitionName = 'card';
+  let to: HTMLElement | null = null;
+  const vt = start(() => {
+    if (from) from.style.viewTransitionName = '';
+    to = update();
+    if (to) to.style.viewTransitionName = 'card';
+  });
+  // Opening, the page travels from the row settled and only its size bounces: a bounce on the long
+  // trip up would fling it under the status bar and back.
+  let split: Animation[] = [];
+  if (from && kind === 'open') void vt.ready.then(() => (split = splitBounce()), () => {});
+  void vt.finished.finally(() => {
+    for (const a of split) a.cancel();
+    if (to) to.style.viewTransitionName = '';
+    // A morph that started since (Back tapped mid-open, say) has the page's look now.
+    if (latest === mine) delete root.dataset.morph;
+  });
+}
+
+let latest = {};
+
+const OPEN = springEasing(0.68, 230);
+const TRAVEL = springEasing(0.92, 230);
+const CLOSE = springEasing(0.85, 380);
+
+/** Replaces the browser's own animation of the card with the same move on two springs. */
+function splitBounce(): Animation[] {
+  const pseudoElement = '::view-transition-group(card)';
+  const own = document.getAnimations().find((a) => (a.effect as KeyframeEffect | null)?.pseudoElement === pseudoElement);
+  const frames = (own?.effect as KeyframeEffect | undefined)?.getKeyframes();
+  if (!own || !frames || frames.length < 2) return [];
+  const [a, b] = [frames[0]!, frames.at(-1)!];
+  own.cancel();
+  const root = document.documentElement;
+  return [
+    root.animate({ transform: [a.transform as string, b.transform as string] }, { pseudoElement, ...TRAVEL, fill: 'both' }),
+    root.animate({ width: [a.width as string, b.width as string], height: [a.height as string, b.height as string] }, { pseudoElement, ...OPEN, fill: 'both' }),
+  ];
 }
 
 function radiusOf(el: Element) {
@@ -52,15 +113,6 @@ function colorOf(el: Element) {
     if (bg && bg !== 'transparent' && !/rgba\(.*,\s*0\)$/.test(bg)) return bg;
   }
   return getComputedStyle(document.body).backgroundColor;
-}
-
-function ghostOf(el: HTMLElement) {
-  const copy = el.cloneNode(true) as HTMLElement;
-  copy.removeAttribute('data-morph');
-  copy.querySelectorAll('[data-morph]').forEach((e) => e.removeAttribute('data-morph'));
-  copy.setAttribute('aria-hidden', 'true');
-  copy.inert = true;
-  return copy;
 }
 
 /**

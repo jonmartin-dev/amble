@@ -495,17 +495,77 @@ body::before {
   }
 }
 
-/* A task row sinks in a little and its corners tighten while it's pressed. Like Android's own
-   pressed state it waits a moment first, so a finger that's starting to scroll doesn't sink it. */
+/* A task row sinks in a little while it's pressed: a transform only, which the phone animates on
+   its own. Like Android's own pressed state it waits a moment first, so a finger that's starting
+   to scroll doesn't sink it. */
 .press-row {
-  transition:
-    transform 350ms var(--spring-fast),
-    border-radius 350ms var(--spring-fast);
+  transition: transform 350ms var(--spring-fast);
 }
 .press-row:active {
   transform: scale(0.975);
-  border-radius: 0.875rem;
   transition-delay: 90ms;
+}
+
+/* Opening a task or list, the row it was on grows into the page (Material's container transform)
+   while the page beneath dims; closing, the page shrinks back into its row. The browser animates
+   pictures of the two states (morph() in lib/morph.ts), so building the page never holds up a
+   frame. The card's size and place follow a spring set from morph(); the rest is opacity and
+   filter, which the phone animates on its own. */
+::view-transition-group(card) {
+  animation-duration: var(--card-ms, 450ms);
+  animation-timing-function: var(--card-easing, cubic-bezier(0.2, 0, 0, 1));
+}
+::view-transition-image-pair(card) {
+  overflow: clip;
+  border-radius: 1.5rem;
+  background: var(--md-surface);
+  animation: card-corners var(--card-ms, 450ms) var(--card-easing, ease) both;
+}
+html[data-morph='close']::view-transition-image-pair(card) {
+  animation-direction: reverse;
+}
+@keyframes card-corners {
+  to {
+    border-radius: 0;
+  }
+}
+/* The row hands over to the page early, the page back to the row late. */
+html[data-morph='open']::view-transition-old(card) {
+  animation: card-fade 150ms ease-out reverse both;
+}
+html[data-morph='open']::view-transition-new(card) {
+  animation: card-fade 150ms ease-out both;
+}
+html[data-morph='close']::view-transition-old(card) {
+  animation: card-fade 160ms ease-in calc(var(--card-ms, 450ms) * 0.45) reverse both;
+}
+html[data-morph='close']::view-transition-new(card) {
+  animation: card-fade 160ms ease-out calc(var(--card-ms, 450ms) * 0.4) both;
+}
+@keyframes card-fade {
+  from {
+    opacity: 0;
+  }
+}
+/* The page beneath stays and dims while the card covers it, and comes back as it shrinks. Beside
+   a card narrower than the screen (a wide phone), the new page's background fades in late. */
+html[data-morph='open']::view-transition-old(root) {
+  animation: page-dim var(--card-ms, 450ms) ease-out both;
+}
+html[data-morph='open']::view-transition-new(root) {
+  animation: card-fade 200ms ease-out calc(var(--card-ms, 450ms) * 0.45) both;
+}
+html[data-morph='close']::view-transition-old(root) {
+  animation: none;
+  opacity: 0;
+}
+html[data-morph='close']::view-transition-new(root) {
+  animation: page-dim var(--card-ms, 450ms) ease-out reverse both;
+}
+@keyframes page-dim {
+  to {
+    filter: brightness(0.7);
+  }
 }
 
 /* Finishing a task: a wash of color sweeps across the row, then fades, and a line draws itself

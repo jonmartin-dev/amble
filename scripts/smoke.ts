@@ -64,7 +64,7 @@ await check('quick add puts a task on today', async (p) => {
   await p.getByRole('button', { name: 'Add', exact: true }).click();
   await until(p, `Added "${TASK}"`);
   await p.keyboard.press('Escape');
-  await p.getByRole('main').getByText(TASK).waitFor({ timeout: 5000 });
+  await p.getByRole('main').getByText(TASK).locator('visible=true').waitFor({ timeout: 5000 });
 });
 
 await check('the add sheet rides on the keyboard; Back drops the keyboard, then closes it', async (p) => {
@@ -116,9 +116,9 @@ await check('completing moves it to done, and Undo brings it back', async (p) =>
 });
 
 await check('the task page edits steps, links and notes', async (p) => {
-  await p.getByRole('main').getByText(TASK).click();
+  await p.getByRole('main').getByText(TASK).locator('visible=true').click();
   await p.waitForURL(/\/task\//);
-  // A new task shows when, due and reminder; the rest is behind More details, which then stays open.
+  // Only what's set on a task shows; the rest is behind More details.
   await p.getByRole('button', { name: /^More details/ }).click();
   await p.getByLabel('Add a step').fill('Find the post office hours');
   await p.getByLabel('Add a step').press('Enter');
@@ -137,6 +137,8 @@ await check('the task page edits steps, links and notes', async (p) => {
 });
 
 await check('a reminder set on the task page shows there and is coming up', async (p) => {
+  // The reminder is behind More details until there is one.
+  await p.getByRole('button', { name: /^More details/ }).click();
   await p.getByRole('button', { name: 'In an hour' }).click();
   await until(p, /^I'll remind you /);
   await p.getByRole('button', { name: /^Today \d|^Tomorrow \d/ }).waitFor({ timeout: 5000 });
@@ -190,7 +192,7 @@ await check('removing a task, then undoing it', async (p) => {
 await check('backlog search finds it', async (p) => {
   await p.goto(`${base}/backlog`);
   await p.getByLabel('Search tasks').fill(TASK);
-  await p.getByRole('main').getByText(TASK).waitFor({ timeout: 5000 });
+  await p.getByRole('main').getByText(TASK).locator('visible=true').waitFor({ timeout: 5000 });
 });
 
 await check('the grocery list adds and checks off items', async (p) => {
@@ -259,7 +261,8 @@ await check('swiping a task right completes it', async (p) => {
   await p.getByRole('button', { name: 'Add', exact: true }).click();
   await until(p, `Added "${title}"`);
   await p.keyboard.press('Escape');
-  const row = p.getByRole('main').getByText(title);
+  // Visible only: the backlog, built out of sight, lists it too.
+  const row = p.getByRole('main').getByText(title).locator('visible=true');
   await row.waitFor({ timeout: 5000 });
   await row.evaluate((el) => el.scrollIntoView({ block: 'center' }));
   await p.waitForTimeout(300);
@@ -305,7 +308,7 @@ await check('stats and activity show what happened', async (p) => {
   await p.goto(`${base}/stats`);
   await until(p, /\d+ things? done/);
   await p.goto(`${base}/activity`);
-  await p.getByRole('main').getByText(TASK).first().waitFor({ timeout: 5000 });
+  await p.getByRole('main').getByText(TASK).locator('visible=true').first().waitFor({ timeout: 5000 });
 });
 
 await check('settings rename a group, archive it and bring it back', async (p) => {
@@ -444,7 +447,7 @@ await check('on a tablet a task opens beside the backlog, the next takes its pla
     await rows.first().waitFor();
     const titles = await rows.evaluateAll((els) => els.slice(0, 2).map((el) => el.getAttribute('aria-label')!.replace(/^Complete /, '')));
     for (const title of titles) {
-      await p.getByRole('main').getByText(title, { exact: true }).first().click();
+      await p.getByRole('main').getByText(title, { exact: true }).locator('visible=true').first().click();
       await p.waitForFunction((t) => document.querySelector<HTMLTextAreaElement>('[aria-label="Open beside"] textarea[aria-label="Title"]')?.value === t, title, {
         timeout: 5000,
       });
