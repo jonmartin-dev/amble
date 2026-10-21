@@ -194,6 +194,8 @@ function Root() {
     setOverlay(false);
   }
   const listScroll = useRef(0);
+  // A page that shrank into its row by itself at the end of a drag (DetailStage): it goes without a morph.
+  const shrunk = useRef<string | null>(null);
   useLayoutEffect(() => {
     if (stage?.phase === 'building') {
       listScroll.current = window.scrollY;
@@ -205,6 +207,10 @@ function Root() {
         window.scrollTo(0, 0);
         return document.querySelector('main');
       });
+    } else if (stage?.phase === 'leaving' && shrunk.current === stage.path) {
+      shrunk.current = null;
+      setStage(null);
+      setOverlay(false);
     } else if (stage?.phase === 'leaving') {
       const from = overlay ? document.querySelector<HTMLElement>('[data-stage]') : document.querySelector('main');
       morph('close', from, () => {
@@ -307,7 +313,12 @@ function Root() {
               setOverlay={setOverlay}
               building={stage.phase === 'building'}
               inSheet={stage.inSheet}
-              onBack={() => (window.history.length > 1 ? window.history.back() : void navigate({ to: lastTab as '/' }))}
+              path={stage.path}
+              onBack={(closed) => {
+                shrunk.current = closed ? stage.path : null;
+                if (window.history.length > 1) window.history.back();
+                else void navigate({ to: lastTab as '/' });
+              }}
               backGesture={motion.back}
               pull={motion.pull}
             >

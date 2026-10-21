@@ -107,7 +107,7 @@ const OPEN = springEasing(0.68, 230);
 // Material's expressive default spatial spring, as the parts of a page move.
 const UNFOLD = springEasing(0.8, 380);
 const TRAVEL = springEasing(0.92, 230);
-const CLOSE = springEasing(0.85, 380);
+export const CLOSE = springEasing(0.85, 380);
 
 /** Replaces the browser's own animation of the card with the same move on two springs. */
 function splitBounce(): Animation[] {
@@ -124,7 +124,7 @@ function splitBounce(): Animation[] {
   ];
 }
 
-function radiusOf(el: Element) {
+export function radiusOf(el: Element) {
   return parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0;
 }
 

@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
-import { setStageGesture, springEasing, stageGesture, type StageGesture } from '../lib/morph.ts';
+import { CLOSE, findRow, radiusOf, setStageGesture, springEasing, stageGesture, type StageGesture } from '../lib/morph.ts';
+import { reduced } from '../lib/motion-demo.ts';
 import { setBackGesture } from '../lib/native.ts';
 import { typingWithKeyboard } from '../lib/viewport.ts';
 
@@ -18,8 +19,13 @@ interface Props {
   building: boolean;
   /** Opened from inside a sheet, which it then has to cover while it floats. */
   inSheet: boolean;
-  /** Leave the page: a drag or the back gesture went far enough. */
-  onBack: () => void;
+  /** The page's address, for the row it shrinks back into. */
+  path: string;
+  /**
+   * Leave the page: a drag or the back gesture went far enough. `closed` when it already shrank
+   * into its row, so there's nothing left to morph.
+   */
+  onBack: (closed: boolean) => void;
   /** Take the phone's back gesture, so the page can follow it. */
   backGesture: boolean;
   pull: boolean;
@@ -30,7 +36,7 @@ interface Props {
 const COLUMN = 'mx-auto max-w-xl px-4 pb-36 medium:max-w-2xl medium:px-6 medium:pb-12';
 const SCRIM = 0.32;
 
-export function DetailStage({ overlay, setOverlay, building, inSheet, onBack, backGesture, pull, children }: Props) {
+export function DetailStage({ overlay, setOverlay, building, inSheet, path, onBack, backGesture, pull, children }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const scrim = useRef<HTMLDivElement>(null);
   const floating = useRef(overlay);
@@ -119,9 +125,20 @@ export function DetailStage({ overlay, setOverlay, building, inSheet, onBack, ba
         gesture.current = null;
         if (!d || phase.current !== 'dragging') return false;
         if (commit) {
-          // Root morphs it back into its row from where the finger left it.
           phase.current = 'leaving';
-          onBack();
+          // Shrinks into its row from where the finger left it, starting the frame it lets go, and
+          // only then leaves. Without a row on screen to go to, Root's morph fades it out instead.
+          const b = box.current;
+          const found = b && floating.current && !reduced() ? findRow(path) : null;
+          const row = found && !b!.contains(found) ? found : null;
+          if (!b || !row) {
+            onBack(false);
+            return true;
+          }
+          b.style.pointerEvents = 'none';
+          running.current = shrinkInto(b, row, scrim.current);
+          // Gone once it has faded onto the row, while the spring still settles out of sight.
+          void Promise.all(running.current.slice(2).map((a) => a.finished)).then(() => onBack(true), () => {});
           return true;
         }
         // Not far enough: back to full size (a transform, which the phone animates on its own),
@@ -237,4 +254,36 @@ export function DetailStage({ overlay, setOverlay, building, inSheet, onBack, ba
       </div>
     </>
   );
+}
+
+/**
+ * The page, floating after a drag that went far enough, shrinks into the row it opened from, and
+ * once it's nearly there fades onto the row beneath, as the morph's two pictures cross. It's the page
+ * as it is, animated in place, so it moves the frame the finger lifts; a morph would first stop to
+ * take pictures of the page before and after. The transform and fades run on their own; the clip
+ * that keeps it to the row's height is drawn by the page, which has nothing else to do meanwhile.
+ * The first two animations are the move and the clip; the rest are the fades, done once the page is
+ * out of sight.
+ */
+function shrinkInto(b: HTMLElement, row: HTMLElement, scrim: HTMLElement | null): Animation[] {
+  const width = b.offsetWidth;
+  const height = b.offsetHeight;
+  const r = row.getBoundingClientRect();
+  // About its middle, as the drag left it: the scale that makes it the row's width, and the move that
+  // puts its top on the row's.
+  const scale = r.width / width;
+  const x = r.left + r.width / 2 - (b.offsetLeft + width / 2);
+  const y = r.top - height / 2 + (scale * height) / 2;
+  const clip = `inset(0px 0px ${Math.max(0, height - r.height / scale)}px 0px round ${radiusOf(row) / scale}px)`;
+  const { easing, duration } = CLOSE;
+  b.style.transformOrigin = '50% 50%';
+  // Apart, so the move isn't held to the page's pace by the clip it would otherwise share an animation with.
+  const moves = [
+    b.animate({ transform: [b.style.transform || 'none', `translate(${x}px, ${y}px) scale(${scale})`] }, { duration, easing, fill: 'forwards' }),
+    b.animate({ clipPath: [b.style.clipPath || 'inset(0px round 0px)', clip] }, { duration, easing, fill: 'forwards' }),
+    // The spring is most of the way there by a third of its time; then the row shows through.
+    b.animate({ opacity: [1, 0] }, { duration: duration * 0.25, delay: duration * 0.3, easing: 'ease-in-out', fill: 'both' }),
+  ];
+  if (scrim) moves.push(scrim.animate({ opacity: [scrim.style.opacity || String(SCRIM), '0'] }, { duration: duration * 0.55, easing: 'ease-out', fill: 'forwards' }));
+  return moves;
 }
