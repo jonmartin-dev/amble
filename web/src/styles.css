@@ -279,6 +279,17 @@ body::before {
   }
 }
 
+/* A new message taking the place of the last on a snackbar already up. */
+.snack-swap {
+  animation: snack-swap 260ms var(--spring-fast) backwards;
+}
+@keyframes snack-swap {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
 /*
  * M3 Expressive chips (Compose's chip tokens, 2026): 32dp tall, a rounded rectangle (12dp) with an
  * outline until it's picked, then fully round on the secondary container; the corners tighten to
@@ -782,6 +793,7 @@ html[data-morph='unfold']::view-transition-new(root) {
   .page-in,
   .sheet-in,
   .snack-in,
+  .snack-swap,
   .grow-up,
   .grow-right,
   .enter-up,
