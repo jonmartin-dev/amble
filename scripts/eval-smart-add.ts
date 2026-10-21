@@ -320,6 +320,8 @@ interface Run {
   effort: Effort;
   round: number;
   ms: number;
+  /** When the first card arrived, streamed as the app does; null when none did. */
+  firstMs: number | null;
   inputTokens: number;
   outputTokens: number;
   checks: Check[];
@@ -336,11 +338,14 @@ const queue = [...jobs];
 async function worker() {
   for (let job = queue.shift(); job; job = queue.shift()) {
     const { c, effort, round } = job;
+    const start = performance.now();
+    let firstMs: number | null = null;
+    const onProposal = () => void (firstMs ??= performance.now() - start);
     try {
-      const r = await smartAdd(db, ai, c.as ?? jon, { text: c.text, hints: c.hints, effort, timezone: config.timezone });
-      runs.push({ case: c.name, effort, round, ms: r.usage.ms, inputTokens: r.usage.inputTokens, outputTokens: r.usage.outputTokens, checks: c.check(r.proposals), proposals: r.proposals, unclear: r.unclear });
+      const r = await smartAdd(db, ai, c.as ?? jon, { text: c.text, hints: c.hints, effort, timezone: config.timezone, onProposal });
+      runs.push({ case: c.name, effort, round, ms: r.usage.ms, firstMs, inputTokens: r.usage.inputTokens, outputTokens: r.usage.outputTokens, checks: c.check(r.proposals), proposals: r.proposals, unclear: r.unclear });
     } catch (err) {
-      runs.push({ case: c.name, effort, round, ms: 0, inputTokens: 0, outputTokens: 0, checks: [['answered', false]], proposals: [], unclear: null, error: String(err) });
+      runs.push({ case: c.name, effort, round, ms: 0, firstMs: null, inputTokens: 0, outputTokens: 0, checks: [['answered', false]], proposals: [], unclear: null, error: String(err) });
     }
     process.stdout.write('.');
   }
@@ -364,11 +369,14 @@ for (const e of efforts) {
   const rs = runs.filter((r) => r.effort === e);
   const checks = rs.flatMap((r) => r.checks);
   const ms = rs.map((r) => r.ms).sort((a, b) => a - b);
+  const first = rs.flatMap((r) => (r.firstMs === null ? [] : [r.firstMs])).sort((a, b) => a - b);
   const avg = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / Math.max(xs.length, 1);
+  const secs = (xs: number[], q: number) => (xs.length ? `${(xs[Math.floor(xs.length * q)]! / 1000).toFixed(1)}s` : '-');
   console.log(
     `${e.padEnd(7)} checks ${checks.filter(([, ok]) => ok).length}/${checks.length}  ` +
       `cases fully right ${rs.filter((r) => r.checks.every(([, ok]) => ok)).length}/${rs.length}  ` +
-      `median ${(ms[Math.floor(ms.length / 2)]! / 1000).toFixed(1)}s  p90 ${(ms[Math.floor(ms.length * 0.9)]! / 1000).toFixed(1)}s  ` +
+      `first card median ${secs(first, 0.5)} p90 ${secs(first, 0.9)}  ` +
+      `all median ${secs(ms, 0.5)} p90 ${secs(ms, 0.9)}  ` +
       `avg in ${Math.round(avg(rs.map((r) => r.inputTokens)))} out ${Math.round(avg(rs.map((r) => r.outputTokens)))} tokens  ` +
       `avg $${avg(rs.map(cost)).toFixed(5)} per add`,
   );
