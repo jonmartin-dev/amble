@@ -23,7 +23,9 @@ async function check(name: string, fn: (p: Page) => Promise<void>) {
     await fn(page);
     console.log(`ok ${step} ${name}`);
   } catch (err) {
-    console.error(`FAILED ${step} ${name}: ${err instanceof Error ? err.message.split('\n')[0] : err}`);
+    // The error, and from Playwright's call log what it was waiting for, which says which wait gave up.
+    const waiting = err instanceof Error ? /waiting for (.+)/.exec(err.message)?.[1]?.replace(/\x1b\[\d+m/g, '') : undefined;
+    console.error(`FAILED ${step} ${name}: ${err instanceof Error ? err.message.split('\n')[0] : err}${waiting ? ` (waiting for ${waiting})` : ''}`);
     await page.screenshot({ path: `design/screens/_smoke-fail-${step}.png`, fullPage: true });
     process.exitCode = 1;
   }
