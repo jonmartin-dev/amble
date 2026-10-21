@@ -32,7 +32,9 @@ export function FloatingToolbar({ onAdd, label, away = false }: { onAdd: () => v
   return (
     <div
       className={`toolbar fixed inset-x-0 z-10 flex items-center justify-center gap-3 px-4 medium:hidden ${away ? 'toolbar-away' : ''}`}
-      style={{ bottom: 'max(1.25rem, env(safe-area-inset-bottom))' }}
+      // Its own layer when a task or list morphs open or closed (lib/morph.ts), so it stays on top
+      // rather than going under the card and popping back in after.
+      style={{ bottom: 'max(1.25rem, env(safe-area-inset-bottom))', viewTransitionName: 'toolbar' }}
       inert={away}
     >
       <nav aria-label="Main" className="relative flex items-center gap-1 rounded-full bg-surface-container p-2 shadow-lg">
