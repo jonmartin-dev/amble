@@ -107,7 +107,7 @@ const OPEN = springEasing(0.68, 230);
 // Material's expressive default spatial spring, as the parts of a page move.
 const UNFOLD = springEasing(0.8, 380);
 const TRAVEL = springEasing(0.92, 230);
-export const CLOSE = springEasing(0.85, 380);
+const CLOSE = springEasing(0.85, 380);
 
 /** Replaces the browser's own animation of the card with the same move on two springs. */
 function splitBounce(): Animation[] {
@@ -138,13 +138,13 @@ function colorOf(el: Element) {
 }
 
 /**
- * A spring as a CSS easing, for animations the browser runs on its own: Material's damping ratio
- * and stiffness (unit mass), sampled until it settles. Returns the easing and how long it takes.
+ * Material's spring (damping ratio and stiffness, unit mass) released from rest: where it is at a
+ * time in seconds, 0 to 1 and past it as it overshoots, and how many seconds until it settles.
  */
-export function springEasing(dampingRatio: number, stiffness: number) {
+export function spring(dampingRatio: number, stiffness: number) {
   const w0 = Math.sqrt(stiffness);
   const zeta = dampingRatio;
-  const x = (t: number) => {
+  const at = (t: number) => {
     if (zeta < 1) {
       const wd = w0 * Math.sqrt(1 - zeta * zeta);
       return 1 - Math.exp(-zeta * w0 * t) * (Math.cos(wd * t) + ((zeta * w0) / wd) * Math.sin(wd * t));
@@ -152,11 +152,20 @@ export function springEasing(dampingRatio: number, stiffness: number) {
     return 1 - Math.exp(-w0 * t) * (1 + w0 * t);
   };
   let end = 0.05;
-  while (end < 3 && Math.abs(1 - x(end)) + Math.abs(1 - x(end + 0.016)) > 0.002) end += 0.016;
+  while (end < 3 && Math.abs(1 - at(end)) + Math.abs(1 - at(end + 0.016)) > 0.002) end += 0.016;
+  return { at, seconds: end };
+}
+
+/**
+ * A spring as a CSS easing, for animations the browser runs on its own, sampled until it settles.
+ * Returns the easing and how long it takes.
+ */
+export function springEasing(dampingRatio: number, stiffness: number) {
+  const { at, seconds } = spring(dampingRatio, stiffness);
   const n = 40;
-  const points = Array.from({ length: n + 1 }, (_, i) => +x((end * i) / n).toFixed(4));
+  const points = Array.from({ length: n + 1 }, (_, i) => +at((seconds * i) / n).toFixed(4));
   points[n] = 1;
-  return { easing: `linear(${points.join(', ')})`, duration: Math.round(end * 1000) };
+  return { easing: `linear(${points.join(', ')})`, duration: Math.round(seconds * 1000) };
 }
 
 /** Material's emphasized easing, for things that move a long way across the screen. */
