@@ -14,6 +14,11 @@ const config: CapacitorConfig = {
     allowMixedContent: true,
   },
   plugins: {
+    // MainActivity handles the window's insets instead, so the keyboard rises over the page
+    // rather than shrinking the whole app in one jump.
+    SystemBars: {
+      insetsHandling: 'disable',
+    },
     LocalNotifications: {
       smallIcon: 'ic_stat_amble',
       iconColor: '#2e6a57',

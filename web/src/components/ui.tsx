@@ -9,7 +9,7 @@ import type { DayLoad } from '../lib/api.ts';
 import { EXPANDED, isDetail, useInPane, useMedia } from '../lib/layout.ts';
 import { EMPHASIZED, type Origin } from '../lib/morph.ts';
 import { expressive } from '../lib/motion.ts';
-import { typingWithKeyboard, useBackToClose, useScrollLock, useVisualViewport } from '../lib/viewport.ts';
+import { keyboardFromApp, rideKeyboard, typingWithKeyboard, useBackToClose, useScrollLock, useVisualViewport } from '../lib/viewport.ts';
 
 /**
  * Header for a page reached from somewhere else: back arrow and title. The arrow goes back the way
@@ -275,8 +275,9 @@ export function Sheet({
           />
           {/* Rides up with the keyboard, centered on the page beside the rail. */}
           <div
+            ref={rideKeyboard}
             className="sheet-keyboard fixed inset-x-0 bottom-0 z-30 mx-auto max-w-xl"
-            style={{ left: 'var(--rail)', ...(view.keyboard && { transform: `translateY(${-view.keyboard}px)` }) }}
+            style={{ left: 'var(--rail)', ...(!keyboardFromApp && view.keyboard && { transform: `translateY(${-view.keyboard}px)` }) }}
           >
             <SheetPanel
               label={label}
@@ -302,6 +303,9 @@ export function Sheet({
               {/* Room for the home indicator, which the keyboard hides while it's up. */}
               <div ref={natural.spacer} className="shrink-0" style={{ height: keyboardUp ? 10 : 'max(1.25rem, env(safe-area-inset-bottom))' }} />
             </SheetPanel>
+            {/* The sheet's color carried on below it, out of sight behind the keyboard or under the
+                screen's edge, so a frame where the keyboard drops faster never shows a gap. */}
+            {keyboardFromApp && <div aria-hidden className="pointer-events-none absolute inset-x-0 top-full h-dvh bg-surface-low" />}
           </div>
         </>
       )}

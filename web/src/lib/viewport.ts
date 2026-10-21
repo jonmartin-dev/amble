@@ -1,3 +1,4 @@
+import { Capacitor } from '@capacitor/core';
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 
 interface View {
@@ -35,6 +36,40 @@ export function useVisualViewport(active: boolean): View {
     };
   }, [active]);
   return view;
+}
+
+/**
+ * In the Android app the keyboard rises over the page, and as it starts to move the app says where
+ * it's going and how it'll get there (MainActivity): how much of the bottom of the page it'll
+ * cover, and its own duration and curve. Something riding on it then arrives with the keyboard,
+ * not a few frames behind as it would following the visible part of the page.
+ */
+interface KeyboardMove {
+  to: number;
+  ms: number;
+  easing: string;
+}
+export const keyboardFromApp = Capacitor.getPlatform() === 'android';
+let keyboardAt: KeyboardMove = { to: 0, ms: 0, easing: 'linear' };
+const riders = new Set<(move: KeyboardMove) => void>();
+if (keyboardFromApp) {
+  window.addEventListener('amble:keyboard', (e) => {
+    keyboardAt = (e as CustomEvent<KeyboardMove>).detail;
+    for (const ride of riders) ride(keyboardAt);
+  });
+}
+
+/** A ref that keeps its element just above the keyboard, moving with it (the Android app only). */
+export function rideKeyboard(el: HTMLElement | null) {
+  if (!keyboardFromApp || !el) return;
+  const ride = ({ to, ms, easing }: KeyboardMove, now = false) => {
+    const still = now || !ms || matchMedia('(prefers-reduced-motion: reduce)').matches;
+    el.style.transition = still ? 'none' : `transform ${ms}ms ${easing}`;
+    el.style.transform = to ? `translateY(${-to}px)` : '';
+  };
+  ride(keyboardAt, true);
+  riders.add(ride);
+  return () => void riders.delete(ride);
 }
 
 // The phone's Back while typing should drop the keyboard, as it does in Android apps. Chrome hands
