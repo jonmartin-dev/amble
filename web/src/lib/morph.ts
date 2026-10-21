@@ -103,6 +103,22 @@ export function unfold(update: () => void) {
   });
 }
 
+/**
+ * A new set of colors for the whole app (Appearance) cross-fades in, rather than every surface
+ * flipping in the same frame. The browser fades a picture of before into after; the look is in
+ * styles.css, under "recolor".
+ */
+export function recolor(update: () => void) {
+  const start = typeof document !== 'undefined' && 'startViewTransition' in document ? document.startViewTransition.bind(document) : null;
+  if (!start || reduced()) return update();
+  const root = document.documentElement;
+  const mine = (latest = {});
+  root.dataset.morph = 'recolor';
+  void start(update).finished.finally(() => {
+    if (latest === mine) delete root.dataset.morph;
+  });
+}
+
 const OPEN = springEasing(0.68, 230);
 // Material's expressive default spatial spring, as the parts of a page move.
 const UNFOLD = springEasing(0.8, 380);

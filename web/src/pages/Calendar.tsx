@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, motion, type Variants } from 'motion/react';
 import { useState } from 'react';
 import Check from '~icons/material-symbols/check-rounded';
 import ChevronLeft from '~icons/material-symbols/chevron-left-rounded';
@@ -28,7 +28,7 @@ import {
   weekdayName,
   weekStartDay,
 } from '../lib/dates.ts';
-import { expressive } from '../lib/motion.ts';
+import { expressive, standard } from '../lib/motion.ts';
 import { useTaskActions } from '../lib/mutations.ts';
 import { useEvents, useGaps, useLoad, useMe, useMembers, useTasks } from '../lib/queries.ts';
 
@@ -42,6 +42,15 @@ function savedView(): View {
     return 'week';
   }
 }
+
+// Another week or month slides in from the side it's on, the one before it out the other way
+// (Material's shared axis): the old one fades quickly, and the new one fades in just after, so the
+// two are never both readable at once.
+const slide: Variants = {
+  enter: (dir: number) => ({ opacity: 0, x: dir * 32 }),
+  center: { opacity: 1, x: 0, transition: { x: standard.defaultSpatial, opacity: { duration: 0.2, delay: 0.07, ease: 'easeOut' } } },
+  leave: (dir: number) => ({ opacity: 0, x: dir * -32, transition: { x: standard.defaultSpatial, opacity: { duration: 0.09, ease: 'easeIn' } } }),
+};
 
 const heavy = (load?: DayLoad) => load?.level === 'full' || load?.level === 'over';
 
@@ -294,6 +303,8 @@ export function Calendar() {
   const [view, setView] = useState<View>(savedView);
   const [who, setWho] = useState('me');
   const [anchor, setAnchor] = useState(today);
+  // Which way the last move went: 1 later, -1 earlier, 0 a change of view.
+  const [dir, setDir] = useState(0);
   const [openDay, setOpenDay] = useState<string | null>(null);
   const [moving, setMoving] = useState<Task | null>(null);
   const [planning, setPlanning] = useState(false);
@@ -313,6 +324,7 @@ export function Calendar() {
   for (const t of sortDay(tasks ?? [])) byDay.set(t.plannedDate!, [...(byDay.get(t.plannedDate!) ?? []), t]);
 
   const switchView = (v: View) => {
+    setDir(0);
     setView(v);
     try {
       localStorage.setItem(VIEW_KEY, v);
@@ -320,7 +332,10 @@ export function Calendar() {
       // Not remembering the choice is fine.
     }
   };
-  const step = (n: number) => setAnchor((a) => (view === 'week' ? addDays(a, 7 * n) : addMonths(a, n)));
+  const step = (n: number) => {
+    setDir(n);
+    setAnchor((a) => (view === 'week' ? addDays(a, 7 * n) : addMonths(a, n)));
+  };
   const showingToday = view === 'week' ? dates.includes(today) : startOfMonth(anchor) === startOfMonth(today);
   const title = view === 'week' ? `${shortDate(start)} – ${shortDate(end)}` : monthLabel(anchor);
   const weekTotal = dates.reduce((n, d) => n + (loads.get(d)?.plannedMinutes ?? 0), 0);
@@ -371,7 +386,14 @@ export function Calendar() {
         </div>
         <span className="flex-1" />
         {!showingToday && (
-          <button type="button" onClick={() => setAnchor(today)} className="rounded-full px-3 py-2 text-sm font-medium text-primary hover:bg-surface-high">
+          <button
+            type="button"
+            onClick={() => {
+              setDir(anchor < today ? 1 : -1);
+              setAnchor(today);
+            }}
+            className="rounded-full px-3 py-2 text-sm font-medium text-primary hover:bg-surface-high"
+          >
             Today
           </button>
         )}
@@ -393,23 +415,29 @@ export function Calendar() {
         </button>
       </div>
 
-      {view === 'week' ? (
-        <>
-          <WeekBars dates={dates} loads={loads} today={today} onPick={setOpenDay} />
-          <p className="mt-2 px-1 text-sm text-on-surface-variant">
-            {weekTotal ? `About ${minutesLabel(weekTotal)} planned this week.` : 'Nothing planned this week yet.'} Tap a day to plan it.
-          </p>
-          {who === 'me' && gaps && gaps.length > 0 && dates.at(-1)! >= today && <Gaps gaps={gaps} today={today} />}
-          <WeekList dates={dates} loads={loads} byDay={byDay} events={events ?? []} today={today} meId={me?.id ?? ''} onOpen={setOpenDay} onMove={setMoving} />
-        </>
-      ) : (
-        <>
-          <MonthGrid anchor={anchor} dates={dates} loads={loads} byDay={byDay} today={today} onOpen={setOpenDay} />
-          <p className="mt-2 px-1 text-sm text-on-surface-variant">
-            Bars show how full each day is, and amber means heavy. Numbers are open tasks, and ticks count what got done. Tap a day to see or change its plan.
-          </p>
-        </>
-      )}
+      <div className="relative">
+        <AnimatePresence mode="popLayout" initial={false} custom={dir}>
+          <motion.div key={`${view} ${start}`} custom={dir} variants={slide} initial="enter" animate="center" exit="leave">
+            {view === 'week' ? (
+              <>
+                <WeekBars dates={dates} loads={loads} today={today} onPick={setOpenDay} />
+                <p className="mt-2 px-1 text-sm text-on-surface-variant">
+                  {weekTotal ? `About ${minutesLabel(weekTotal)} planned this week.` : 'Nothing planned this week yet.'} Tap a day to plan it.
+                </p>
+                {who === 'me' && gaps && gaps.length > 0 && dates.at(-1)! >= today && <Gaps gaps={gaps} today={today} />}
+                <WeekList dates={dates} loads={loads} byDay={byDay} events={events ?? []} today={today} meId={me?.id ?? ''} onOpen={setOpenDay} onMove={setMoving} />
+              </>
+            ) : (
+              <>
+                <MonthGrid anchor={anchor} dates={dates} loads={loads} byDay={byDay} today={today} onOpen={setOpenDay} />
+                <p className="mt-2 px-1 text-sm text-on-surface-variant">
+                  Bars show how full each day is, and amber means heavy. Numbers are open tasks, and ticks count what got done. Tap a day to see or change its plan.
+                </p>
+              </>
+            )}
+          </motion.div>
+        </AnimatePresence>
+      </div>
 
       <DaySheet date={openDay} today={today} who={who} onClose={() => setOpenDay(null)} onMove={setMoving} />
       <MoveSheet task={moving} today={today} onClose={() => setMoving(null)} />

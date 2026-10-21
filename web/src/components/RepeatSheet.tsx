@@ -1,9 +1,11 @@
 // Sets how a task repeats: on a calendar schedule, or a set time after the last one was done.
-import { useEffect, useState } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
+import { useEffect, useState, type ReactNode } from 'react';
 import Minus from '~icons/material-symbols/remove-rounded';
 import Plus from '~icons/material-symbols/add-rounded';
 import { describeRepeat, MONTHS, monthName, ordinal, repeatOn, type Repeat, type RepeatUnit } from '../../../shared/repeat.ts';
 import { isoWeekday, weekdayName, weekStartDay } from '../lib/dates.ts';
+import { expressive } from '../lib/motion.ts';
 import { ButtonGroup, Chip, ScrollRow, Sheet, Switch } from './ui.tsx';
 
 const UNITS: { value: RepeatUnit; one: string; many: string }[] = [
@@ -12,6 +14,22 @@ const UNITS: { value: RepeatUnit; one: string; many: string }[] = [
   { value: 'month', one: 'Month', many: 'Months' },
   { value: 'year', one: 'Year', many: 'Years' },
 ];
+
+/**
+ * A part that comes and goes with the choices above it, opening out and folding away rather than
+ * popping. It's only built while it shows, since what's in it can need what it shows for.
+ */
+function Reveal({ show, children }: { show: boolean; children: () => ReactNode }) {
+  return (
+    <AnimatePresence initial={false}>
+      {show && (
+        <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} transition={expressive.defaultSpatial} className="overflow-hidden">
+          {children()}
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
 
 function Label({ children }: { children: string }) {
   return <p className="mt-5 mb-2 px-1 text-sm font-medium text-primary">{children}</p>;
@@ -122,58 +140,62 @@ export function RepeatSheet({
         </ScrollRow>
       </div>
 
-      {r.mode === 'schedule' && r.unit === 'week' && (
-        <>
-          <Label>On</Label>
-          <div className="flex justify-between gap-1">
-            {weekOrder.map((day) => {
-              const on = r.weekdays?.includes(day) ?? false;
-              return (
-                <button
-                  key={day}
-                  type="button"
-                  aria-pressed={on}
-                  aria-label={weekdayName(day, 'long')}
-                  onClick={() => {
-                    const next = on ? (r.weekdays ?? []).filter((x) => x !== day) : [...(r.weekdays ?? []), day];
-                    if (next.length) set({ weekdays: next.sort((a, b) => a - b) });
-                  }}
-                  className={`grid aspect-square flex-1 place-items-center rounded-full text-sm font-medium transition-colors ${
-                    on ? 'bg-primary text-on-primary' : 'bg-surface-high text-on-surface'
-                  }`}
-                >
-                  {weekdayName(day, 'narrow')}
-                </button>
-              );
-            })}
-          </div>
-        </>
-      )}
+      <Reveal show={r.mode === 'schedule' && r.unit === 'week'}>
+        {() => (
+          <>
+            <Label>On</Label>
+            <div className="flex justify-between gap-1">
+              {weekOrder.map((day) => {
+                const on = r.weekdays?.includes(day) ?? false;
+                return (
+                  <button
+                    key={day}
+                    type="button"
+                    aria-pressed={on}
+                    aria-label={weekdayName(day, 'long')}
+                    onClick={() => {
+                      const next = on ? (r.weekdays ?? []).filter((x) => x !== day) : [...(r.weekdays ?? []), day];
+                      if (next.length) set({ weekdays: next.sort((a, b) => a - b) });
+                    }}
+                    className={`grid aspect-square flex-1 place-items-center rounded-full text-sm font-medium transition-colors ${
+                      on ? 'bg-primary text-on-primary' : 'bg-surface-high text-on-surface'
+                    }`}
+                  >
+                    {weekdayName(day, 'narrow')}
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </Reveal>
 
-      {r.mode === 'schedule' && r.unit === 'month' && (
-        <>
-          <Label>On</Label>
-          <div className="flex flex-wrap gap-2">
-            <Chip selected={!r.nth && r.day !== -1} onClick={() => set({ day: d.getDate(), nth: null, weekday: null })}>
-              The {ordinal(d.getDate())}
-            </Chip>
-            {nth <= 4 && (
-              <Chip selected={r.nth === nth && r.weekday === dow} onClick={() => set({ nth, weekday: dow, day: null })}>
-                The {ordinal(nth)} {weekdayName(dow, 'long')}
+      <Reveal show={r.mode === 'schedule' && r.unit === 'month'}>
+        {() => (
+          <>
+            <Label>On</Label>
+            <div className="flex flex-wrap gap-2">
+              <Chip selected={!r.nth && r.day !== -1} onClick={() => set({ day: d.getDate(), nth: null, weekday: null })}>
+                The {ordinal(d.getDate())}
               </Chip>
-            )}
-            {lastWeek && (
-              <Chip selected={r.nth === -1 && r.weekday === dow} onClick={() => set({ nth: -1, weekday: dow, day: null })}>
-                The last {weekdayName(dow, 'long')}
+              {nth <= 4 && (
+                <Chip selected={r.nth === nth && r.weekday === dow} onClick={() => set({ nth, weekday: dow, day: null })}>
+                  The {ordinal(nth)} {weekdayName(dow, 'long')}
+                </Chip>
+              )}
+              {lastWeek && (
+                <Chip selected={r.nth === -1 && r.weekday === dow} onClick={() => set({ nth: -1, weekday: dow, day: null })}>
+                  The last {weekdayName(dow, 'long')}
+                </Chip>
+              )}
+              <Chip selected={r.day === -1} onClick={() => set({ day: -1, nth: null, weekday: null })}>
+                The last day
               </Chip>
-            )}
-            <Chip selected={r.day === -1} onClick={() => set({ day: -1, nth: null, weekday: null })}>
-              The last day
-            </Chip>
-          </div>
-          <p className="mt-2 px-1 text-xs text-on-surface-variant">These follow the task's date. Change its day to pick another.</p>
-        </>
-      )}
+            </div>
+            <p className="mt-2 px-1 text-xs text-on-surface-variant">These follow the task's date. Change its day to pick another.</p>
+          </>
+        )}
+      </Reveal>
 
       <div className="mt-5 flex items-center justify-between gap-3 px-1">
         <div>
@@ -186,27 +208,29 @@ export function RepeatSheet({
           onChange={(v) => set({ months: v ? [4, 5, 6, 7, 8, 9, 10] : null })}
         />
       </div>
-      {!!r.months?.length && (
-        <div className="mt-3 grid grid-cols-6 gap-1.5">
-          {MONTHS.map((m) => {
-            const on = r.months!.includes(m);
-            return (
-              <button
-                key={m}
-                type="button"
-                aria-pressed={on}
-                onClick={() => {
-                  const next = on ? r.months!.filter((x) => x !== m) : [...r.months!, m].sort((a, b) => a - b);
-                  if (next.length) set({ months: next });
-                }}
-                className={`h-10 rounded-xl text-sm font-medium transition-colors ${on ? 'bg-primary text-on-primary' : 'bg-surface-high'}`}
-              >
-                {monthName(m, 'short')}
-              </button>
-            );
-          })}
-        </div>
-      )}
+      <Reveal show={!!r.months?.length}>
+        {() => (
+          <div className="mt-3 grid grid-cols-6 gap-1.5">
+            {MONTHS.map((m) => {
+              const on = r.months!.includes(m);
+              return (
+                <button
+                  key={m}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => {
+                    const next = on ? r.months!.filter((x) => x !== m) : [...r.months!, m].sort((a, b) => a - b);
+                    if (next.length) set({ months: next });
+                  }}
+                  className={`h-10 rounded-xl text-sm font-medium transition-colors ${on ? 'bg-primary text-on-primary' : 'bg-surface-high'}`}
+                >
+                  {monthName(m, 'short')}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </Reveal>
 
       <div className="mt-5 flex items-center justify-between gap-3 px-1">
         <div>

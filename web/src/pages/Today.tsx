@@ -9,7 +9,7 @@ import { calendarLine, EventList } from '../components/Events.tsx';
 import { MoveSheet } from '../components/MoveSheet.tsx';
 import { PageHeader } from '../components/PageHeader.tsx';
 import { TaskRow } from '../components/TaskRow.tsx';
-import { Chip, LoadBar, loadWord, minutesLabel, ScrollRow, SectionTitle } from '../components/ui.tsx';
+import { Chip, DoneMark, LoadBar, loadWord, minutesLabel, ScrollRow, SectionTitle } from '../components/ui.tsx';
 import type { Task, TimeOfDay } from '../lib/api.ts';
 import { firstName, longDate, planningDate } from '../lib/dates.ts';
 import { expressive } from '../lib/motion.ts';
@@ -70,6 +70,8 @@ export function Today() {
   );
   const planned = data?.planned ?? [];
   const nothingYet = data && planned.length === 0 && data.carriedOver.length === 0 && data.due.length === 0;
+  // Nothing left because it all got done, which is worth more than "nothing's planned".
+  const allDone = nothingYet && data.done.length > 0;
   const whose = who === 'me' ? 'Your' : who === 'everyone' ? 'Everyone\'s' : `${firstName(others.find((o) => o.id === who)?.name ?? '')}'s`;
 
   return (
@@ -101,7 +103,9 @@ export function Today() {
           <LoadBar load={data.load} className="mt-3" fill="bg-on-primary-container" />
           <p className="mt-3 text-sm">
             {data.load.tasks === 0
-              ? 'Nothing planned yet. Add something with the plus button, or pull one in from the backlog.'
+              ? allDone
+                ? `Everything's done: ${data.done.length} finished today.`
+                : 'Nothing planned yet. Add something with the plus button, or pull one in from the backlog.'
               : `${data.load.tasks} planned, about ${minutesLabel(data.load.plannedMinutes)} of ${minutesLabel(data.load.capacityMinutes)}.`}
             {who !== 'everyone' && calendarLine(data.load, who === 'me' ? 'your' : 'their') && ` ${calendarLine(data.load, who === 'me' ? 'your' : 'their')}`}
           </p>
@@ -177,15 +181,28 @@ export function Today() {
         </>
       )}
 
-      {nothingYet && (
-        <div className="mt-10 text-center">
-          <p className="display text-xl font-medium">A clear day</p>
-          <p className="mt-1 text-on-surface-variant">Nothing's planned. That's allowed.</p>
-          <Link to="/backlog" className="mt-5 inline-block rounded-full bg-surface-high px-5 py-3 font-medium">
-            Look at the backlog
-          </Link>
-        </div>
-      )}
+      {/* Ticking off the last thing of the day earns a moment; opening Today to it later doesn't replay it. */}
+      <AnimatePresence initial={false} mode="popLayout">
+        {nothingYet && (
+          <motion.div
+            key={allDone ? 'done' : 'clear'}
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={expressive.defaultSpatial}
+            className="mt-10 flex flex-col items-center text-center"
+          >
+            {allDone && <DoneMark />}
+            <p className={`display text-xl font-medium ${allDone ? 'mt-4' : ''}`}>{allDone ? 'All done for today' : 'A clear day'}</p>
+            <p className="mt-1 text-on-surface-variant">
+              {allDone ? (who === 'me' ? 'Everything you planned is finished. The rest of the day is yours.' : 'Everything planned is finished.') : "Nothing's planned. That's allowed."}
+            </p>
+            <Link to="/backlog" className="mt-5 inline-block rounded-full bg-surface-high px-5 py-3 font-medium">
+              Look at the backlog
+            </Link>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {data && data.done.length > 0 && (
         <>

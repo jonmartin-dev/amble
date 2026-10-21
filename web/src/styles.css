@@ -589,6 +589,13 @@ html[data-morph='close']::view-transition-new(root) {
   }
 }
 
+/* New colors for the whole app (recolor() in lib/morph.ts) fade in over the old ones. */
+html[data-morph='recolor']::view-transition-old(root),
+html[data-morph='recolor']::view-transition-new(root) {
+  animation-duration: 280ms;
+  animation-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+
 /* Part of a page opening or closing (unfold() in lib/morph.ts): each part marked data-unfold
    glides to its new place on a spring; a new one fades in a little after it starts, once the parts
    below have made room, and one that's going fades out first. A data-unfold="box" (a card behind

@@ -32,7 +32,7 @@ import { DateChip, GroupChips, PersonChips, TimeChips, WhenChips } from './field
 import { GroupIcon } from './icons.tsx';
 import { ProposalCard, type Draft } from './ProposalCard.tsx';
 import { LoadingShape, ShimmerText, WaitingCard } from './SmartReading.tsx';
-import { ScrollRow, Sheet } from './ui.tsx';
+import { DoneMark, ScrollRow, Sheet } from './ui.tsx';
 
 type Phase = 'compose' | 'thinking' | 'review' | 'done';
 type Picker = 'when' | 'group' | 'for' | 'time' | null;
@@ -115,26 +115,7 @@ function SendButton({ ready, thinking, smart }: { ready: boolean; thinking: bool
 function Done({ message, onUndo }: { message: string; onUndo: (() => void) | null }) {
   return (
     <div className="flex flex-col items-center py-5 text-center">
-      <motion.span
-        initial={{ scale: 0, rotate: -90, borderRadius: '50%' }}
-        animate={{ scale: 1, rotate: 0, borderRadius: '32%' }}
-        transition={expressive.fastSpatial}
-        className="grid size-16 place-items-center bg-primary text-on-primary"
-      >
-        <svg viewBox="0 0 24 24" className="size-9" aria-hidden>
-          <motion.path
-            d="M5 12.5l4.5 4.5L19 7.5"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={2.6}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            initial={{ pathLength: 0 }}
-            animate={{ pathLength: 1 }}
-            transition={{ delay: 0.12, duration: 0.32, ease: [0.2, 0, 0, 1] }}
-          />
-        </svg>
-      </motion.span>
+      <DoneMark />
       <motion.p initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ ...expressive.defaultSpatial, delay: 0.1 }} className="mt-3 font-medium">
         {message}
       </motion.p>

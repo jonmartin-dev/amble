@@ -484,6 +484,32 @@ function Burst({ size }: { size: number }) {
 }
 
 /** A selectable M3 chip (`.chip` in styles.css): outlined until picked, then tonal and round. */
+/** The moment something's finished: a round badge springs in and turns, and a check draws itself in it. */
+export function DoneMark() {
+  return (
+    <motion.span
+      initial={{ scale: 0, rotate: -90, borderRadius: '50%' }}
+      animate={{ scale: 1, rotate: 0, borderRadius: '32%' }}
+      transition={expressive.fastSpatial}
+      className="grid size-16 place-items-center bg-primary text-on-primary"
+    >
+      <svg viewBox="0 0 24 24" className="size-9" aria-hidden>
+        <motion.path
+          d="M5 12.5l4.5 4.5L19 7.5"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2.6}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          initial={{ pathLength: 0 }}
+          animate={{ pathLength: 1 }}
+          transition={{ delay: 0.12, duration: 0.32, ease: [0.2, 0, 0, 1] }}
+        />
+      </svg>
+    </motion.span>
+  );
+}
+
 export function Chip({
   selected,
   onClick,
