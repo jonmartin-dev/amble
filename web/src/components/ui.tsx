@@ -343,7 +343,9 @@ function SheetPanel({
     const inset = `inset(${o.top - r.top}px ${r.right - o.right}px ${r.bottom - o.bottom}px ${o.left - r.left}px round ${origin.radius}px)`;
     const moves = [
       el.animate({ clipPath: [inset, 'inset(0px 0px 0px 0px round 32px 32px 0px 0px)'], backgroundColor: [origin.color, getComputedStyle(el).backgroundColor] }, { duration: 460, easing: EMPHASIZED }),
-      ...[...el.children].map((part) => part.animate({ opacity: [0, 0, 1], offset: [0, 0.3, 1] } as PropertyIndexedKeyframes, { duration: 380, easing: 'ease-out' })),
+      // From all but invisible rather than invisible: the phone skips drawing what can't be seen, and
+      // drawing all of it in the frame it first showed held the grow up for a few frames.
+      ...[...el.children].map((part) => part.animate({ opacity: [0.002, 0.002, 1], offset: [0, 0.3, 1] } as PropertyIndexedKeyframes, { duration: 380, easing: 'ease-out' })),
     ];
     return () => moves.forEach((a) => a.cancel());
     // Only as it opens.
