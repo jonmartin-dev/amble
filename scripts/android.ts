@@ -1,7 +1,8 @@
 // The Android app: `node scripts/android.ts build` builds the device app for it, copies it into
 // android/ and builds a debug APK; `node scripts/android.ts run` also installs it on the phone or
-// emulator adb sees and opens it. Needs a JDK (21) and the Android SDK, which ANDROID_HOME points
-// at (it defaults to where Android Studio puts it).
+// emulator adb sees and opens it; `node scripts/android.ts release` builds the bundle (AAB) to
+// upload to Google Play, signed with the upload key android/keystore.properties names. Needs a JDK
+// (21) and the Android SDK, which ANDROID_HOME points at (it defaults to where Android Studio puts it).
 import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -36,7 +37,14 @@ run('pnpm', ['build'], root, { AMBLE_BASE: '/' });
 run('pnpm', ['exec', 'cap', 'sync', 'android']);
 const project = path.join(root, 'android');
 // By full path: Windows can be set not to run programs from the current folder.
-run(path.join(project, win ? 'gradlew.bat' : 'gradlew'), ['assembleDebug', '--console=plain', '-q'], project);
+const gradlew = path.join(project, win ? 'gradlew.bat' : 'gradlew');
+if (command === 'release') {
+  if (!fs.existsSync(path.join(project, 'keystore.properties'))) throw new Error('No android/keystore.properties: see docs/android.md, Releasing on Google Play.');
+  run(gradlew, ['bundleRelease', '--console=plain', '-q'], project);
+  console.log(`Built ${path.relative(root, path.join(project, 'app/build/outputs/bundle/release/app-release.aab'))}`);
+  process.exit(0);
+}
+run(gradlew, ['assembleDebug', '--console=plain', '-q'], project);
 const apk = path.join(root, 'android/app/build/outputs/apk/debug/app-debug.apk');
 console.log(`Built ${path.relative(root, apk)}`);
 

@@ -1,5 +1,11 @@
 apply plugin: 'com.android.application'
 
+// The Play upload key: where it is and its passwords, from android/keystore.properties, which git
+// leaves out (scripts/android.ts release). Play signs the app people install with its own key.
+def keystoreFile = rootProject.file('keystore.properties')
+def keystore = new Properties()
+if (keystoreFile.exists()) keystoreFile.withInputStream { keystore.load(it) }
+
 android {
     namespace = "dev.jonmartin.amble"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -16,8 +22,20 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (keystore.storeFile) {
+            release {
+                storeFile file(keystore.storeFile)
+                storePassword keystore.storePassword
+                keyAlias keystore.keyAlias
+                keyPassword keystore.keyPassword
+            }
+        }
+    }
     buildTypes {
         release {
+            // Without the key file a release build is left unsigned, for a key kept elsewhere.
+            if (keystore.storeFile) signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

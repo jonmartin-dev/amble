@@ -2,13 +2,18 @@
 // Needs an Amble server with AMBLE_DEV_LOGIN=1 serving the built app on a demo database (see
 // scripts/demo.ts), and Chrome installed.
 // Usage: node scripts/readme-shots.ts [email]   -> docs/screenshots/*.png
+// With AMBLE_SHOTS=play, the Play listing's phone screenshots instead: 1080x2160 (Play takes up to
+// 2:1), numbered in the listing's order, in fastlane/metadata/android/en-US/images/phoneScreenshots.
 import fs from 'node:fs';
 import { chromium, type Page } from 'playwright-core';
 import { joinHousehold, local, syncNow } from './lib/household.ts';
 
 const base = process.env.AMBLE_URL ?? 'http://localhost:8787';
 const email = process.argv[2] ?? 'sam@example.com';
-const out = 'docs/screenshots';
+const play = process.env.AMBLE_SHOTS === 'play';
+const out = play ? 'fastlane/metadata/android/en-US/images/phoneScreenshots' : 'docs/screenshots';
+// The listing leads with the day; the README with the morning's briefing.
+const PLAY_ORDER = ['today', 'quick-add', 'calendar', 'groceries', 'task', 'lists', 'briefing', 'appearance'];
 const light = { mode: 'light', seed: '#2e6a57', style: 'tonal', contrast: 0 };
 const dark = { mode: 'dark', seed: '#3a5ba9', style: 'vibrant', contrast: 0 };
 
@@ -48,10 +53,10 @@ const shots: Shot[] = [
   {
     name: 'today',
     theme: light,
-    // Scrolled to the day's list, below the load card and calendar.
+    // Scrolled to the day's list, below the load card and calendar; the listing's first shot shows the top.
     open: async (page) => {
       await go('/')(page);
-      await page.getByRole('heading', { name: 'From earlier' }).evaluate((el) => window.scrollBy(0, el.getBoundingClientRect().top - 24));
+      if (!play) await page.getByRole('heading', { name: 'From earlier' }).evaluate((el) => window.scrollBy(0, el.getBoundingClientRect().top - 24));
     },
   },
   { name: 'calendar', theme: light, open: go('/calendar') },
@@ -81,10 +86,11 @@ const shots: Shot[] = [
   { name: 'appearance', theme: dark, open: go('/appearance') },
 ];
 
-for (const shot of shots) {
+if (play) shots.sort((a, b) => PLAY_ORDER.indexOf(a.name) - PLAY_ORDER.indexOf(b.name));
+for (const [i, shot] of shots.entries()) {
   const context = await browser.newContext({
-    viewport: { width: 390, height: 844 },
-    deviceScaleFactor: 2,
+    viewport: play ? { width: 405, height: 810 } : { width: 390, height: 844 },
+    deviceScaleFactor: play ? 1080 / 405 : 2,
     isMobile: true,
     hasTouch: true,
     colorScheme: shot.theme.mode === 'dark' ? 'dark' : 'light',
@@ -98,7 +104,7 @@ for (const shot of shots) {
   await page.evaluate((t) => localStorage.setItem('almanac-theme', JSON.stringify(t)), shot.theme);
   await shot.open(page);
   await page.waitForTimeout(900);
-  const file = `${out}/${shot.name}.png`;
+  const file = play ? `${out}/${i + 1}_${shot.name}.png` : `${out}/${shot.name}.png`;
   await page.screenshot({ path: file });
   console.log(file);
   await context.close();

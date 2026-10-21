@@ -99,7 +99,9 @@ export function Privacy() {
         <p>Amble never sells your data or shares it with anyone besides the services named above. There are no ads or trackers.</p>
         <h2>Removing your data</h2>
         <p>
-          Stop syncing in Settings, then clear this site's data in your browser to remove everything from this device. A household file
+          Stop syncing in Settings, then{' '}
+          {native ? "uninstall Amble, or clear its storage in Android's settings," : "clear this site's data in your browser"} to remove
+          everything from this device. A household file
           in Google Drive is removed like any other file there; Amble's hidden copy goes when you disconnect Amble at
           myaccount.google.com/connections. Whoever runs your household's server can remove your account and its copy there.
           {server?.privacyContact ? ` Questions: ${server.privacyContact}.` : ''}

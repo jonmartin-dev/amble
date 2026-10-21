@@ -1,6 +1,6 @@
 # The Android app
 
-The Android app is the web app inside [Capacitor](https://capacitorjs.com): Amble's API runs in a worker in the app, on SQLite kept on the phone, with nothing to sign up for. It's headed for the Play Store; until then, build it yourself ([below](#building-it)). What the app adds over the same app in a browser:
+The Android app is the web app inside [Capacitor](https://capacitorjs.com): Amble's API runs in a worker in the app, on SQLite kept on the phone, with nothing to sign up for. It's headed for the Play Store ([releasing](#releasing-on-google-play)); until then, build it yourself ([below](#building-it)). What the app adds over the same app in a browser:
 
 - **Reminders with the app closed.** The app hands Android each coming reminder, and the phone shows it at its time with Done and Snooze on it. Android can hold a reminder back a few minutes while the phone is idle unless Amble is allowed "Alarms and reminders"; Settings, Notifications offers that.
 - **Reminders set elsewhere, with the app closed.** While the household syncs, through Drive or your own server, the phone reads the household about every 15 minutes in the background and sets alarms for your coming reminders it didn't have yet, such as one Claude set through the server. A reminder set elsewhere for the next few minutes can be late; one set on the phone never is. No push service is involved.
@@ -37,6 +37,38 @@ keytool -list -v -keystore ~/.android/debug.keystore -storepass android -alias a
 ```
 
 Each computer that builds debug versions has its own, so each needs its SHA-1 added (a client takes one; make one client per key). A release build signed through Google Play uses Play's app signing key, whose SHA-1 is in the Play Console under App integrity.
+
+## Releasing on Google Play
+
+Play installs the app signed with its own key (Play App Signing). What you upload is signed with an upload key you keep, and if that key is ever lost, Play can be asked to accept a new one.
+
+1. Make the upload key once, somewhere outside the repository, and back it up with its password:
+
+   ```sh
+   keytool -genkeypair -keystore ~/.android/amble-upload.jks -storetype PKCS12 -alias amble-upload -keyalg RSA -keysize 4096 -validity 36500 -dname "CN=Amble upload key"
+   ```
+
+2. Say where it is in `android/keystore.properties`, which git leaves out:
+
+   ```properties
+   storeFile=C:/Users/you/.android/amble-upload.jks
+   storePassword=...
+   keyAlias=amble-upload
+   keyPassword=...
+   ```
+
+3. Raise `versionCode` (and `versionName` if you like) in `android/app/build.gradle`. Play takes each code once.
+4. Build the bundle, which ends up in `android/app/build/outputs/bundle/release/app-release.aab`:
+
+   ```sh
+   node scripts/android.ts release
+   ```
+
+5. Upload it in the Play Console. After the first upload, App integrity shows Play's app signing key: add its SHA-1 as another Android client in Google Cloud ([above](#google-sign-in)), or Drive sign-in fails in the app people install from Play.
+
+The listing's words and pictures are kept with the code in `fastlane/metadata/android/en-US` (the layout fastlane and F-Droid read): the title, short and full descriptions, release notes in `changelogs/<versionCode>.txt`, the icon, the feature graphic and the phone screenshots. `node scripts/play-graphics.ts` draws the icon and feature graphic, and `AMBLE_SHOTS=play node scripts/readme-shots.ts` takes the screenshots from the demo household at 1080x2160. The privacy policy the listing links to is [privacy-policy.md](privacy-policy.md).
+
+A new personal Play developer account has to run a closed test with at least 12 testers opted in for 14 days in a row before it can publish to everyone.
 
 ## When something goes wrong
 

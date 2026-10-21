@@ -1,0 +1,19 @@
+Amble is a calm planner for a household. It knows how full each day already is from your tasks and your phone's calendar, so it can suggest what to do today and which day has room for something due later. It never nags.
+
+There's nothing to sign up for. Everything is kept on your phone and works offline from the first open. To share it with your household, sync through a file in your own Google Drive or through a server your household runs itself. Amble has no servers of its own. There are no ads and no analytics.
+
+What you can do with it:
+
+• See your day by morning, afternoon and evening with a meter for how full it is. Swipe right to finish a task and left to move it, and Undo works for both.
+• Start each morning with how much is on your calendar, what someone handed you and a few backlog tasks worth pulling in. Nothing changes until you tap Add.
+• Type something like "call mom tomorrow evening, out of milk and eggs" into quick add and smart add turns it into tasks and list items for you to check before anything is saved. It's optional. It uses your own key for Claude, OpenAI, Gemini, GLM or anything on OpenRouter, a model on your own computer through Ollama or LM Studio or your household server's model.
+• Keep lists from 11 templates: groceries that sort themselves by aisle, shopping with links and prices, packing lists that reset for the next trip, gift ideas by person, a meal plan that sends its ingredients to Groceries, errands by place and more.
+• Give busy days less room. Amble reads the phone calendars you pick and never changes them. The events stay on your phone, and your household only sees how many minutes of each day are busy.
+• See where things fit. A task due later shows the day with the most room before it, and Plan my week lays out the next 7 days around your calendar.
+• Repeat tasks on a schedule, like every Sunday or the 2nd Thursday or only in some months, or a set time after the last one was done.
+• Get a reminder only when you ask for one. It shows at its time even with Amble closed and has Done and Snooze on it.
+• Hand a task to someone else in the household with a note, or leave it open to anyone.
+• Keep today's tasks on your home screen with the widget.
+• Pick any color or your wallpaper's own colors, in light or dark.
+
+Amble fits the screen it's on. A phone gets a floating toolbar and a foldable or small tablet gets a navigation rail, and on wider screens a task opens beside the list you picked it from.
