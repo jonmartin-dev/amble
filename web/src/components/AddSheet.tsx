@@ -27,12 +27,11 @@ import { peekOrigin } from '../lib/morph.ts';
 import { native } from '../lib/native.ts';
 import { useSend, useTaskActions } from '../lib/mutations.ts';
 import { useAi, useGroups, useMe, useMembers } from '../lib/queries.ts';
-import { useSnackbar } from '../lib/snackbar.tsx';
 import { useSyncState } from '../lib/sync.ts';
 import { DateChip, GroupChips, PersonChips, TimeChips, WhenChips } from './fields.tsx';
 import { GroupIcon } from './icons.tsx';
 import { ProposalCard, type Draft } from './ProposalCard.tsx';
-import { guessCount, LoadingShape, ReadAlong, ReadingShape, WaitingCards } from './SmartReading.tsx';
+import { guessCount, LoadingShape, ReadAlong, ReadingShape, ShimmerText, WaitingCards } from './SmartReading.tsx';
 import { ScrollRow, Sheet } from './ui.tsx';
 
 type Phase = 'compose' | 'thinking' | 'review' | 'done';
@@ -86,27 +85,11 @@ function OptionChip({ on, icon, onClick, children, label }: { on?: boolean; icon
   );
 }
 
-/** M3 Expressive loading shape: a soft blob that morphs and turns while the model reads. */
-function MorphingShape() {
-  return (
-    <motion.span
-      aria-hidden
-      className="absolute inset-1.5 bg-on-primary/25"
-      animate={{
-        rotate: [0, 120, 240, 360],
-        borderRadius: ['42% 58% 55% 45% / 45% 45% 55% 55%', '30%', '58% 42% 38% 62% / 55% 60% 40% 45%', '42% 58% 55% 45% / 45% 45% 55% 55%'],
-        scale: [1, 0.86, 1.02, 1],
-      }}
-      transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
-    />
-  );
-}
-
 /**
  * Send: a quiet circle until there's something to send, then a filled rounded square (an M3
  * Expressive shape change). While the model reads, a shape turns inside it.
  */
-function SendButton({ ready, thinking, smart, shape }: { ready: boolean; thinking: boolean; smart: boolean; shape: boolean }) {
+function SendButton({ ready, thinking, smart }: { ready: boolean; thinking: boolean; smart: boolean }) {
   const active = ready || thinking;
   return (
     <motion.button
@@ -122,14 +105,14 @@ function SendButton({ ready, thinking, smart, shape }: { ready: boolean; thinkin
         active ? 'bg-primary text-on-primary' : 'bg-surface-highest text-on-surface-variant'
       }`}
     >
-      {thinking && (shape ? <LoadingShape className="absolute inset-1" tone="bg-on-primary/25" /> : <MorphingShape />)}
+      {thinking && <LoadingShape className="absolute inset-1" tone="bg-on-primary/25" />}
       {smart ? <Sparkle className="relative size-6" aria-hidden /> : <ArrowUp className="relative size-6" aria-hidden />}
     </motion.button>
   );
 }
 
-/** The moment it's saved: a check draws itself, then the sheet goes. */
-function Done({ message }: { message: string }) {
+/** The moment it's saved: a check draws itself, with Undo in reach until the sheet goes. */
+function Done({ message, onUndo }: { message: string; onUndo: (() => void) | null }) {
   return (
     <div className="flex flex-col items-center py-5 text-center">
       <motion.span
@@ -155,9 +138,24 @@ function Done({ message }: { message: string }) {
       <motion.p initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ ...expressive.defaultSpatial, delay: 0.1 }} className="mt-3 font-medium">
         {message}
       </motion.p>
+      {onUndo && (
+        <motion.button
+          type="button"
+          onClick={onUndo}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ ...expressive.defaultSpatial, delay: 0.18 }}
+          className="press mt-3 h-10 rounded-full px-5 text-sm font-medium text-primary hover:bg-surface-high"
+        >
+          Undo
+        </motion.button>
+      )}
     </div>
   );
 }
+
+// How long the sheet stays on what was added, with Undo, before it goes.
+const DONE_MS = 4000;
 
 // The text box gives way to the review's buttons without the two crossing.
 const handOver = {
@@ -209,7 +207,6 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
   const actions = useTaskActions();
   const send = useSend();
   const qc = useQueryClient();
-  const snack = useSnackbar();
   const { online } = useSyncState();
   const input = useRef<HTMLTextAreaElement>(null);
   const abort = useRef<AbortController | null>(null);
@@ -239,6 +236,9 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
   const [notice, setNotice] = useState<string | null>(null);
   const [applying, setApplying] = useState(false);
   const [doneMessage, setDoneMessage] = useState('');
+  // What was just added, to take off again with Undo: tasks put in by smart add, or the lines typed.
+  const [added, setAdded] = useState<{ ids: string[]; typed?: string } | null>(null);
+  const closing = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   // Each time it opens it starts afresh, before it's first drawn: after a review or a "done", the
   // text box has to be there already for the focus below to raise the keyboard.
@@ -259,10 +259,14 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
       setPhase('compose');
       setDrafts([]);
       setNotice(null);
+      setAdded(null);
     }
   }
   useEffect(() => {
-    if (!open) abort.current?.abort();
+    if (open) return;
+    abort.current?.abort();
+    // Closed some other way first: the timer mustn't close it again once it's reopened.
+    clearTimeout(closing.current);
   }, [open]);
 
   // Grown out of the + that was tapped (Material's container transform), when it was.
@@ -332,13 +336,15 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
       .map((l) => l.trim())
       .filter(Boolean);
     const titles: string[] = [];
+    const ids: string[] = [];
     for (const line of lines) {
       const { remindAt, ...t } = readLine(line);
       titles.push(t.title);
       // The parser moves a reminder that's gone by; this is for one that went by while the sheet was open.
       const at = remindAt ? localTime(remindAt.date, remindAt.minutes) : null;
-      actions.create({ ...t, remindAt: at && at > new Date() ? at.toISOString() : null });
+      ids.push(actions.create({ ...t, remindAt: at && at > new Date() ? at.toISOString() : null }).id);
     }
+    setAdded({ ids, typed: raw });
     setText('');
     setMustDo(false);
     setDropped(new Set());
@@ -389,6 +395,25 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
     }
   };
 
+  const takeOff = (ids: string[]) => {
+    for (const id of ids) {
+      editTask(qc, id, () => ({ status: 'archived' }));
+      send('POST', `/tasks/${id}/archive`, {}, 'Undo add');
+    }
+  };
+  const undo = () => {
+    if (!added) return;
+    clearTimeout(closing.current);
+    takeOff(added.ids);
+    setNotice(null);
+    setAdded(null);
+    if (added.typed !== undefined) {
+      // What was typed comes back to fix, unless something new is being typed already.
+      if (!text.trim()) setText(added.typed);
+      input.current?.focus({ preventScroll: true });
+    } else setPhase('review');
+  };
+
   const cancelThinking = () => {
     abort.current?.abort();
     setPhase('compose');
@@ -406,25 +431,11 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
         refresh();
         const onlyTasks = r.added > 0 && r.added === chosen.length;
         setDoneMessage(appliedMessage(r));
+        setAdded(onlyTasks ? { ids: r.taskIds } : null);
         setPhase('done');
-        // Let the check draw, then get out of the way; the snackbar keeps Undo within reach.
-        setTimeout(() => {
-          onClose();
-          snack({
-            message: appliedMessage(r),
-            action: onlyTasks
-              ? {
-                  label: 'Undo',
-                  run: () => {
-                    for (const id of r.taskIds) {
-                      editTask(qc, id, () => ({ status: 'archived' }));
-                      send('POST', `/tasks/${id}/archive`, {}, 'Undo smart add');
-                    }
-                  },
-                }
-              : undefined,
-          });
-        }, 750);
+        // The check draws, Undo stays in reach a moment, then the sheet gets out of the way.
+        clearTimeout(closing.current);
+        closing.current = setTimeout(onClose, DONE_MS);
       })
       .catch((e: Error) => setNotice(e.message))
       .finally(() => setApplying(false));
@@ -542,18 +553,7 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
         )}
         {/* While the model reads, a light sweeps across what they typed. */}
         {thinking && read === 'now' && (
-          <motion.p
-            aria-hidden
-            className="pointer-events-none absolute inset-0 overflow-hidden bg-clip-text px-1 pt-1 text-[1.375rem] leading-8 whitespace-pre-wrap text-transparent"
-            style={{
-              backgroundImage: 'linear-gradient(100deg, var(--md-on-surface-variant) 35%, var(--md-primary) 50%, var(--md-on-surface-variant) 65%)',
-              backgroundSize: '250% 100%',
-            }}
-            animate={{ backgroundPosition: ['100% 0%', '0% 0%'] }}
-            transition={{ duration: 1.8, repeat: Infinity, ease: 'linear' }}
-          >
-            {text}
-          </motion.p>
+          <ShimmerText text={text} className="pointer-events-none absolute inset-0 overflow-hidden" lines="px-1 pt-1 text-[1.375rem] leading-8 whitespace-pre-wrap" />
         )}
       </div>
       {!thinking && reading && (reading.remindAt || reading.repeat) && (
@@ -596,7 +596,7 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
             )}
           </AnimatePresence>
         </div>
-        <SendButton ready={!!text.trim()} thinking={thinking} smart={smart} shape={read !== 'now'} />
+        <SendButton ready={!!text.trim()} thinking={thinking} smart={smart} />
       </div>
     </form>
   );
@@ -639,7 +639,7 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
     ) : null;
 
   let body: ReactNode = null;
-  if (phase === 'done') body = <Done message={doneMessage} />;
+  if (phase === 'done') body = <Done message={doneMessage} onUndo={added ? undo : null} />;
   else if (phase === 'thinking' && read === 'cards') body = <WaitingCards count={guessCount(text)} />;
   else if (phase === 'thinking' && read === 'shape') body = <ReadingShape />;
   else if (phase === 'review') {
@@ -667,7 +667,16 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
       </>
     );
   } else if (notice) {
-    body = <p className="rounded-2xl bg-surface-high px-3.5 py-2.5 text-sm text-on-surface-variant">{notice}</p>;
+    body = (
+      <div className="flex items-center gap-2 rounded-2xl bg-surface-high py-1 pr-1 pl-3.5">
+        <p className="flex-1 py-1.5 text-sm text-on-surface-variant">{notice}</p>
+        {added?.typed !== undefined && (
+          <button type="button" onClick={undo} onPointerDown={keepKeyboard} className="press h-9 shrink-0 rounded-full px-3 text-sm font-medium text-primary">
+            Undo
+          </button>
+        )}
+      </div>
+    );
   }
 
   // Each phase crossfades into the next while the sheet glides to its new height.
