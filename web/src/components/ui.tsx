@@ -5,6 +5,7 @@ import ArrowBack from '~icons/material-symbols/arrow-back-rounded';
 import Check from '~icons/material-symbols/check-rounded';
 import ChevronRight from '~icons/material-symbols/chevron-right-rounded';
 import Close from '~icons/material-symbols/close-rounded';
+import OpenInNew from '~icons/material-symbols/open-in-new-rounded';
 import type { DayLoad } from '../lib/api.ts';
 import { EXPANDED, isDetail, useInPane, useMedia } from '../lib/layout.ts';
 import { EMPHASIZED, type Origin } from '../lib/morph.ts';
@@ -84,6 +85,8 @@ export interface RowProps {
   subtitle?: ReactNode;
   trailing?: ReactNode;
   to?: string;
+  /** A page outside Amble, opened in the browser. */
+  href?: string;
   onClick?: () => void;
 }
 
@@ -99,7 +102,12 @@ export function ListGroup({ rows, label }: { rows: RowProps[]; label?: string })
               <span className="block">{r.title}</span>
               {r.subtitle && <span className="block text-sm text-on-surface-variant">{r.subtitle}</span>}
             </span>
-            {r.trailing ?? (r.to ? <ChevronRight className="size-6 shrink-0 text-on-surface-variant" aria-hidden /> : null)}
+            {r.trailing ??
+              (r.to ? (
+                <ChevronRight className="size-6 shrink-0 text-on-surface-variant" aria-hidden />
+              ) : r.href ? (
+                <OpenInNew className="mr-1 size-5 shrink-0 text-on-surface-variant" aria-hidden />
+              ) : null)}
           </>
         );
         const cls = `flex w-full items-center gap-3 bg-surface-low px-3 py-3 text-left ${segment(i, rows.length)}`;
@@ -109,6 +117,10 @@ export function ListGroup({ rows, label }: { rows: RowProps[]; label?: string })
               <Link to={r.to} className={`${cls} transition-colors hover:bg-surface-container`}>
                 {inner}
               </Link>
+            ) : r.href ? (
+              <a href={r.href} target="_blank" rel="noreferrer" className={`${cls} transition-colors hover:bg-surface-container`}>
+                {inner}
+              </a>
             ) : r.onClick ? (
               <button type="button" onClick={r.onClick} className={`${cls} transition-colors hover:bg-surface-container`}>
                 {inner}

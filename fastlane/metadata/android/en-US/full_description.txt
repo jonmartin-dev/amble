@@ -1,19 +1,32 @@
-Amble is a calm planner for a household. It knows how full each day already is from your tasks and your phone's calendar, so it can suggest what to do today and which day has room for something due later. It never nags.
+Amble is a simple planner for a household. It's free, for you, forever, with every feature and no account or ads or subscription.
 
-There's nothing to sign up for. Everything is kept on your phone and works offline from the first open. To share it with your household, sync through a file in your own Google Drive or through a server your household runs itself. Amble has no servers of its own. There are no ads and no analytics.
+It knows how full each day already is from your tasks and your phone's calendar, so it can suggest what to do today and which day has room for something due later. It never nags.
 
-What you can do with it:
+Everything is kept on your phone and works offline from the first open. To share it with your household, sync through a file in your own Google Drive or a server your household runs itself. Amble has no servers of its own and no analytics.
 
-• See your day by morning, afternoon and evening with a meter for how full it is. Swipe right to finish a task and left to move it, and Undo works for both.
-• Start each morning with how much is on your calendar, what someone handed you and a few backlog tasks worth pulling in. Nothing changes until you tap Add.
-• Type something like "call mom tomorrow evening, out of milk and eggs" into quick add and smart add turns it into tasks and list items for you to check before anything is saved. It's optional. It uses your own key for Claude, OpenAI, Gemini, GLM or anything on OpenRouter, a model on your own computer through Ollama or LM Studio or your household server's model.
-• Keep lists from 11 templates: groceries that sort themselves by aisle, shopping with links and prices, packing lists that reset for the next trip, gift ideas by person, a meal plan that sends its ingredients to Groceries, errands by place and more.
-• Give busy days less room. Amble reads the phone calendars you pick and never changes them. The events stay on your phone, and your household only sees how many minutes of each day are busy.
-• See where things fit. A task due later shows the day with the most room before it, and Plan my week lays out the next 7 days around your calendar.
-• Repeat tasks on a schedule, like every Sunday or the 2nd Thursday or only in some months, or a set time after the last one was done.
-• Get a reminder only when you ask for one. It shows at its time even with Amble closed and has Done and Snooze on it.
-• Hand a task to someone else in the household with a note, or leave it open to anyone.
-• Keep today's tasks on your home screen with the widget.
+Lists that do some of the work:
+
+• Groceries sort themselves by aisle as you type and the whole list plans as one grocery run on the day with room.
+• A meal plan sends each dinner's ingredients to Groceries in one tap.
+• Packing lists and routines start from a kit, and Start over unchecks everything for next time.
+• Gift ideas go under who they're for and start out private, so nobody sees their own.
+• Errands are grouped by place and plan as one run.
+• There are also lists for shopping with links and prices, the hardware store, things to watch and read, places to try and plain checklists.
+
+Each of the 11 templates is one small file in an open format, so anyone can write a new one or use them in another app.
+
+The rest of Amble:
+
+• Your day is split into morning, afternoon and evening with a meter for how full it is.
+• Each morning shows how much is on your calendar, what someone handed you and a few backlog tasks worth pulling in. Nothing changes until you tap Add.
+• Type "call mom tomorrow evening, out of milk and eggs" into quick add and smart add turns it into tasks and list items for you to check before anything is saved. It's optional and works with your own key for Claude, OpenAI, Gemini, GLM or anything on OpenRouter, a model on your own computer through Ollama or LM Studio or your household server's model.
+• Busy days get less room. Amble reads the phone calendars you pick and never changes them. The events stay on your phone and your household only sees how many minutes of each day are busy.
+• A task due later shows the day with the most room before it, and Plan my week lays out the next 7 days around your calendar.
+• Tasks can repeat on a schedule (every Sunday, the 2nd Thursday, only in some months) or a set time after the last one was done.
+• Reminders come only when you ask for one. They show at their time even with Amble closed and have Done and Snooze on them.
+• Hand a task to someone in the household with a note, or leave it open to anyone.
+• Today's tasks can go on your home screen with the widget.
 • Pick any color or your wallpaper's own colors, in light or dark.
+• Foldables and small tablets get a navigation rail, and on wider screens a task opens beside its list.
 
-Amble fits the screen it's on. A phone gets a floating toolbar and a foldable or small tablet gets a navigation rail, and on wider screens a task opens beside the list you picked it from.
+Amble is made in the open. Ideas, bug reports and new list templates are all welcome at github.com/jonmartin-dev/amble

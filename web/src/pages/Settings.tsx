@@ -13,11 +13,13 @@ import Palette from '~icons/material-symbols/palette-outline-rounded';
 import Policy from '~icons/material-symbols/policy-outline-rounded';
 import Timer from '~icons/material-symbols/timer-outline-rounded';
 import Trophy from '~icons/material-symbols/trophy-outline-rounded';
+import Volunteer from '~icons/material-symbols/volunteer-activism-outline-rounded';
 import Widgets from '~icons/material-symbols/widgets-outline-rounded';
 import { ListGroup, SectionTitle, SubpageHeader, Switch } from '../components/ui.tsx';
 import { type Member } from '../lib/api.ts';
 import { native, pinTodayWidget } from '../lib/native.ts';
 import { useDriveSync } from '../lib/drive-sync.ts';
+import { PROJECT_URL } from '../lib/project.ts';
 import { useSaveMe } from '../lib/mutations.ts';
 import { usePushState } from '../lib/push.ts';
 import { notificationSummary } from './Notifications.tsx';
@@ -152,6 +154,12 @@ export function Settings() {
       <ListGroup
         rows={[
           { icon: <Policy className="size-6" />, title: 'Privacy', subtitle: 'What Amble keeps and why', to: '/privacy' },
+          {
+            icon: <Volunteer className="size-6" />,
+            title: 'Help make Amble better',
+            subtitle: 'It’s free and made in the open. Ideas, bug reports and new list templates are all welcome',
+            href: PROJECT_URL,
+          },
         ]}
       />
     </>

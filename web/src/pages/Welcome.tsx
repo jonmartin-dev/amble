@@ -11,6 +11,7 @@ import ErrorIcon from '~icons/material-symbols/error-outline-rounded';
 import EventAvailable from '~icons/material-symbols/event-available-outline-rounded';
 import Favorite from '~icons/material-symbols/favorite-outline-rounded';
 import Lock from '~icons/material-symbols/lock-outline-rounded';
+import OpenInNew from '~icons/material-symbols/open-in-new-rounded';
 import { api, ApiError, appUrl, servedBy, type Member } from '../lib/api.ts';
 import { deviceFailure, useHere, type DeviceState } from '../lib/device.ts';
 import { refreshStatus } from '../lib/drive-sync.ts';
@@ -21,19 +22,20 @@ import { useRestoreCopy } from '../components/CopySection.tsx';
 import { ServerForm } from '../components/ServerForm.tsx';
 import { joinHousehold } from './SyncSettings.tsx';
 import { expressive } from '../lib/motion.ts';
+import { PROJECT_URL } from '../lib/project.ts';
 
 function Frame({ children }: { children: React.ReactNode }) {
   return (
-    <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-6 py-12">
+    <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-6 py-10">
       <motion.img
         src={appUrl('/icon.svg')}
         alt=""
         initial={{ scale: 0.6, rotate: -12, opacity: 0 }}
         animate={{ scale: 1, rotate: 0, opacity: 1 }}
         transition={expressive.slowSpatial}
-        className="size-24"
+        className="size-20"
       />
-      <h1 className="display mt-8 text-[3.5rem] leading-none font-medium">Amble</h1>
+      <h1 className="display mt-6 text-[3.5rem] leading-none font-medium">Amble</h1>
       {children}
     </main>
   );
@@ -154,22 +156,27 @@ export function Welcome() {
       <AnimatePresence mode="wait" initial={false}>
         {step === 'intro' && (
           <StepIn step="intro">
-            <p className="mt-3 text-lg text-on-surface-variant">A calm planner for you and your household.</p>
-            <ul className="mt-8 flex flex-col gap-5">
-              <Point icon={<EventAvailable className="size-5" aria-hidden />} title="It knows how full your days are">
-                So it suggests what fits, plans around your calendar, and never nags.
+            <p className="mt-3 text-lg text-on-surface-variant">A simple planner for you and your household.</p>
+            <ul className="mt-6 flex flex-col gap-5">
+              <Point icon={<EventAvailable className="size-5" aria-hidden />} title="Simple on purpose">
+                Your tasks, your lists, and a day that knows how full it is. Nothing to set up, and it never nags.
               </Point>
-              <Point icon={<Favorite className="size-5" aria-hidden />} title="Free, every feature, for good">
-                No account, no ads, no subscription. Use it on your phone, your computer, or both.
+              <Point icon={<Favorite className="size-5" aria-hidden />} title="Free, for you, forever">
+                Every feature. No account, no ads, no subscription.
               </Point>
               <Point icon={<Lock className="size-5" aria-hidden />} title="Your things stay yours">
-                Everything lives on your device. Sync it through your Google Drive or your own server, only if you want to.
+                Everything stays on your device. Sync through your Google Drive or your own server if you want.
               </Point>
             </ul>
-            <p className="mt-8 text-sm text-on-surface-variant">
-              Made by a busy dad who got tired of paying for planners that weren't any good. This one is free, and it's meant to be good.
+            <p className="mt-6 text-sm text-on-surface-variant">
+              Made by a busy dad who got tired of paying for planners that weren't any good. Help us make it better: ideas, bug reports and new list
+              templates are all welcome at{' '}
+              <a href={PROJECT_URL} target="_blank" rel="noreferrer" className="font-medium whitespace-nowrap text-primary">
+                {PROJECT_URL.replace('https://', '')}
+                <OpenInNew className="ml-0.5 inline size-4 align-[-0.2em]" aria-hidden />
+              </a>
             </p>
-            <div className="mt-8 flex flex-col">
+            <div className="mt-6 flex flex-col">
               <button type="button" onClick={() => setStep('you')} className={primary}>
                 Get started
               </button>
