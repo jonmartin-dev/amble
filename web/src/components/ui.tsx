@@ -56,7 +56,8 @@ export function ListLink({ groupId, className, children }: { groupId: string; cl
       replace={wide && where !== 'none'}
       aria-current={where === 'this' || undefined}
       data-morph={`/list/${groupId}`}
-      className={className(where === 'this')}
+      // Shown as picked only beside the page; on a phone the list covers it until it shrinks back in.
+      className={className(wide && where === 'this')}
     >
       {children}
     </Link>

@@ -46,7 +46,8 @@ export function TaskRow({ task, today, meId, onMove, showDay = false, showGroup 
   const router = useRouter();
   const actions = useTaskActions();
   const motion = useMotion();
-  // Open beside the list on a wide screen, where the row stays in view.
+  // Open beside the list on a wide screen, where the row stays in view and shows it. (On a phone the
+  // page covers the row, until it shrinks back into it.)
   const open = useRouterState({ select: (s) => s.location.pathname === `/task/${task.id}` });
   // A tap shows right away; once the server's copy of the task changes (done, or undone), it wins.
   const [tapped, setTapped] = useState<{ done: boolean; version: string } | null>(null);
@@ -195,7 +196,7 @@ export function TaskRow({ task, today, meId, onMove, showDay = false, showGroup 
         }}
         onContextMenu={(e) => e.preventDefault()}
         aria-current={open || undefined}
-        className={`state-layer relative isolate flex cursor-pointer touch-pan-y items-start gap-3 px-4 py-3.5 select-none ${open ? 'bg-secondary-container' : surface}`}
+        className={`state-layer relative isolate flex cursor-pointer touch-pan-y items-start gap-3 px-4 py-3.5 select-none ${open ? `${surface} expanded:bg-secondary-container` : surface}`}
       >
         {/* Just finished: a wash of color sweeps across the row. */}
         {motion.finish && tapped?.done && checked && <span aria-hidden className="row-sweep absolute inset-0 -z-10 bg-primary-container" />}
