@@ -69,6 +69,8 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- A tick under the finger: a swipe reaching its line, a long press. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
     <!-- Reading the phone's own calendars, so busy days have less room for tasks. Asked for only when someone turns it on. -->
     <uses-permission android:name="android.permission.READ_CALENDAR" />
 </manifest>

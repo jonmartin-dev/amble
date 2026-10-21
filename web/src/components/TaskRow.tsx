@@ -14,6 +14,7 @@ import Sun from '~icons/material-symbols/wb-sunny-outline-rounded';
 import type { Task } from '../lib/api.ts';
 import { dayLabel, daysFrom, firstName, reminderLabel } from '../lib/dates.ts';
 import { swapsDetail } from '../lib/layout.ts';
+import { motionChoices, useMotion } from '../lib/motion-demo.ts';
 import { useTaskActions } from '../lib/mutations.ts';
 import { TripBadge } from './TripList.tsx';
 import { Checkbox } from './ui.tsx';
@@ -44,6 +45,7 @@ export function TaskRow({ task, today, meId, onMove, showDay = false, showGroup 
   const navigate = useNavigate();
   const router = useRouter();
   const actions = useTaskActions();
+  const motion = useMotion();
   // Open beside the list on a wide screen, where the row stays in view.
   const open = useRouterState({ select: (s) => s.location.pathname === `/task/${task.id}` });
   // A tap shows right away; once the server's copy of the task changes (done, or undone), it wins.
@@ -59,12 +61,14 @@ export function TaskRow({ task, today, meId, onMove, showDay = false, showGroup 
   const doneBg = useRef<HTMLDivElement | null>(null);
   const moveBg = useRef<HTMLDivElement | null>(null);
   const drag = useRef<{ state: 'idle' | 'pending' | 'swiping' | 'scrolling'; dx: number }>({ state: 'idle', dx: 0 });
+  // Which side's line the swipe is past, so crossing it pops the icon and ticks once.
+  const past = useRef<'done' | 'move' | null>(null);
 
   const toggle = () => {
     const next = !checked;
     setTapped({ done: next, version: task.updatedAt });
     // Let the check animation play before the row moves to its new section.
-    setTimeout(() => actions.complete(task, next), 320);
+    setTimeout(() => actions.complete(task, next), next && motionChoices().finish ? 520 : 320);
   };
 
   const startPress = (e: React.PointerEvent) => {
@@ -83,6 +87,17 @@ export function TaskRow({ task, today, meId, onMove, showDay = false, showGroup 
     if (row.current) row.current.style.transform = offset ? `translateX(${offset}px)` : '';
     if (doneBg.current) doneBg.current.style.opacity = String(Math.min(Math.max(offset / (SWIPE * FOLLOW), 0), 1));
     if (moveBg.current) moveBg.current.style.opacity = String(Math.min(Math.max(-offset / (SWIPE * FOLLOW), 0), 1));
+    const side = drag.current.dx > SWIPE ? 'done' : drag.current.dx < -SWIPE ? 'move' : null;
+    if (side !== past.current) {
+      past.current = side;
+      const icon = (side === 'done' ? doneBg : moveBg).current?.firstElementChild;
+      if (side && icon && motionChoices().swipePop) {
+        navigator.vibrate?.(12);
+        icon.animate({ transform: ['scale(1)', 'scale(1.45)', 'scale(1.15)'] }, { duration: 320, easing: 'cubic-bezier(0.2, 0, 0, 1)', fill: 'forwards' });
+      } else if (!side) {
+        for (const bg of [doneBg, moveBg]) bg.current?.firstElementChild?.getAnimations().forEach((a) => a.cancel());
+      }
+    }
   };
 
   const onPointerDown = (e: React.PointerEvent) => {
@@ -121,6 +136,7 @@ export function TaskRow({ task, today, meId, onMove, showDay = false, showGroup 
     const d = drag.current;
     const wasSwiping = d.state === 'swiping';
     d.state = 'idle';
+    past.current = null;
     if (!wasSwiping) return;
     if (d.dx > SWIPE) toggle();
     else if (d.dx < -SWIPE) onMove(task);
@@ -144,7 +160,7 @@ export function TaskRow({ task, today, meId, onMove, showDay = false, showGroup 
   const subtasksDone = task.subtasks.filter((s) => s.done).length;
 
   return (
-    <div className="relative overflow-hidden rounded-3xl">
+    <div className={`relative overflow-hidden rounded-3xl ${motion.press ? 'press-row' : ''}`} data-morph={`/task/${task.id}`}>
       {swiping && (
         <>
           <div
@@ -179,13 +195,18 @@ export function TaskRow({ task, today, meId, onMove, showDay = false, showGroup 
         }}
         onContextMenu={(e) => e.preventDefault()}
         aria-current={open || undefined}
-        className={`state-layer relative flex cursor-pointer touch-pan-y items-start gap-3 px-4 py-3.5 select-none ${open ? 'bg-secondary-container' : surface}`}
+        className={`state-layer relative isolate flex cursor-pointer touch-pan-y items-start gap-3 px-4 py-3.5 select-none ${open ? 'bg-secondary-container' : surface}`}
       >
+        {/* Just finished: a wash of color sweeps across the row. */}
+        {motion.finish && tapped?.done && checked && <span aria-hidden className="row-sweep absolute inset-0 -z-10 bg-primary-container" />}
         <div className="pt-0.5">
           <Checkbox checked={checked} onChange={toggle} label={checked ? `Mark ${task.title} not done` : `Complete ${task.title}`} />
         </div>
         <div className="min-w-0 flex-1">
-          <p className={`leading-snug transition-colors ${checked ? 'text-on-surface-variant line-through' : ''}`}>{task.title}</p>
+          <p className={`leading-snug transition-colors ${checked ? 'text-on-surface-variant' : ''} ${checked && !(motion.finish && tapped?.done) ? 'line-through' : ''}`}>
+            {/* Just finished: the line draws itself through the title. */}
+            {checked && motion.finish && tapped?.done ? <span className="strike-draw">{task.title}</span> : task.title}
+          </p>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.8125rem] text-on-surface-variant empty:hidden">
             {task.mustDo && (
               <span className="flex items-center gap-1 text-warm">

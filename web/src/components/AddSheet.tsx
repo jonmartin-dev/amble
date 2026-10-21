@@ -22,6 +22,9 @@ import { api, ApiError, type Group, type Proposal, type SmartAddResponse, type T
 import { dayLabel, firstName, reminderPhrase, todayIso } from '../lib/dates.ts';
 import { editTask } from '../lib/local.ts';
 import { expressive } from '../lib/motion.ts';
+import { useMotion } from '../lib/motion-demo.ts';
+import { peekOrigin } from '../lib/morph.ts';
+import { native } from '../lib/native.ts';
 import { useSend, useTaskActions } from '../lib/mutations.ts';
 import { useAi, useGroups, useMe, useMembers } from '../lib/queries.ts';
 import { useSnackbar } from '../lib/snackbar.tsx';
@@ -29,6 +32,7 @@ import { useSyncState } from '../lib/sync.ts';
 import { DateChip, GroupChips, PersonChips, TimeChips, WhenChips } from './fields.tsx';
 import { GroupIcon } from './icons.tsx';
 import { ProposalCard, type Draft } from './ProposalCard.tsx';
+import { guessCount, LoadingShape, ReadAlong, ReadingShape, WaitingCards } from './SmartReading.tsx';
 import { ScrollRow, Sheet } from './ui.tsx';
 
 type Phase = 'compose' | 'thinking' | 'review' | 'done';
@@ -102,7 +106,7 @@ function MorphingShape() {
  * Send: a quiet circle until there's something to send, then a filled rounded square (an M3
  * Expressive shape change). While the model reads, a shape turns inside it.
  */
-function SendButton({ ready, thinking, smart }: { ready: boolean; thinking: boolean; smart: boolean }) {
+function SendButton({ ready, thinking, smart, shape }: { ready: boolean; thinking: boolean; smart: boolean; shape: boolean }) {
   const active = ready || thinking;
   return (
     <motion.button
@@ -118,7 +122,7 @@ function SendButton({ ready, thinking, smart }: { ready: boolean; thinking: bool
         active ? 'bg-primary text-on-primary' : 'bg-surface-highest text-on-surface-variant'
       }`}
     >
-      {thinking && <MorphingShape />}
+      {thinking && (shape ? <LoadingShape className="absolute inset-1" tone="bg-on-primary/25" /> : <MorphingShape />)}
       {smart ? <Sparkle className="relative size-6" aria-hidden /> : <ArrowUp className="relative size-6" aria-hidden />}
     </motion.button>
   );
@@ -154,6 +158,13 @@ function Done({ message }: { message: string }) {
     </div>
   );
 }
+
+// The text box gives way to the review's buttons without the two crossing.
+const handOver = {
+  initial: { opacity: 0, y: 10 },
+  animate: { opacity: 1, y: 0, transition: { ...expressive.defaultSpatial, delay: 0.08 } },
+  exit: { opacity: 0, transition: { duration: 0.1 } },
+};
 
 const phaseMotion = {
   initial: { opacity: 0, y: 14, scale: 0.98 },
@@ -209,6 +220,7 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
   const smart = (ai?.smartAdd ?? false) && online;
   const smartOffline = (ai?.smartAdd ?? false) && !online;
   const members = household?.members ?? [];
+  const { read, morphAdd } = useMotion();
 
   const [text, setText] = useState('');
   const [planned, setPlanned] = useState<string | null>(null);
@@ -228,29 +240,44 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
   const [applying, setApplying] = useState(false);
   const [doneMessage, setDoneMessage] = useState('');
 
-  useEffect(() => {
-    if (!open) {
-      abort.current?.abort();
-      return;
+  // Each time it opens it starts afresh, before it's first drawn: after a review or a "done", the
+  // text box has to be there already for the focus below to raise the keyboard.
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) {
+      setText('');
+      setPlanned(plannedByDefault ? today : null);
+      setDue(null);
+      setGroupId(null);
+      setAssignee(undefined);
+      setTime(null);
+      setMustDo(false);
+      setExplicit(new Set());
+      setDropped(new Set());
+      setPicker(null);
+      setPhase('compose');
+      setDrafts([]);
+      setNotice(null);
     }
-    setText('');
-    setPlanned(plannedByDefault ? today : null);
-    setDue(null);
-    setGroupId(null);
-    setAssignee(undefined);
-    setTime(null);
-    setMustDo(false);
-    setExplicit(new Set());
-    setDropped(new Set());
-    setPicker(null);
-    setPhase('compose');
-    setDrafts([]);
-    setNotice(null);
-  }, [open, plannedByDefault, today]);
+  }
+  useEffect(() => {
+    if (!open) abort.current?.abort();
+  }, [open]);
 
-  // Focus while the tap that opened the sheet is still being handled, or phones won't raise the keyboard.
+  // Grown out of the + that was tapped (Material's container transform), when it was.
+  const origin = morphAdd && open ? peekOrigin('add') : null;
+  // Focus while the tap that opened the sheet is still being handled, or phones won't raise the
+  // keyboard. The Android app raises it later too, and there, while the sheet grows out of the +,
+  // the keyboard waits for it: rising sooner, it would shove the sheet up halfway through.
+  const waitForGrow = native && !!origin;
   useLayoutEffect(() => {
-    if (open) input.current?.focus({ preventScroll: true });
+    if (!open) return;
+    if (!waitForGrow) return input.current?.focus({ preventScroll: true });
+    const t = setTimeout(() => input.current?.focus({ preventScroll: true }), 380);
+    return () => clearTimeout(t);
+    // Only as it opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   useLayoutEffect(() => {
@@ -507,11 +534,14 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
           enterKeyHint="send"
           readOnly={thinking}
           className={`field-sizing-content block max-h-42 min-h-14 w-full resize-none bg-transparent px-1 pt-1 text-[1.375rem] leading-8 outline-none placeholder:text-on-surface-variant/70 ${
-            thinking ? 'text-transparent' : ''
+            thinking ? (read === 'now' || read === 'along' ? 'text-transparent' : 'text-on-surface-variant transition-colors') : ''
           }`}
         />
+        {thinking && read === 'along' && (
+          <ReadAlong text={text} className="pointer-events-none absolute inset-0 overflow-hidden px-1 pt-1 text-[1.375rem] leading-8 whitespace-pre-wrap" />
+        )}
         {/* While the model reads, a light sweeps across what they typed. */}
-        {thinking && (
+        {thinking && read === 'now' && (
           <motion.p
             aria-hidden
             className="pointer-events-none absolute inset-0 overflow-hidden bg-clip-text px-1 pt-1 text-[1.375rem] leading-8 whitespace-pre-wrap text-transparent"
@@ -566,7 +596,7 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
             )}
           </AnimatePresence>
         </div>
-        <SendButton ready={!!text.trim()} thinking={thinking} smart={smart} />
+        <SendButton ready={!!text.trim()} thinking={thinking} smart={smart} shape={read !== 'now'} />
       </div>
     </form>
   );
@@ -610,6 +640,8 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
 
   let body: ReactNode = null;
   if (phase === 'done') body = <Done message={doneMessage} />;
+  else if (phase === 'thinking' && read === 'cards') body = <WaitingCards count={guessCount(text)} />;
+  else if (phase === 'thinking' && read === 'shape') body = <ReadingShape />;
   else if (phase === 'review') {
     body = (
       <>
@@ -619,6 +651,7 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
             <ProposalCard
               key={d.key}
               index={i}
+              from={read === 'shape' ? 'shape' : read === 'cards' ? 'place' : undefined}
               draft={d}
               ctx={ctx}
               open={openCard === d.key}
@@ -638,19 +671,20 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
   }
 
   // Each phase crossfades into the next while the sheet glides to its new height.
-  const bodyKey = phase === 'compose' || phase === 'thinking' ? `compose-${notice ?? ''}` : phase;
+  const bodyKey = phase === 'compose' || (phase === 'thinking' && (read === 'now' || read === 'along')) ? `compose-${notice ?? ''}` : phase;
   const footer = phase === 'done' ? null : phase === 'review' ? reviewFooter : composer;
   return (
     <Sheet
       open={open}
       onClose={onClose}
+      origin={origin}
       label="Add"
       header={header}
       footer={
         footer && (
           <div className="relative">
             <AnimatePresence mode="popLayout" initial={false}>
-              <motion.div key={phase === 'review' ? 'review' : 'compose'} {...phaseMotion}>
+              <motion.div key={phase === 'review' ? 'review' : 'compose'} {...(read === 'now' ? phaseMotion : handOver)}>
                 {footer}
               </motion.div>
             </AnimatePresence>

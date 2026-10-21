@@ -8,6 +8,7 @@ import { Capacitor, registerPlugin } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { loadRatio, loadWord } from '../components/ui.tsx';
 import { api, type Task, type Today, type UpcomingReminder } from './api.ts';
+import { stageGesture } from './morph.ts';
 import { acceptServerReturn } from './server-sync.ts';
 import { applyTheme, loadLocalTheme, setPhoneColors, themeVariables, type PhoneColors } from './theme.ts';
 
@@ -48,6 +49,24 @@ const SaveFile = registerPlugin<{
   pick(options: { name: string; mime: string }): Promise<{ uri: string | null }>;
   write(options: { uri: string; data: string }): Promise<void>;
 }>('SaveFile');
+
+interface BackEvent {
+  progress: number;
+  edge: 'left' | 'right';
+}
+const BackGesture = registerPlugin<{
+  setEnabled(options: { enabled: boolean }): Promise<void>;
+  addListener(event: 'start' | 'progress', listener: (e: BackEvent) => void): Promise<{ remove(): Promise<void> }>;
+  addListener(event: 'cancel' | 'back', listener: () => void): Promise<{ remove(): Promise<void> }>;
+}>('BackGesture');
+
+/**
+ * While a task or list is open, the phone's back gesture comes to the app as it's made
+ * (BackGesturePlugin.java), so the page can shrink with the finger, as Android's own screens do.
+ */
+export function setBackGesture(enabled: boolean) {
+  if (native) void BackGesture.setEnabled({ enabled }).catch(() => {});
+}
 
 /**
  * Saves a file where the person picks, on Android's own save screen (SaveFilePlugin.java): Downloads,
@@ -393,6 +412,13 @@ export function startPhone({ open, changed, resumed }: { open: (path: string) =>
     App.addListener('backButton', ({ canGoBack }) => {
       if (canGoBack) history.back();
       else void App.minimizeApp();
+    }),
+    BackGesture.addListener('start', ({ edge }) => stageGesture()?.start('back', edge)),
+    BackGesture.addListener('progress', ({ progress }) => stageGesture()?.move(progress)),
+    BackGesture.addListener('cancel', () => stageGesture()?.end(false)),
+    // The gesture went through, or the back button: either way, back.
+    BackGesture.addListener('back', () => {
+      if (!stageGesture()?.end(true)) history.back();
     }),
   ];
   // Opened from the widget or a notification: the link that opened it.

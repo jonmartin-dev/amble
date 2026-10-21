@@ -15,6 +15,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(PhoneCalendarPlugin.class);
         registerPlugin(CodeScannerPlugin.class);
         registerPlugin(SaveFilePlugin.class);
+        registerPlugin(BackGesturePlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

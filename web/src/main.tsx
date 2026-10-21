@@ -13,15 +13,18 @@ import {
   useRouterState,
 } from '@tanstack/react-router';
 import { MotionConfig } from 'motion/react';
-import { Activity as Keep, memo, StrictMode, useEffect, useState, type ComponentType } from 'react';
+import { Activity as Keep, memo, StrictMode, useCallback, useEffect, useState, type ComponentType } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AddSheet } from './components/AddSheet.tsx';
+import { DetailStage } from './components/DetailStage.tsx';
 import { FloatingToolbar } from './components/FloatingToolbar.tsx';
 import { NavRail } from './components/NavRail.tsx';
 import { StatusPill } from './components/StatusPill.tsx';
 import { basePath } from './lib/api.ts';
 import { readCalendarsWhileOpen } from './lib/calendar.ts';
 import { EXPANDED, InPane, isDetail, useMedia } from './lib/layout.ts';
+import { peekOrigin, type Origin } from './lib/morph.ts';
+import { useMotion } from './lib/motion-demo.ts';
 import { refreshViews } from './lib/mutations.ts';
 import { CACHE_MAX_AGE_MS, CACHE_VERSION, claimDevice, idbPersister, prefetchForOffline, shouldSave } from './lib/persist.ts';
 import { syncPhoneReminders } from './lib/push.ts';
@@ -167,7 +170,34 @@ function Root() {
     if (tab) setLastTab(tab);
   }, [tab]);
   const split = wide && isDetail(shown);
+  // Narrower, a task or list opens over the page it came from (DetailStage), growing out of the row
+  // that was tapped; while it moves, that page shows beneath it.
+  const motion = useMotion();
+  const staged = !wide;
+  const [stage, setStage] = useState<{ path: string; origin: Origin | null; leaving: boolean; swap: boolean } | null>(null);
+  const [overlay, setOverlay] = useState(false);
+  // Only from one of the four pages, which stay built beneath it.
+  const [seen, setSeen] = useState(shown);
+  if (shown !== seen) {
+    setSeen(shown);
+    if (staged && isDetail(shown) && stage && !stage.leaving) setStage({ path: shown, origin: null, leaving: false, swap: true });
+    else if (staged && isDetail(shown) && seen in TABS) {
+      setStage({ path: shown, origin: peekOrigin(shown), leaving: false, swap: false });
+      setOverlay(true);
+    } else if (stage && !stage.leaving && !isDetail(shown)) setStage({ ...stage, leaving: true });
+  }
+  if (stage && !staged) {
+    setStage(null);
+    setOverlay(false);
+  }
+  const stageGone = useCallback(() => {
+    setStage(null);
+    setOverlay(false);
+  }, []);
   const listed = tab ?? (split ? lastTab : null);
+  // The page a task or list opened over. It stays built and running beneath it, only out of sight
+  // while the task sits in its place, so it comes back exactly as it was, without rising in again.
+  const under = stage && !stage.leaving ? lastTab : null;
   const [kept, setKept] = useState<ReadonlySet<string>>(() => new Set());
   useEffect(() => {
     if (listed && !kept.has(listed)) setKept(new Set(kept).add(listed));
@@ -225,17 +255,39 @@ function Root() {
               is built and plays again whenever a kept tab goes from hidden to shown. */}
           {Object.entries(TABS).map(([path, Page]) =>
             kept.has(path) || path === listed ? (
-              <Keep key={path} mode={path === listed ? 'visible' : 'hidden'}>
-                <div className="page-in">
+              <Keep key={path} mode={path === listed || path === under ? 'visible' : 'hidden'}>
+                <div
+                  className={`page-in ${path === under && !overlay ? 'hidden' : ''}`}
+                  data-tab={path}
+                  data-cascade={motion.cascade || undefined}
+                  data-shown={path === listed || (path === under && overlay) || undefined}
+                >
                   <Page />
                 </div>
               </Keep>
             ) : null,
           )}
-          {!listed && (
+          {!listed && !under && (
             <div key={shown} className="page-in">
               <Outlet />
             </div>
+          )}
+          {stage && (
+            <DetailStage
+              key={stage.path}
+              path={stage.path}
+              origin={stage.origin}
+              overlay={overlay}
+              setOverlay={setOverlay}
+              entering={!stage.swap}
+              leaving={stage.leaving}
+              onGone={stageGone}
+              onBack={() => (window.history.length > 1 ? window.history.back() : void navigate({ to: lastTab as '/' }))}
+              backGesture={motion.back}
+              pull={motion.pull}
+            >
+              {detailFor(stage.path)}
+            </DetailStage>
           )}
         </main>
         {split && (
@@ -257,6 +309,12 @@ function Root() {
       <AddSheet open={adding} onClose={() => setAdding(false)} plannedByDefault={pathname === '/'} />
     </div>
   );
+}
+
+/** The page for a task or list, by its address. */
+function detailFor(path: string) {
+  const [, kind, id = ''] = path.split('/');
+  return kind === 'task' ? <TaskDetail key={id} taskId={id} /> : <ListPage key={id} groupId={id} />;
 }
 
 const rootRoute = createRootRoute({ component: Root });

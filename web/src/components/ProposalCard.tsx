@@ -208,6 +208,7 @@ function ItemEditor({ draft, ctx, onChange }: { draft: Draft & { proposal: { kin
 
 export function ProposalCard({
   index = 0,
+  from,
   draft,
   ctx,
   open,
@@ -217,6 +218,8 @@ export function ProposalCard({
 }: {
   /** Position in the list, so the cards arrive one after another. */
   index?: number;
+  /** Where it arrives from: out of the loading shape, or into a waiting card's place. */
+  from?: 'shape' | 'place';
   draft: Draft;
   ctx: Ctx;
   open: boolean;
@@ -229,9 +232,9 @@ export function ProposalCard({
   return (
     <motion.li
       layout
-      initial={{ opacity: 0, y: 18, scale: 0.94 }}
+      initial={from === 'shape' ? { opacity: 0, y: -28, scale: 0.6 } : from === 'place' ? { opacity: 0, scale: 0.98 } : { opacity: 0, y: 18, scale: 0.94 }}
       animate={{ opacity: draft.include ? 1 : 0.5, y: 0, scale: 1 }}
-      transition={{ ...expressive.defaultSpatial, delay: Math.min(index, 8) * 0.06, layout: expressive.fastSpatial, opacity: { duration: 0.2 } }}
+      transition={{ ...expressive.defaultSpatial, delay: Math.min(index, 8) * 0.06, layout: expressive.fastSpatial, opacity: { duration: 0.2, delay: Math.min(index, 8) * 0.06 } }}
       className="rounded-3xl bg-surface-high/60"
     >
       <div className="flex items-start gap-3 p-3">

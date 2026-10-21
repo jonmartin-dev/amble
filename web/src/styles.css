@@ -495,6 +495,167 @@ body::before {
   }
 }
 
+/* A task row sinks in a little and its corners tighten while it's pressed. Like Android's own
+   pressed state it waits a moment first, so a finger that's starting to scroll doesn't sink it. */
+.press-row {
+  transition:
+    transform 350ms var(--spring-fast),
+    border-radius 350ms var(--spring-fast);
+}
+.press-row:active {
+  transform: scale(0.975);
+  border-radius: 0.875rem;
+  transition-delay: 90ms;
+}
+
+/* Finishing a task: a wash of color sweeps across the row, then fades, and a line draws itself
+   through the title. */
+.row-sweep {
+  transform-origin: left;
+  animation: row-sweep 650ms cubic-bezier(0.2, 0, 0, 1) forwards;
+}
+@keyframes row-sweep {
+  0% {
+    transform: scaleX(0);
+    opacity: 1;
+  }
+  45% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scaleX(1);
+    opacity: 0;
+  }
+}
+.strike-draw {
+  background: linear-gradient(currentColor, currentColor) no-repeat 0 58% / 100% 1.5px;
+  box-decoration-break: clone;
+  animation: strike-draw 380ms cubic-bezier(0.2, 0, 0, 1) 80ms backwards;
+}
+@keyframes strike-draw {
+  from {
+    background-size: 0% 1.5px;
+  }
+}
+
+/* Rows rising into place one after another as a page shows. */
+[data-cascade] :is(ul, ol) > li {
+  animation: cascade-in 420ms var(--spring) backwards;
+}
+[data-cascade] :is(ul, ol) > li:nth-child(2) {
+  animation-delay: 35ms;
+}
+[data-cascade] :is(ul, ol) > li:nth-child(3) {
+  animation-delay: 70ms;
+}
+[data-cascade] :is(ul, ol) > li:nth-child(4) {
+  animation-delay: 105ms;
+}
+[data-cascade] :is(ul, ol) > li:nth-child(5) {
+  animation-delay: 140ms;
+}
+[data-cascade] :is(ul, ol) > li:nth-child(6) {
+  animation-delay: 175ms;
+}
+[data-cascade] :is(ul, ol) > li:nth-child(n + 7) {
+  animation-delay: 210ms;
+}
+@keyframes cascade-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+}
+
+/* Smart add reading along: a light moves through the words without stopping, each word brightening
+   as it's read and dimming again behind it, until the answer comes. Only opacity and transforms
+   move, which the phone keeps running even while the page is busy. */
+.read-word {
+  position: relative;
+  display: inline-block;
+  isolation: isolate;
+  animation-name: read-word;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  animation-fill-mode: both;
+}
+.read-word::before {
+  content: '';
+  position: absolute;
+  inset: 0 -0.15em;
+  z-index: -1;
+  border-radius: 0.375rem;
+  background: var(--md-primary-container);
+  opacity: 0;
+  animation: inherit;
+  animation-name: read-word-light;
+}
+@keyframes read-word {
+  0% {
+    opacity: 0.45;
+    transform: none;
+  }
+  7% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+  18% {
+    opacity: 1;
+    transform: none;
+  }
+  55% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.45;
+  }
+}
+@keyframes read-word-light {
+  0% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  7% {
+    opacity: 1;
+    transform: none;
+  }
+  22%,
+  100% {
+    opacity: 0;
+    transform: none;
+  }
+}
+
+/* Smart add's cards waiting to be filled in: they breathe, and a light sweeps across them. */
+.waiting-card {
+  position: relative;
+  overflow: hidden;
+  animation: waiting 1.6s ease-in-out infinite both;
+}
+.waiting-card::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 60%;
+  background: linear-gradient(100deg, transparent, color-mix(in srgb, var(--md-primary) 14%, transparent) 50%, transparent);
+  animation: sweep 1.6s linear infinite both;
+  animation-delay: inherit;
+}
+@keyframes waiting {
+  50% {
+    opacity: 0.6;
+  }
+}
+@keyframes sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(170%);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .page-in,
   .sheet-in,
@@ -503,7 +664,14 @@ body::before {
   .grow-right,
   .enter-up,
   .enter-right,
-  .burst-dot {
+  .burst-dot,
+  .read-word,
+  .read-word::before,
+  .waiting-card,
+  .waiting-card::after,
+  .row-sweep,
+  .strike-draw,
+  [data-cascade] :is(ul, ol) > li {
     animation: none;
   }
   .fill-glide,
@@ -515,7 +683,8 @@ body::before {
   .toolbar-pill,
   .rail-pill,
   .check,
-  .check-mark {
+  .check-mark,
+  .press-row {
     transition: none;
   }
 }

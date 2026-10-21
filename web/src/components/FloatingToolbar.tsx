@@ -59,7 +59,7 @@ export function FloatingToolbar({ onAdd, label, away = false }: { onAdd: () => v
           );
         })}
       </nav>
-      <button type="button" aria-label={label} onClick={onAdd} className="grid size-14 place-items-center rounded-2xl bg-primary text-on-primary shadow-lg">
+      <button type="button" aria-label={label} onClick={onAdd} data-morph="add" className="grid size-14 place-items-center rounded-2xl bg-primary text-on-primary shadow-lg">
         <Add className="size-6" aria-hidden />
       </button>
     </div>

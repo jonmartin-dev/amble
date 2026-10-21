@@ -7,6 +7,7 @@ import ChevronRight from '~icons/material-symbols/chevron-right-rounded';
 import Close from '~icons/material-symbols/close-rounded';
 import type { DayLoad } from '../lib/api.ts';
 import { EXPANDED, isDetail, useInPane, useMedia } from '../lib/layout.ts';
+import { EMPHASIZED, type Origin } from '../lib/morph.ts';
 import { expressive } from '../lib/motion.ts';
 import { typingWithKeyboard, useBackToClose, useScrollLock, useVisualViewport } from '../lib/viewport.ts';
 
@@ -49,7 +50,14 @@ export function ListLink({ groupId, className, children }: { groupId: string; cl
   const wide = useMedia(EXPANDED);
   const where = useRouterState({ select: (s) => (s.location.pathname === `/list/${groupId}` ? 'this' : isDetail(s.location.pathname) ? 'other' : 'none') });
   return (
-    <Link to="/list/$groupId" params={{ groupId }} replace={wide && where !== 'none'} aria-current={where === 'this' || undefined} className={className(where === 'this')}>
+    <Link
+      to="/list/$groupId"
+      params={{ groupId }}
+      replace={wide && where !== 'none'}
+      aria-current={where === 'this' || undefined}
+      data-morph={`/list/${groupId}`}
+      className={className(where === 'this')}
+    >
       {children}
     </Link>
   );
@@ -206,6 +214,7 @@ export function Sheet({
   children,
   footer,
   header,
+  origin,
 }: {
   open: boolean;
   onClose: () => void;
@@ -213,6 +222,8 @@ export function Sheet({
   children?: ReactNode;
   footer?: ReactNode;
   header?: ReactNode;
+  /** The button it grows out of, rather than sliding up from the bottom. */
+  origin?: Origin | null;
 }) {
   // Only the handle starts a drag, so scrolling inside the sheet still works.
   const controls = useDragControls();
@@ -274,6 +285,7 @@ export function Sheet({
               maxHeight={maxHeight}
               controls={controls}
               onDragEnd={onDragEnd}
+              origin={origin}
             >
               <div ref={natural.header} onPointerDown={(e) => controls.start(e)} className="shrink-0 cursor-grab touch-none px-5 pt-3 pb-1">
                 <div className="mx-auto mb-2 h-1 w-8 rounded-full bg-outline-variant" aria-hidden />
@@ -307,6 +319,7 @@ function SheetPanel({
   maxHeight,
   controls,
   onDragEnd,
+  origin,
   children,
 }: {
   label: string;
@@ -314,10 +327,28 @@ function SheetPanel({
   maxHeight: number;
   controls: DragControls;
   onDragEnd: (e: unknown, info: PanInfo) => void;
+  origin?: Origin | null;
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [isPresent, safeToRemove] = usePresence();
+  // Grown out of the button that opened it: its corners and color become the sheet's, and what's
+  // in it fades in once there's room (Material's container transform).
+  const [grow] = useState(() => !!origin && !matchMedia('(prefers-reduced-motion: reduce)').matches);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!grow || !origin || !el) return;
+    const r = el.getBoundingClientRect();
+    const o = origin.rect;
+    const inset = `inset(${o.top - r.top}px ${r.right - o.right}px ${r.bottom - o.bottom}px ${o.left - r.left}px round ${origin.radius}px)`;
+    const moves = [
+      el.animate({ clipPath: [inset, 'inset(0px 0px 0px 0px round 32px 32px 0px 0px)'], backgroundColor: [origin.color, getComputedStyle(el).backgroundColor] }, { duration: 460, easing: EMPHASIZED }),
+      ...[...el.children].map((part) => part.animate({ opacity: [0, 0, 1], offset: [0, 0.3, 1] } as PropertyIndexedKeyframes, { duration: 380, easing: 'ease-out' })),
+    ];
+    return () => moves.forEach((a) => a.cancel());
+    // Only as it opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   useEffect(() => {
     if (isPresent) return;
     const el = ref.current;
@@ -338,7 +369,7 @@ function SheetPanel({
       ref={ref}
       role="dialog"
       aria-label={label}
-      className="sheet-in flex flex-col overflow-hidden rounded-t-[2rem] bg-surface-low shadow-2xl"
+      className={`${grow ? '' : 'sheet-in'} flex flex-col overflow-hidden rounded-t-[2rem] bg-surface-low shadow-2xl`}
       animate={height ? { height } : undefined}
       transition={expressive.defaultSpatial}
       style={{ maxHeight }}
