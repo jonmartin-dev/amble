@@ -1,4 +1,4 @@
-import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import {
   api,
   type ActivityPage,
@@ -70,25 +70,43 @@ export function useToday(who = 'me') {
   });
 }
 
+const loadQuery = (start: string, end: string, who: string) => ({
+  queryKey: ['load', start, end, who],
+  queryFn: () => get<{ days: DayLoad[] }>(`/load?start=${start}&end=${end}&who=${encodeURIComponent(who)}`),
+});
+
 export function useLoad(start: string, end: string, enabled = true, who = 'me') {
   return useQuery({
-    queryKey: ['load', start, end, who],
-    queryFn: () => get<{ days: DayLoad[] }>(`/load?start=${start}&end=${end}&who=${encodeURIComponent(who)}`),
+    ...loadQuery(start, end, who),
     select: (d) => d.days,
     enabled,
     placeholderData: keepPreviousData,
   });
 }
 
-export function useTasks(params: Record<string, string> = {}, enabled = true) {
+const tasksQuery = (params: Record<string, string>) => {
   const query = new URLSearchParams(params).toString();
+  return { queryKey: ['tasks', params], queryFn: () => get<{ tasks: Task[] }>(`/tasks${query ? `?${query}` : ''}`) };
+};
+
+export function useTasks(params: Record<string, string> = {}, enabled = true) {
   return useQuery({
-    queryKey: ['tasks', params],
-    queryFn: () => get<{ tasks: Task[] }>(`/tasks${query ? `?${query}` : ''}`),
+    ...tasksQuery(params),
     select: (d) => d.tasks,
     placeholderData: keepPreviousData,
     enabled,
   });
+}
+
+/**
+ * Reads a stretch of days ahead of time, as the calendar does for the week or month on either side,
+ * so paging to it shows it whole the moment it slides in rather than filling in as it lands.
+ */
+export function prefetchDays(qc: QueryClient, start: string, end: string, who: string) {
+  const fresh = { staleTime: 30_000 };
+  void qc.prefetchQuery({ ...loadQuery(start, end, who), ...fresh });
+  void qc.prefetchQuery({ ...tasksQuery({ status: 'all', who, from: start, to: end }), ...fresh });
+  if (who === 'me') void qc.prefetchQuery({ ...eventsQuery(start, end), ...fresh });
 }
 
 /** One task. Any task already showing in a list opens straight away, offline too, from that copy. */
@@ -155,10 +173,14 @@ export function useServerSettings(enabled = true) {
 }
 
 /** Your own calendar events between two dates. */
+const eventsQuery = (start: string, end: string) => ({
+  queryKey: ['events', start, end],
+  queryFn: () => get<{ events: CalendarEvent[] }>(`/events?start=${start}&end=${end}`),
+});
+
 export function useEvents(start: string, end: string, enabled = true) {
   return useQuery({
-    queryKey: ['events', start, end],
-    queryFn: () => get<{ events: CalendarEvent[] }>(`/events?start=${start}&end=${end}`),
+    ...eventsQuery(start, end),
     select: (d) => d.events,
     enabled,
     placeholderData: keepPreviousData,

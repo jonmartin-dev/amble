@@ -1,5 +1,6 @@
 import { AnimatePresence, motion, type Variants } from 'motion/react';
-import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 import Check from '~icons/material-symbols/check-rounded';
 import ChevronLeft from '~icons/material-symbols/chevron-left-rounded';
 import ChevronRight from '~icons/material-symbols/chevron-right-rounded';
@@ -30,7 +31,7 @@ import {
 } from '../lib/dates.ts';
 import { expressive, standard } from '../lib/motion.ts';
 import { useTaskActions } from '../lib/mutations.ts';
-import { useEvents, useGaps, useLoad, useMe, useMembers, useTasks } from '../lib/queries.ts';
+import { prefetchDays, useEvents, useGaps, useLoad, useMe, useMembers, useTasks } from '../lib/queries.ts';
 
 type View = 'week' | 'month';
 const VIEW_KEY = 'almanac.calendarView';
@@ -309,10 +310,8 @@ export function Calendar() {
   const [moving, setMoving] = useState<Task | null>(null);
   const [planning, setPlanning] = useState(false);
 
-  const dates =
-    view === 'week'
-      ? Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(anchor, weekStart), i))
-      : monthGrid(anchor, weekStart);
+  const datesAround = (a: string) => (view === 'week' ? Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(a, weekStart), i)) : monthGrid(a, weekStart));
+  const dates = datesAround(anchor);
   const start = dates[0]!;
   const end = dates.at(-1)!;
   const { data: loadDays } = useLoad(start, end, true, who);
@@ -332,6 +331,17 @@ export function Calendar() {
       // Not remembering the choice is fine.
     }
   };
+  // The week or month either side, read ahead so it's all there as it slides in.
+  const qc = useQueryClient();
+  useEffect(() => {
+    for (const n of [-1, 1]) {
+      const near = datesAround(view === 'week' ? addDays(anchor, 7 * n) : addMonths(anchor, n));
+      prefetchDays(qc, near[0]!, near.at(-1)!, who);
+    }
+    // datesAround is made fresh each render from these.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qc, view, anchor, who, weekStart]);
+
   const step = (n: number) => {
     setDir(n);
     setAnchor((a) => (view === 'week' ? addDays(a, 7 * n) : addMonths(a, n)));
@@ -415,9 +425,11 @@ export function Calendar() {
         </button>
       </div>
 
+      {/* Kept on a layer of its own: settling, it would otherwise drop it, and a week's long list
+          redrawn into the page in that frame stalled the end of each slide on a phone. */}
       <div className="relative">
         <AnimatePresence mode="popLayout" initial={false} custom={dir}>
-          <motion.div key={`${view} ${start}`} custom={dir} variants={slide} initial="enter" animate="center" exit="leave">
+          <motion.div key={`${view} ${start}`} custom={dir} variants={slide} initial="enter" animate="center" exit="leave" className="will-change-transform">
             {view === 'week' ? (
               <>
                 <WeekBars dates={dates} loads={loads} today={today} onPick={setOpenDay} />
