@@ -568,6 +568,68 @@ html[data-morph='close']::view-transition-new(root) {
   }
 }
 
+/* Part of a page opening or closing (unfold() in lib/morph.ts): each part marked data-unfold
+   glides to its new place on a spring; a new one fades in a little after it starts, once the parts
+   below have made room, and one that's going fades out first. A data-unfold="box" (a card behind
+   rows) grows and shrinks as itself, its corners staying round, with the rows in it moving as parts.
+   Everything else on the page changes at once, as it looks the same either way. */
+html[data-morph='unfold'] [data-unfold] {
+  view-transition-name: match-element;
+  view-transition-class: part;
+}
+html[data-morph='unfold'] [data-unfold='box'] {
+  view-transition-class: box;
+}
+html[data-morph='unfold']::view-transition-group(*.part),
+html[data-morph='unfold']::view-transition-group(*.box) {
+  animation-duration: var(--card-ms, 450ms);
+  animation-timing-function: var(--card-easing, cubic-bezier(0.2, 0, 0, 1));
+}
+/* A part that's there before and after keeps the browser's own cross-fade, timed alike so it never
+   dims on the way; only a part that comes or goes fades on its own. */
+html[data-morph='unfold']::view-transition-old(*.part),
+html[data-morph='unfold']::view-transition-new(*.part) {
+  animation-duration: 200ms;
+  animation-timing-function: ease;
+}
+html[data-morph='unfold']::view-transition-old(*.part):only-child {
+  animation: card-fade 120ms ease-in reverse both;
+}
+html[data-morph='unfold']::view-transition-new(*.part):only-child {
+  animation: unfold-in 260ms var(--spring-fast, ease-out) calc(var(--card-ms, 450ms) * 0.3) both;
+}
+@keyframes unfold-in {
+  from {
+    opacity: 0;
+    transform: translateY(-0.5rem);
+  }
+}
+/* A box's two pictures are only its background, so both show whole, the taller one covering the
+   other, cut to the box's size as it changes rather than stretched. */
+html[data-morph='unfold']::view-transition-image-pair(*.box) {
+  overflow: clip;
+  border-radius: 1.75rem;
+  isolation: auto;
+}
+html[data-morph='unfold']::view-transition-old(*.box),
+html[data-morph='unfold']::view-transition-new(*.box) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+html[data-morph='unfold']::view-transition-new(*.box):only-child {
+  animation: unfold-in 260ms var(--spring-fast, ease-out) calc(var(--card-ms, 450ms) * 0.3) both;
+}
+html[data-morph='unfold']::view-transition-old(*.box):only-child {
+  animation: card-fade 120ms ease-in reverse both;
+}
+html[data-morph='unfold']::view-transition-old(root) {
+  animation: none;
+  opacity: 0;
+}
+html[data-morph='unfold']::view-transition-new(root) {
+  animation: none;
+}
+
 /* Finishing a task: a wash of color sweeps across the row, then fades, and a line draws itself
    through the title. */
 .row-sweep {

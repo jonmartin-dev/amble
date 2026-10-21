@@ -150,7 +150,8 @@ export function ActivityRow({ entry, ctx, showTime = true }: { entry: ActivityEn
   const { text, note } = describe(entry, ctx);
   const day = new Date(entry.at);
   return (
-    <li className="flex gap-3 py-2.5">
+    // A part of the page that glides when History shows more (unfold() in lib/morph.ts).
+    <li data-unfold className="flex gap-3 py-2.5">
       <Avatar member={member ?? { name: entry.memberName ?? '?', color: 'teal', avatarUrl: null }} size={32} />
       <div className="min-w-0 flex-1">
         <p className="leading-snug">

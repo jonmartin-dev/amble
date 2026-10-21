@@ -83,7 +83,29 @@ export function morph(kind: 'open' | 'close', from: HTMLElement | null, update: 
 
 let latest = {};
 
+/**
+ * Opens or closes part of a page (More details, say) with the same API: each part marked
+ * `data-unfold` glides to its new place, a part that's new fades in once there's room for it, one
+ * that's going fades first, and a `data-unfold="box"` grows or shrinks around them. The browser
+ * animates pictures of the parts, so the page's layout changes once rather than on every frame.
+ * The look is in styles.css, under "unfold". `update` changes the page (React's flushSync).
+ */
+export function unfold(update: () => void) {
+  const start = typeof document !== 'undefined' && 'startViewTransition' in document ? document.startViewTransition.bind(document) : null;
+  if (!start || reduced()) return update();
+  const root = document.documentElement;
+  const mine = (latest = {});
+  root.dataset.morph = 'unfold';
+  root.style.setProperty('--card-ms', `${UNFOLD.duration}ms`);
+  root.style.setProperty('--card-easing', UNFOLD.easing);
+  void start(update).finished.finally(() => {
+    if (latest === mine) delete root.dataset.morph;
+  });
+}
+
 const OPEN = springEasing(0.68, 230);
+// Material's expressive default spatial spring, as the parts of a page move.
+const UNFOLD = springEasing(0.8, 380);
 const TRAVEL = springEasing(0.92, 230);
 const CLOSE = springEasing(0.85, 380);
 

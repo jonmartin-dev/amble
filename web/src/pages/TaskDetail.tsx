@@ -1,6 +1,7 @@
 import { useNavigate, useRouter } from '@tanstack/react-router';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { flushSync } from 'react-dom';
 import Close from '~icons/material-symbols/close-rounded';
 import ExpandMore from '~icons/material-symbols/expand-more-rounded';
 import Delete from '~icons/material-symbols/delete-outline-rounded';
@@ -27,13 +28,14 @@ import { describeRepeat, repeatOn } from '../../../shared/repeat.ts';
 import { BackButton, Checkbox, Chip, minutesLabel, ScrollRow, SectionTitle } from '../components/ui.tsx';
 import type { Task, TimeOfDay } from '../lib/api.ts';
 import { dayLabel, firstName, todayIso } from '../lib/dates.ts';
+import { unfold } from '../lib/morph.ts';
 import { expressive } from '../lib/motion.ts';
 import { useTaskActions, type TaskPatch } from '../lib/mutations.ts';
 import { useGroups, useMe, useMembers, useTask, useTaskActivity, useTaskGap } from '../lib/queries.ts';
 
 function Field({ icon, label, children }: { icon: ReactNode; label: string; children: ReactNode }) {
   return (
-    <div className="flex items-start gap-4 py-3">
+    <div data-unfold className="flex items-start gap-4 py-3">
       <span className="mt-1.5 text-on-surface-variant">{icon}</span>
       <div className="min-w-0 flex-1">
         <p className="text-xs text-on-surface-variant">{label}</p>
@@ -42,6 +44,16 @@ function Field({ icon, label, children }: { icon: ReactNode; label: string; chil
     </div>
   );
 }
+
+// A step or link coming and going, as a list's items do (ListPage's ItemRow). Each list's rows
+// move only when one comes or goes (layoutDependency), not when the page around them changes.
+const ROW_MOTION = {
+  layout: 'position',
+  initial: { opacity: 0, y: -6 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0, x: 48, transition: { duration: 0.18 } },
+  transition: expressive.defaultSpatial,
+} as const;
 
 function ChipRow({ children }: { children: ReactNode }) {
   return <ScrollRow className="-mr-4 flex gap-2 overflow-x-auto pr-4 pb-1">{children}</ScrollRow>;
@@ -115,6 +127,8 @@ function Detail({ task }: { task: Task }) {
   )
     .filter(([part]) => !kept.current.has(part))
     .map(([, words]) => words);
+  // Loaded with the page, so History is there the moment More details opens.
+  useTaskActivity(task.id);
   // Due later and not on a day yet: the day with the most room before the deadline.
   const wantsDay = task.status === 'open' && !task.plannedDate && !!task.dueDate && task.dueDate >= today;
   const { data: gap } = useTaskGap(task.id, wantsDay);
@@ -193,7 +207,8 @@ function Detail({ task }: { task: Task }) {
         )}
       </AnimatePresence>
 
-      <div className="mt-4 divide-y divide-outline-variant/40 rounded-[1.75rem] bg-surface-low px-4 empty:hidden">
+      {/* Kept on the page with nothing in it, so opening More details grows it from nothing. */}
+      <div data-unfold="box" className="mt-4 divide-y divide-outline-variant/40 rounded-[1.75rem] bg-surface-low px-4 empty:mt-0">
         {shows('day') && (
           <Field icon={<Event className="size-5" />} label="Planned for">
             <button type="button" onClick={() => setMoving(true)} className="rounded-full bg-surface-high px-4 py-2 text-sm font-medium">
@@ -377,8 +392,9 @@ function Detail({ task }: { task: Task }) {
       {tucked.length > 0 && (
         <button
           type="button"
-          onClick={() => setMore(!more)}
+          onClick={() => unfold(() => flushSync(() => setMore(!more)))}
           aria-expanded={more}
+          data-unfold
           className="mt-2 flex w-full items-center gap-3 rounded-full px-4 py-3 text-left text-sm text-on-surface-variant"
         >
           <span className="min-w-0 flex-1">
@@ -390,7 +406,7 @@ function Detail({ task }: { task: Task }) {
       )}
 
       {shows('notes') && (
-        <>
+        <div data-unfold>
           <SectionTitle>Notes</SectionTitle>
           <textarea
             value={notes.value}
@@ -400,28 +416,30 @@ function Detail({ task }: { task: Task }) {
             aria-label="Notes"
             className="field-sizing-content min-h-24 w-full resize-none rounded-[1.75rem] bg-surface-low px-5 py-4 outline-none placeholder:text-on-surface-variant"
           />
-        </>
+        </div>
       )}
 
       {shows('steps') && (
-        <>
+        <div data-unfold>
           <SectionTitle>Steps</SectionTitle>
           <ul className="flex flex-col gap-1 rounded-[1.75rem] bg-surface-low p-2">
-            {task.subtasks.map((s) => (
-              <li key={s.id} className="flex items-center gap-3 rounded-2xl px-2 py-2">
-                <Checkbox
-                  checked={s.done}
-                  size={24}
-                  label={s.title}
-                  onChange={() => patch(s.done ? { uncheckSubtasks: [s.id] } : { checkSubtasks: [s.id] })}
-                />
-                <span className={`flex-1 ${s.done ? 'text-on-surface-variant line-through' : ''}`}>{s.title}</span>
-                <button type="button" onClick={() => patch({ removeSubtasks: [s.id] })} aria-label={`Remove ${s.title}`} className="grid size-9 place-items-center rounded-full text-on-surface-variant hover:bg-surface-high">
-                  <Close className="size-5" aria-hidden />
-                </button>
-              </li>
-            ))}
-            <li>
+            <AnimatePresence initial={false}>
+              {task.subtasks.map((s) => (
+                <motion.li key={s.id} {...ROW_MOTION} layoutDependency={task.subtasks.length} className="flex items-center gap-3 rounded-2xl px-2 py-2">
+                  <Checkbox
+                    checked={s.done}
+                    size={24}
+                    label={s.title}
+                    onChange={() => patch(s.done ? { uncheckSubtasks: [s.id] } : { checkSubtasks: [s.id] })}
+                  />
+                  <span className={`flex-1 ${s.done ? 'text-on-surface-variant line-through' : ''}`}>{s.title}</span>
+                  <button type="button" onClick={() => patch({ removeSubtasks: [s.id] })} aria-label={`Remove ${s.title}`} className="grid size-9 place-items-center rounded-full text-on-surface-variant hover:bg-surface-high">
+                    <Close className="size-5" aria-hidden />
+                  </button>
+                </motion.li>
+              ))}
+            </AnimatePresence>
+            <motion.li layout="position" layoutDependency={task.subtasks.length} transition={expressive.defaultSpatial}>
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -437,30 +455,32 @@ function Detail({ task }: { task: Task }) {
                   className="w-full rounded-2xl bg-transparent px-3 py-2.5 outline-none placeholder:text-on-surface-variant"
                 />
               </form>
-            </li>
+            </motion.li>
           </ul>
-        </>
+        </div>
       )}
 
       {shows('links') && (
-        <>
+        <div data-unfold>
           <SectionTitle>Links</SectionTitle>
           <ul className="flex flex-col gap-1 rounded-[1.75rem] bg-surface-low p-2">
-            {task.links.map((l) => (
-              <li key={l.id} className="flex items-center gap-3 rounded-2xl px-2 py-1">
-                <LinkIcon className="size-5 shrink-0 text-on-surface-variant" aria-hidden />
-                <a href={l.url} target="_blank" rel="noreferrer noopener" className="min-w-0 flex-1 truncate py-2 text-primary">
-                  {l.title ?? l.url.replace(/^https?:\/\/(www\.)?/, '')}
-                </a>
-                <a href={l.url} target="_blank" rel="noreferrer noopener" aria-label="Open" className="grid size-9 place-items-center rounded-full text-on-surface-variant hover:bg-surface-high">
-                  <OpenInNew className="size-5" aria-hidden />
-                </a>
-                <button type="button" onClick={() => patch({ removeLinks: [l.id] })} aria-label="Remove link" className="grid size-9 place-items-center rounded-full text-on-surface-variant hover:bg-surface-high">
-                  <Close className="size-5" aria-hidden />
-                </button>
-              </li>
-            ))}
-            <li>
+            <AnimatePresence initial={false}>
+              {task.links.map((l) => (
+                <motion.li key={l.id} {...ROW_MOTION} layoutDependency={task.links.length} className="flex items-center gap-3 rounded-2xl px-2 py-1">
+                  <LinkIcon className="size-5 shrink-0 text-on-surface-variant" aria-hidden />
+                  <a href={l.url} target="_blank" rel="noreferrer noopener" className="min-w-0 flex-1 truncate py-2 text-primary">
+                    {l.title ?? l.url.replace(/^https?:\/\/(www\.)?/, '')}
+                  </a>
+                  <a href={l.url} target="_blank" rel="noreferrer noopener" aria-label="Open" className="grid size-9 place-items-center rounded-full text-on-surface-variant hover:bg-surface-high">
+                    <OpenInNew className="size-5" aria-hidden />
+                  </a>
+                  <button type="button" onClick={() => patch({ removeLinks: [l.id] })} aria-label="Remove link" className="grid size-9 place-items-center rounded-full text-on-surface-variant hover:bg-surface-high">
+                    <Close className="size-5" aria-hidden />
+                  </button>
+                </motion.li>
+              ))}
+            </AnimatePresence>
+            <motion.li layout="position" layoutDependency={task.links.length} transition={expressive.defaultSpatial}>
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -478,20 +498,23 @@ function Detail({ task }: { task: Task }) {
                   className="w-full rounded-2xl bg-transparent px-3 py-2.5 outline-none placeholder:text-on-surface-variant"
                 />
               </form>
-            </li>
+            </motion.li>
           </ul>
-
-        </>
+        </div>
       )}
 
       {shows('files') && (
-        <>
+        <div data-unfold>
           <SectionTitle>Files</SectionTitle>
           <TaskFiles task={task} />
-        </>
+        </div>
       )}
 
-      {more && <History task={task} />}
+      {more && (
+        <div data-unfold>
+          <History task={task} />
+        </div>
+      )}
 
       <ReminderSheet task={task} open={reminding} onClose={() => setReminding(false)} />
       <MoveSheet task={moving ? task : null} today={today} onClose={() => setMoving(false)} />
@@ -529,7 +552,7 @@ function History({ task }: { task: Task }) {
       <SectionTitle
         action={
           entries.length > HISTORY_PREVIEW && (
-            <button type="button" onClick={() => setAll((v) => !v)} className="rounded-full px-3 py-1 text-sm font-medium text-primary hover:bg-surface-high">
+            <button type="button" onClick={() => unfold(() => flushSync(() => setAll((v) => !v)))} className="rounded-full px-3 py-1 text-sm font-medium text-primary hover:bg-surface-high">
               {all ? 'Show less' : `Show all ${entries.length}`}
             </button>
           )
@@ -537,7 +560,7 @@ function History({ task }: { task: Task }) {
       >
         History
       </SectionTitle>
-      <ul className="rounded-[1.75rem] bg-surface-low px-4 py-1">
+      <ul data-unfold="box" className="rounded-[1.75rem] bg-surface-low px-4 py-1">
         {shown.map((e) => (
           <ActivityRow key={e.id} entry={e} ctx={ctx} showTime={false} />
         ))}

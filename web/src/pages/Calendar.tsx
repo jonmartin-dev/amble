@@ -102,6 +102,9 @@ function Gaps({ gaps, today }: { gaps: DayPick[]; today: string }) {
             <motion.li
               key={g.task.id}
               layout
+              // The rest of them, shown with "more", unfold in below.
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
               transition={expressive.defaultSpatial}
               className="flex items-center gap-3 rounded-2xl bg-surface-high py-2 pr-2 pl-4"
