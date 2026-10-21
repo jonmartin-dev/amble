@@ -2,8 +2,8 @@
 // Needs an Amble server with AMBLE_DEV_LOGIN=1 serving the built app on a demo database (see
 // scripts/demo.ts), and Chrome installed.
 // Usage: node scripts/readme-shots.ts [email]   -> docs/screenshots/*.png
-// With AMBLE_SHOTS=play, the Play listing's phone screenshots instead: 1080x2160 (Play takes up to
-// 2:1), numbered in the listing's order, in fastlane/metadata/android/en-US/images/phoneScreenshots.
+// With AMBLE_SHOTS=play, the Play listing's phone screenshots instead: 1080x1920 (Play takes 9:16
+// only), numbered in the listing's order, in fastlane/metadata/android/en-US/images/phoneScreenshots.
 import fs from 'node:fs';
 import { chromium, type Page } from 'playwright-core';
 import { joinHousehold, local, syncNow } from './lib/household.ts';
@@ -89,7 +89,7 @@ const shots: Shot[] = [
 if (play) shots.sort((a, b) => PLAY_ORDER.indexOf(a.name) - PLAY_ORDER.indexOf(b.name));
 for (const [i, shot] of shots.entries()) {
   const context = await browser.newContext({
-    viewport: play ? { width: 405, height: 810 } : { width: 390, height: 844 },
+    viewport: play ? { width: 405, height: 720 } : { width: 390, height: 844 },
     deviceScaleFactor: play ? 1080 / 405 : 2,
     isMobile: true,
     hasTouch: true,
