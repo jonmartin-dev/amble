@@ -1,0 +1,49 @@
+{
+  "$schema": "./schema.json",
+  "format": 1,
+  "id": "routine",
+  "name": "Routine",
+  "description": "A checklist you run through again and again. Starts over when you’re done.",
+  "icon": "repeat",
+  "color": "teal",
+  "placeholder": "Add a step",
+  "fields": {  },
+  "checked": "Done",
+  "actions": { "reset": true },
+  "kits": [
+    {
+      "name": "Before a trip",
+      "items": [
+        { "name": "Take out the trash" },
+        { "name": "Run the dishwasher" },
+        { "name": "Water the plants" },
+        { "name": "Set the thermostat" },
+        { "name": "Unplug small appliances" },
+        { "name": "Lock the windows" },
+        { "name": "Hold the mail" }
+      ]
+    },
+    {
+      "name": "Weekly reset",
+      "items": [
+        { "name": "Laundry" },
+        { "name": "Change the sheets" },
+        { "name": "Wipe the counters" },
+        { "name": "Vacuum" },
+        { "name": "Take out the recycling" },
+        { "name": "Plan the week’s meals" }
+      ]
+    },
+    {
+      "name": "Night",
+      "items": [
+        { "name": "Lock the doors" },
+        { "name": "Start the dishwasher" },
+        { "name": "Set out tomorrow’s things" },
+        { "name": "Charge phones" },
+        { "name": "Lights off" }
+      ]
+    }
+  ],
+  "hint": "Steps run through the same way each time."
+}

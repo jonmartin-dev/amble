@@ -1,0 +1,13 @@
+{
+  "$schema": "./schema.json",
+  "format": 1,
+  "id": "default",
+  "name": "Checklist",
+  "description": "A plain list. Checked items hide and can come back from history.",
+  "icon": "checklist",
+  "color": "green",
+  "placeholder": "Add an item",
+  "sections": { "label": "Section" },
+  "fields": { "quantity": true },
+  "checked": "Done"
+}

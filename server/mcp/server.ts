@@ -532,7 +532,7 @@ export function createMcpServer({
       const { open, checked } = getListItems(db, group, a.include_checked);
       const template = listTemplate(group.template);
       const sections = listSections(group, open.map((i) => i.section));
-      const trip = template.trip ? openTrip(db, group) : null;
+      const trip = template.actions?.trip ? openTrip(db, group) : null;
       return compact({
         list: group.name,
         kind: template.name,

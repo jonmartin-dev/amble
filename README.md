@@ -30,7 +30,7 @@ Status: early but usable. The day list, backlog, task details, smart add, repeat
 - Smart add: type anything into quick add ("call mom tomorrow evening, out of milk and eggs, Alex should mow every Saturday") and an AI model turns it into tasks, list items and changes to existing tasks, using what's already in the household. You review and edit each one before anything is saved. Optional, and it works with any provider's key: Claude Haiku, GPT-6 Luna, Gemini Flash-Lite or GLM Flash (both with free tiers), anything on OpenRouter, or a model on your own machine through Ollama or LM Studio. Set it up in Settings, AI, with a monthly spending cap. A phone that syncs with your own server can use the server's model instead, with no key of its own
 - Repeating tasks: on a schedule (every Sunday, the 1st, the 2nd Thursday, weekdays, seasonal months) or a set time after the last one was done, with skip and pause
 - Capacity learned from what each person finishes, so how full a day looks needs no setup; anyone can pin their own numbers. Tasks without a size get one from the AI model in the background, and Stats shows how good its guesses are
-- Lists from eleven templates: groceries that sort themselves by aisle as you type, shopping with links, prices and stores, packing lists from a kit that reset for the next trip, private gift ideas by person, errands by place, a meal plan whose ingredients go to Groceries in one tap, the hardware store, things to watch and read, places to try, and routines. Tap an item to check it off, hold it to change it, and change any list's sections. A grocery run plans as one task on the day with room, and shows what's left on the list
+- Lists from eleven templates: groceries that sort themselves by aisle as you type, shopping with links, prices and stores, packing lists from a kit that reset for the next trip, private gift ideas by person, errands by place, a meal plan whose ingredients go to Groceries in one tap, the hardware store, things to watch and read, places to try, and routines. Tap an item to check it off, hold it to change it, and change any list's sections. A grocery run plans as one task on the day with room, and shows what's left on the list. Each template is a JSON file in an open format ([templates/](templates/README.md)) that any app can use, and new ones are welcome
 - A household: hand tasks to each other with a note, or share them with anyone
 - Works offline: everything is on the device, so nothing waits for a connection. When copies meet again they merge field by field, and if two people changed the same thing, the later change wins
 - A copy to keep: Settings, Sync and backup saves everything on the device in one file, photos and files on tasks included (but not your AI key or sync sign-in). On Android it goes wherever you pick, Google Drive included. A new phone starts from it on the first screen
@@ -129,8 +129,8 @@ The server sends no notifications. A reminder set through Claude reaches the And
 
 ## Contributing
 
-Bug reports and pull requests are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md).
+Bug reports, ideas and pull requests are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md). A new list template is a good first one.
 
 ## License
 
-[AGPL-3.0](LICENSE)
+[AGPL-3.0](LICENSE), except the list templates in `templates/`, which are [CC0](templates/LICENSE) so any app can use them.

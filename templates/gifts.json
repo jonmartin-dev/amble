@@ -1,0 +1,15 @@
+{
+  "$schema": "./schema.json",
+  "format": 1,
+  "id": "gifts",
+  "name": "Gift ideas",
+  "description": "Ideas by who they’re for, with links and prices. Private, so nobody sees their own.",
+  "icon": "redeem",
+  "color": "rose",
+  "placeholder": "Add a gift idea",
+  "sections": { "label": "For", "none": "Not sure who yet", "free": true },
+  "fields": { "url": true, "price": true },
+  "checked": "Given",
+  "private": true,
+  "hint": "Gift ideas for people, each under who it is for."
+}

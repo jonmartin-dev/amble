@@ -1,0 +1,14 @@
+{
+  "$schema": "./schema.json",
+  "format": 1,
+  "id": "places",
+  "name": "Places to try",
+  "description": "Restaurants, day trips and things to do, for when you can’t think of one.",
+  "icon": "map",
+  "color": "green",
+  "placeholder": "Add a place",
+  "sections": { "label": "Kind", "options": ["Restaurants", "Coffee & treats", "Day trips", "Things to do"] },
+  "fields": { "url": true },
+  "checked": "Been there",
+  "hint": "Restaurants, cafes, day trips and outings to try someday."
+}

@@ -1,0 +1,27 @@
+{
+  "$schema": "./schema.json",
+  "format": 1,
+  "id": "hardware",
+  "name": "Hardware store",
+  "description": "Sorted by department, and the trip plans as one task.",
+  "icon": "hardware",
+  "color": "violet",
+  "placeholder": "Add something to get",
+  "sections": {
+    "label": "Department",
+    "options": [
+      "Lumber & building",
+      "Paint",
+      "Plumbing",
+      "Electrical",
+      "Tools",
+      "Fasteners",
+      "Garden",
+      "Cleaning & storage"
+    ]
+  },
+  "fields": { "quantity": true, "price": true },
+  "checked": "Got",
+  "actions": { "trip": { "title": "Hardware store run", "minutes": 45 } },
+  "hint": "Supplies for projects and repairs around the house."
+}

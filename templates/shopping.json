@@ -1,0 +1,13 @@
+{
+  "$schema": "./schema.json",
+  "format": 1,
+  "id": "shopping",
+  "name": "Shopping",
+  "description": "Things to buy, with a link, price and store for each.",
+  "icon": "shopping-bag",
+  "color": "orange",
+  "placeholder": "Add something to buy",
+  "fields": { "url": true, "price": true, "store": true },
+  "checked": "Bought",
+  "hint": "One-off purchases that are not groceries: gear, clothes, things for the house."
+}

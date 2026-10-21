@@ -1,0 +1,15 @@
+{
+  "$schema": "./schema.json",
+  "format": 1,
+  "id": "errands",
+  "name": "Errand run",
+  "description": "Stops grouped by place, and the whole run plans as one task.",
+  "icon": "location-on",
+  "color": "teal",
+  "placeholder": "Add an errand",
+  "sections": { "label": "Place", "none": "Anywhere", "free": true },
+  "fields": { "quantity": true },
+  "checked": "Done",
+  "actions": { "trip": { "title": "Errand run", "minutes": 60 } },
+  "hint": "Quick stops while out: returns, pickups, drop-offs, each under the place it happens."
+}

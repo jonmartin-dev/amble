@@ -157,8 +157,9 @@ export function ListPage({ groupId }: { groupId: string }) {
   const stores = useMemo(() => [...new Set([...open, ...checked].map((i) => i.store).filter((s): s is string => !!s))].sort(), [open, checked]);
   const trip = openTasks.find((t) => t.listId === groupId && t.status === 'open');
   const title = group ? tripTitle(group) : null;
-  // Where a meal's ingredients go: the household's groceries list.
-  const sendTo = template.fields.parts ? (groups.find((g) => g.kind === 'list' && g.template === 'groceries') ?? null) : null;
+  // Where a meal's ingredients go: the household's list of the kind the template names, like Groceries.
+  const partsTo = template.actions?.sendParts;
+  const sendTo = partsTo ? (groups.find((g) => g.kind === 'list' && g.template === partsTo) ?? null) : null;
 
   // A store filter or a section being added to lets go once that store or section is gone (edited
   // away, renamed, removed), rather than hiding items or sending new ones somewhere unseen.
@@ -203,7 +204,7 @@ export function ListPage({ groupId }: { groupId: string }) {
   const planTrip = (date: string | null) => {
     if (!group || !title) return;
     const errands = groups.find((g) => g.kind === 'tasks' && g.name.toLowerCase() === 'errands');
-    actions.create({ title, listId: group.id, groupId: errands?.id ?? null, plannedDate: date, estimateMinutes: template.trip?.minutes ?? null });
+    actions.create({ title, listId: group.id, groupId: errands?.id ?? null, plannedDate: date, estimateMinutes: template.actions?.trip?.minutes ?? null });
     snack({ message: date ? `${title} planned for ${dayLabel(date, today, true)}` : `${title} is in the backlog` });
   };
 
@@ -294,7 +295,7 @@ export function ListPage({ groupId }: { groupId: string }) {
         )}
       </header>
 
-      {group && (title || template.resettable || stores.length > 0) && (
+      {group && (title || template.actions?.reset || stores.length > 0) && (
         <ScrollRow className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4" aria-label="List actions">
           {title &&
             (trip ? (
@@ -311,7 +312,7 @@ export function ListPage({ groupId }: { groupId: string }) {
                 Plan the {title.toLowerCase()}
               </Chip>
             ))}
-          {template.resettable && (
+          {template.actions?.reset && (
             <Chip onClick={reset} icon={<RestartAlt />}>
               Start over
             </Chip>

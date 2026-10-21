@@ -46,13 +46,14 @@ Smart add, estimates and the planner's wording need an AI model: set one up in S
 | `server/local.ts`, `web/src/worker/` | Amble on the device: the API in a web worker on SQLite in WebAssembly (`server/db/wasm.ts`) |
 | `android/`, `web/src/lib/native.ts`, `capacitor.config.ts` | The Android app: Capacitor around the web app, with the phone's own notifications, calendars (`PhoneCalendarPlugin.java`), background check (`ReminderCheck.java`) and Google sign-in (`GoogleDrivePlugin.java`) |
 | `shared/` | Code the server and the app both use: list templates, repeat rules, smart add proposals |
+| `templates/` | The list templates, one JSON file each, in an open format ([templates/README.md](templates/README.md)) |
 | `web/src/` | The React app: `pages/`, `components/`, `lib/` (queries, writes to the device's database, theming, motion) and the service worker (`sw.ts`) |
 | `drizzle/` | Database migrations, applied when Amble starts, on a device or the server |
 | `skill/amble/` | The Claude skill that teaches Claude to use the connector the calm way |
 | `scripts/` | Demo data, screenshots, browser checks and the smart add eval |
 | `docs/` | Guides for self-hosters |
 
-A new list template makes a good first change: one entry in `shared/templates.ts`, plus its icon in `GROUP_ICONS` (`server/domain/household.ts`) and `web/src/components/icons.tsx`. The tests check that the three agree.
+A new list template makes a good first change: one JSON file in `templates/` and a line in `shared/templates.ts`. [templates/README.md](templates/README.md) describes the format, which is open for any app to use.
 
 ## Help wanted
 

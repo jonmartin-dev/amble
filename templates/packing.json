@@ -1,0 +1,106 @@
+{
+  "$schema": "./schema.json",
+  "format": 1,
+  "id": "packing",
+  "name": "Packing",
+  "description": "Reusable: uncheck everything for the next trip. Starts from a kit.",
+  "icon": "luggage",
+  "color": "blue",
+  "placeholder": "Add something to pack",
+  "sections": { "label": "Section", "options": ["Clothes", "Toiletries", "Tech", "Documents", "Kids", "Gear"] },
+  "fields": { "quantity": true },
+  "checked": "Packed",
+  "actions": { "reset": true },
+  "kits": [
+    {
+      "name": "Weekend away",
+      "items": [
+        { "name": "Socks", "section": "Clothes" },
+        { "name": "Underwear", "section": "Clothes" },
+        { "name": "Pajamas", "section": "Clothes" },
+        { "name": "Shirts", "section": "Clothes" },
+        { "name": "Pants", "section": "Clothes" },
+        { "name": "Toothbrush", "section": "Toiletries" },
+        { "name": "Toothpaste", "section": "Toiletries" },
+        { "name": "Deodorant", "section": "Toiletries" },
+        { "name": "Medications", "section": "Toiletries" },
+        { "name": "Phone charger", "section": "Tech" },
+        { "name": "Headphones", "section": "Tech" },
+        { "name": "ID", "section": "Documents" },
+        { "name": "Wallet", "section": "Documents" }
+      ]
+    },
+    {
+      "name": "Beach",
+      "items": [
+        { "name": "Swimsuit", "section": "Clothes" },
+        { "name": "Cover-up", "section": "Clothes" },
+        { "name": "Sandals", "section": "Clothes" },
+        { "name": "Sun hat", "section": "Clothes" },
+        { "name": "Sunglasses", "section": "Clothes" },
+        { "name": "Sunscreen", "section": "Toiletries" },
+        { "name": "After-sun lotion", "section": "Toiletries" },
+        { "name": "Toothbrush", "section": "Toiletries" },
+        { "name": "Beach towels", "section": "Gear" },
+        { "name": "Beach bag", "section": "Gear" },
+        { "name": "Water bottles", "section": "Gear" },
+        { "name": "Book", "section": "Gear" },
+        { "name": "Phone charger", "section": "Tech" }
+      ]
+    },
+    {
+      "name": "Camping",
+      "items": [
+        { "name": "Tent", "section": "Gear" },
+        { "name": "Sleeping bags", "section": "Gear" },
+        { "name": "Sleeping pads", "section": "Gear" },
+        { "name": "Headlamps", "section": "Gear" },
+        { "name": "Camp stove", "section": "Gear" },
+        { "name": "Fuel", "section": "Gear" },
+        { "name": "Lighter", "section": "Gear" },
+        { "name": "Cooler", "section": "Gear" },
+        { "name": "First aid kit", "section": "Gear" },
+        { "name": "Water filter", "section": "Gear" },
+        { "name": "Rain jacket", "section": "Clothes" },
+        { "name": "Warm layer", "section": "Clothes" },
+        { "name": "Hiking boots", "section": "Clothes" },
+        { "name": "Wool socks", "section": "Clothes" },
+        { "name": "Bug spray", "section": "Toiletries" },
+        { "name": "Sunscreen", "section": "Toiletries" },
+        { "name": "Toilet paper", "section": "Toiletries" }
+      ]
+    },
+    {
+      "name": "Flying",
+      "items": [
+        { "name": "Passport", "section": "Documents" },
+        { "name": "Boarding passes", "section": "Documents" },
+        { "name": "ID", "section": "Documents" },
+        { "name": "Phone charger", "section": "Tech" },
+        { "name": "Headphones", "section": "Tech" },
+        { "name": "Power bank", "section": "Tech" },
+        { "name": "Travel adapter", "section": "Tech" },
+        { "name": "Travel-size liquids", "section": "Toiletries" },
+        { "name": "Toothbrush", "section": "Toiletries" },
+        { "name": "Medications", "section": "Toiletries" },
+        { "name": "Neck pillow" },
+        { "name": "Snacks" },
+        { "name": "Empty water bottle" }
+      ]
+    },
+    {
+      "name": "Little ones",
+      "items": [
+        { "name": "Diapers", "section": "Kids" },
+        { "name": "Wipes", "section": "Kids" },
+        { "name": "Bottles", "section": "Kids" },
+        { "name": "Snacks", "section": "Kids" },
+        { "name": "Change of clothes", "section": "Kids" },
+        { "name": "Favorite toy", "section": "Kids" },
+        { "name": "Stroller", "section": "Kids" },
+        { "name": "Car seat", "section": "Kids" }
+      ]
+    }
+  ],
+  "hint": "What to bring on a trip."
+}

@@ -1,0 +1,231 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/jonmartin-dev/amble/main/templates/schema.json",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "format": {
+      "type": "number",
+      "const": 1,
+      "description": "The version of this format. A reader skips a template whose format is newer than it knows."
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "description": "Lowercase words joined by hyphens, unique, and the same for good: lists remember their template by it."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "What the picker calls it, and a new list’s name until someone changes it."
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "description": "One line for the picker: what this kind of list is for and what it does."
+    },
+    "icon": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "description": "A Material Symbols icon, by its name in lowercase with hyphens: \"shopping-cart\"."
+    },
+    "color": {
+      "type": "string",
+      "enum": [
+        "green",
+        "teal",
+        "lime",
+        "blue",
+        "violet",
+        "orange",
+        "rose"
+      ],
+      "description": "One of seven tones; each app draws its own shade of it."
+    },
+    "placeholder": {
+      "type": "string",
+      "minLength": 1,
+      "description": "What the add field says while it is empty."
+    },
+    "sections": {
+      "description": "How items are sorted under headings. Left out, a list is one plain run of items.",
+      "type": "object",
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "description": "What one section is called: \"Aisle\", \"For\", \"Day\"."
+        },
+        "options": {
+          "description": "The sections a new list starts with, in order. Each list can change its own.",
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "description": "A section."
+          }
+        },
+        "free": {
+          "description": "People name sections as they add, like who a gift is for.",
+          "type": "boolean"
+        },
+        "none": {
+          "description": "The heading for items in no section. \"Other\" when left out.",
+          "type": "string"
+        },
+        "days": {
+          "description": "The options are the weekdays Monday to Sunday, shown from today on, like a meal plan.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "label"
+      ],
+      "additionalProperties": false
+    },
+    "fields": {
+      "type": "object",
+      "properties": {
+        "quantity": {
+          "description": "How many or how much.",
+          "type": "boolean"
+        },
+        "url": {
+          "description": "A link.",
+          "type": "boolean"
+        },
+        "price": {
+          "description": "A price.",
+          "type": "boolean"
+        },
+        "store": {
+          "description": "Which store, to filter by on the way round.",
+          "type": "boolean"
+        },
+        "parts": {
+          "description": "A list of parts, like a meal’s ingredients.",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Extra fields each item can have. Every item has a name and a note."
+    },
+    "checked": {
+      "type": "string",
+      "minLength": 1,
+      "description": "What checked items are called, where they wait to be added again: \"Recently got\", \"Packed\"."
+    },
+    "actions": {
+      "description": "What the list itself can do, beyond adding and checking off.",
+      "type": "object",
+      "properties": {
+        "trip": {
+          "description": "The whole list plans as one task on a day, like a grocery run.",
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The task’s title: \"Grocery run\". A list with a name of its own uses that instead: \"Costco run\"."
+            },
+            "minutes": {
+              "type": "integer",
+              "minimum": 5,
+              "maximum": 480,
+              "description": "How long the trip takes, for planning the day around it."
+            }
+          },
+          "required": [
+            "title",
+            "minutes"
+          ],
+          "additionalProperties": false
+        },
+        "reset": {
+          "description": "\"Start over\" unchecks everything, for a list used again and again.",
+          "type": "boolean"
+        },
+        "sendParts": {
+          "description": "The id of a template: each item’s parts go to the household’s list of that kind in one tap, like a meal’s ingredients to Groceries.",
+          "type": "string",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "private": {
+      "description": "A new list of this kind starts out seen only by the person who made it, like gift ideas.",
+      "type": "boolean"
+    },
+    "kits": {
+      "description": "Ready-made items a new list can start with. The first is picked unless someone picks another or none.",
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "What the kit is called in the picker: \"Camping\"."
+          },
+          "items": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "What the item is called."
+                },
+                "section": {
+                  "description": "Which of the sections it goes in.",
+                  "type": "string"
+                },
+                "quantity": {
+                  "description": "How many or how much, as people write it: \"2\", \"1 lb\".",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "name",
+          "items"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "hint": {
+      "description": "A line for an AI that sorts what people type into lists: how this kind of list is used.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "format",
+    "id",
+    "name",
+    "description",
+    "icon",
+    "color",
+    "placeholder",
+    "fields",
+    "checked"
+  ],
+  "additionalProperties": false,
+  "title": "List template",
+  "description": "A kind of list, with its sections, item fields, actions and starter kits. See templates/README.md in the Amble repository.",
+  "patternProperties": {
+    "^x-": {}
+  }
+}

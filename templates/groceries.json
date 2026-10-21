@@ -1,0 +1,31 @@
+{
+  "$schema": "./schema.json",
+  "format": 1,
+  "id": "groceries",
+  "name": "Groceries",
+  "description": "Sorted by aisle as you type, with quantities and stores, so the shop goes in one pass.",
+  "icon": "shopping-cart",
+  "color": "lime",
+  "placeholder": "Add groceries",
+  "sections": {
+    "label": "Aisle",
+    "options": [
+      "Produce",
+      "Bakery",
+      "Deli",
+      "Meat & seafood",
+      "Dairy & eggs",
+      "Pantry",
+      "Snacks",
+      "Frozen",
+      "Drinks",
+      "Household",
+      "Personal care",
+      "Pets"
+    ]
+  },
+  "fields": { "quantity": true, "store": true },
+  "checked": "Recently got",
+  "actions": { "trip": { "title": "Grocery run", "minutes": 45 } },
+  "hint": "Food and household supplies bought at a grocery store."
+}

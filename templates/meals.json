@@ -1,0 +1,20 @@
+{
+  "$schema": "./schema.json",
+  "format": 1,
+  "id": "meals",
+  "name": "Meal plan",
+  "description": "Dinners for the next seven days, and their ingredients to Groceries in one tap.",
+  "icon": "dinner-dining",
+  "color": "orange",
+  "placeholder": "Add a meal",
+  "sections": {
+    "label": "Day",
+    "options": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+    "none": "Any day",
+    "days": true
+  },
+  "fields": { "parts": true },
+  "checked": "Cooked",
+  "actions": { "sendParts": "groceries" },
+  "hint": "Meals planned for days of the week, each with its ingredients."
+}

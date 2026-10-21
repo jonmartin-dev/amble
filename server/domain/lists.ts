@@ -291,7 +291,7 @@ export function planTrip(db: Db, actor: Actor, group: Group, plannedDate: string
   // Errands is where trips go, when the household has a group by that name.
   const errands = visibleGroups(db, actor.member.id).find((g) => g.kind === 'tasks' && g.name.toLowerCase() === 'errands');
   const [task] = createTasks(db, actor, [
-    { title, listId: group.id, groupId: errands?.id ?? null, plannedDate, estimateMinutes: listTemplate(group.template).trip!.minutes },
+    { title, listId: group.id, groupId: errands?.id ?? null, plannedDate, estimateMinutes: listTemplate(group.template).actions!.trip!.minutes },
   ]);
   return { task: task!, created: true };
 }

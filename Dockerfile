@@ -20,6 +20,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY package.json ./
 COPY server ./server
 COPY shared ./shared
+COPY templates ./templates
 COPY drizzle ./drizzle
 COPY --from=build /app/dist ./dist
 USER node

@@ -1,0 +1,14 @@
+{
+  "$schema": "./schema.json",
+  "format": 1,
+  "id": "watch",
+  "name": "Watch & read",
+  "description": "Movies, shows, books and more that someone recommended.",
+  "icon": "movie",
+  "color": "blue",
+  "placeholder": "Add a movie, show or book",
+  "sections": { "label": "Kind", "options": ["Movies", "Shows", "Books", "Podcasts", "Games"] },
+  "fields": { "url": true },
+  "checked": "Finished",
+  "hint": "Movies, shows, books, podcasts and games to get to."
+}
