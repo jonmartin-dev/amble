@@ -13,7 +13,7 @@ const WRITE_EVERY_MS = 1000;
 const SETTLE_MS = 50;
 
 /** Bump when a saved response's shape changes, so an old copy isn't read as a new one. */
-export const CACHE_VERSION = '2';
+export const CACHE_VERSION = '3';
 /**
  * How long a saved copy stays usable after the app last ran. Queries stay in memory as long, so it
  * must stay under setTimeout's limit (about 24.8 days): past that the timer fires at once and every
