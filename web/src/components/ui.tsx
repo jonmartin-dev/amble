@@ -349,20 +349,40 @@ function SheetPanel({
     // Only as it opens.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // The way out, started once however often this renders while it goes (safeToRemove is a new
+  // function each time).
+  const leaving = useRef<Animation | null>(null);
+  const remove = useRef(safeToRemove);
+  remove.current = safeToRemove;
   useEffect(() => {
-    if (isPresent) return;
     const el = ref.current;
-    if (!el || matchMedia('(prefers-reduced-motion: reduce)').matches) return safeToRemove();
+    if (isPresent) {
+      // Opened again before it was all the way out: back up from where it got to.
+      const out = leaving.current;
+      leaving.current = null;
+      if (out && el) {
+        el.style.pointerEvents = '';
+        const at = getComputedStyle(el).transform;
+        out.cancel();
+        el.animate([{ transform: at === 'none' ? 'translateY(0)' : at }, { transform: 'translateY(0)' }], { duration: 300, easing: EMPHASIZED });
+      }
+      return;
+    }
+    if (leaving.current) return;
+    if (!el || matchMedia('(prefers-reduced-motion: reduce)').matches) return remove.current?.();
     // Down from wherever it is, partway through a drag included, and no more taps on the way out.
     el.style.pointerEvents = 'none';
     const style = getComputedStyle(el);
     const from = style.transform === 'none' ? 'translateY(0)' : style.transform;
-    el.animate([{ transform: from }, { transform: 'translateY(100%)' }], {
+    const out = el.animate([{ transform: from }, { transform: 'translateY(100%)' }], {
       duration: 420,
       easing: style.getPropertyValue('--spring').trim() || 'ease-in',
       fill: 'forwards',
-    }).finished.then(safeToRemove, safeToRemove);
-  }, [isPresent, safeToRemove]);
+    });
+    leaving.current = out;
+    // Cancelled when it's opened again partway: then it stays.
+    out.finished.then(() => remove.current?.(), () => {});
+  }, [isPresent]);
 
   return (
     <motion.div
