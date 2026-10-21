@@ -711,66 +711,7 @@ html[data-morph='unfold']::view-transition-new(root) {
   }
 }
 
-/* Smart add reading along: a light moves through the words without stopping, each word brightening
-   as it's read and dimming again behind it, until the answer comes. Only opacity and transforms
-   move, which the phone keeps running even while the page is busy. */
-.read-word {
-  position: relative;
-  display: inline-block;
-  isolation: isolate;
-  animation-name: read-word;
-  animation-timing-function: linear;
-  animation-iteration-count: infinite;
-  animation-fill-mode: both;
-}
-.read-word::before {
-  content: '';
-  position: absolute;
-  inset: 0 -0.15em;
-  z-index: -1;
-  border-radius: 0.375rem;
-  background: var(--md-primary-container);
-  opacity: 0;
-  animation: inherit;
-  animation-name: read-word-light;
-}
-@keyframes read-word {
-  0% {
-    opacity: 0.45;
-    transform: none;
-  }
-  7% {
-    opacity: 1;
-    transform: translateY(-2px);
-  }
-  18% {
-    opacity: 1;
-    transform: none;
-  }
-  55% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0.45;
-  }
-}
-@keyframes read-word-light {
-  0% {
-    opacity: 0;
-    transform: scale(0.8);
-  }
-  7% {
-    opacity: 1;
-    transform: none;
-  }
-  22%,
-  100% {
-    opacity: 0;
-    transform: none;
-  }
-}
-
-/* Smart add's cards waiting to be filled in: they breathe, and a light sweeps across them. */
+/* Smart add's card waiting for the next proposal: it breathes, and a light sweeps across it. */
 .waiting-card {
   position: relative;
   overflow: hidden;
@@ -809,8 +750,6 @@ html[data-morph='unfold']::view-transition-new(root) {
   .enter-up,
   .enter-right,
   .burst-dot,
-  .read-word,
-  .read-word::before,
   .waiting-card,
   .waiting-card::after,
   .row-sweep,

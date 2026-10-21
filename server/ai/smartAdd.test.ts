@@ -9,7 +9,8 @@ import { createTasks, getTask, listTasks } from '../domain/tasks.ts';
 import { addDays, planningDate } from '../lib/dates.ts';
 import { applyProposals } from './apply.ts';
 import { createAi, monthSpendUsd, recordUsage, requireAi, AiUnavailable } from './client.ts';
-import { buildContext, toProposals, type SmartAddOutput } from './smartAdd.ts';
+import { buildContext, itemsSoFar, smartAdd, toProposals, type SmartAddOutput } from './smartAdd.ts';
+import { fakeAi } from './testing.ts';
 import { config } from '../config.ts';
 
 let db: Db;
@@ -178,6 +179,39 @@ describe('reminders in smart add', () => {
 
   it('tells Haiku the time now, so "in an hour" works', () => {
     expect(buildContext(db, jon).text).toMatch(/and it's \d{4}-\d{2}-\d{2}T\d{2}:\d{2} now/);
+  });
+});
+
+describe('reading the answer as it comes', () => {
+  const answer = {
+    items: [
+      task({ title: 'Call the {dentist}', notes: 'Ask about "Friday" \\ or Monday]' }),
+      { kind: 'add_to_list', list: 'l1', name: 'Eggs', quantity: '12', section: '', store: '', note: '' },
+      task({ title: 'Mow the lawn', steps: ['Edge', 'Bag it'] }),
+    ],
+    unclear: '',
+  };
+  const text = JSON.stringify(answer);
+
+  it('finds each item once it is written out in full, whatever its strings hold', () => {
+    const cut = (marker: string) => text.slice(0, text.indexOf(marker));
+    expect(itemsSoFar(cut('Call the'))).toEqual([]);
+    expect(itemsSoFar(cut('add_to_list'))).toEqual([answer.items[0]]);
+    expect(itemsSoFar(cut('Bag it'))).toEqual(answer.items.slice(0, 2));
+    expect(itemsSoFar(text)).toEqual(answer.items);
+    // Thinking and a fence before the JSON don't count, and nothing is read mid-thought.
+    expect(itemsSoFar(`<think>{"items": [{"x": 1}]}</think>\n\`\`\`json\n${text}`)).toEqual(answer.items);
+    expect(itemsSoFar(`<think>{"items": [{"x": 1}]}`)).toEqual([]);
+    // Keys written in another order, as a model only told the schema might.
+    expect(itemsSoFar('{"unclear": "", "items": [{"kind": "complete_task", "task": "t1"}, {"kind": ')).toEqual([{ kind: 'complete_task', task: 't1' }]);
+  });
+
+  it('hands over each proposal as the model writes it, the same ones it ends with', async () => {
+    const ai = fakeAi(() => ({ items: [task({ title: 'Call the dentist' }), task({ title: 'Mow the lawn' }), task({ title: '' })], unclear: '' }));
+    const seen: Proposal[] = [];
+    const result = await smartAdd(db, ai, jon, { text: 'call the dentist, mow the lawn', timezone: 'America/Chicago', onProposal: (p) => seen.push(p) });
+    expect(seen.map((p) => p.kind === 'task' && p.task.title)).toEqual(['Call the dentist', 'Mow the lawn']);
+    expect(seen).toEqual(result.proposals);
   });
 });
 

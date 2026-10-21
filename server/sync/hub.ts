@@ -8,6 +8,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { eq, or } from 'drizzle-orm';
 import { AiUnavailable, ask, effortFor, type Ai } from '../ai/client.ts';
+import { linesResponse } from '../../shared/lines.ts';
 import type { Context, Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { cors } from 'hono/cors';
@@ -188,7 +189,8 @@ export function registerSyncHub(
   });
 
   // A device with no model of its own asks the server's: the server keeps the key, meters the call
-  // against its monthly cap, and hands back the answer for the device to check.
+  // against its monthly cap, and hands back the answer for the device to check. Asked to stream, it
+  // sends the model's words a line at a time as they're written, then the answer.
   app.post('/sync/ai', async (c) => {
     const member = deviceMember(c);
     if (!member) return c.json({ error: 'Sign in again.' }, 401);
@@ -200,14 +202,15 @@ export function registerSyncHub(
         schema: z.record(z.string(), z.unknown()),
         effort: z.enum(['low', 'medium', 'high']).nullable(),
         maxTokens: z.number().int().min(1).max(32_000),
+        stream: z.boolean().optional(),
       })
       .safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: "That request doesn't look right." }, 400);
     const setup = ai.setup();
     if (!setup) return c.json({ error: 'No AI model is set up on the server.' }, 503);
     const req = parsed.data;
-    try {
-      const { output, usage } = await ask(db, ai, {
+    const call = (onText?: (piece: string) => void) =>
+      ask(db, ai, {
         system: req.system,
         content: req.content,
         schema: z.unknown(),
@@ -217,12 +220,28 @@ export function registerSyncHub(
         feature: req.feature,
         memberId: member.id,
         timezone: config.timezone,
+        onText,
       });
+    // The device falls back quietly, so this log is where the reason shows.
+    const failed = (err: AiUnavailable) => console.warn(`AI for a device (${req.feature}) failed:`, err.message);
+    if (req.stream) {
+      return linesResponse(async (write) => {
+        try {
+          const { output, usage } = await call((text) => write({ text }));
+          write({ output, usage });
+        } catch (err) {
+          if (!(err instanceof AiUnavailable)) console.error(`AI for a device (${req.feature}) broke:`, err);
+          else failed(err);
+          write({ error: err instanceof AiUnavailable ? err.message : 'Something went wrong on the server.' });
+        }
+      });
+    }
+    try {
+      const { output, usage } = await call();
       return c.json({ output, usage });
     } catch (err) {
       if (!(err instanceof AiUnavailable)) throw err;
-      // The device falls back quietly, so this log is where the reason shows.
-      console.warn(`AI for a device (${req.feature}) failed:`, err.message);
+      failed(err);
       return c.json({ error: err.message }, 503);
     }
   });

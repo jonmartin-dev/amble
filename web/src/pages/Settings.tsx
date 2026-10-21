@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import AnimationIcon from '~icons/material-symbols/animation-rounded';
 import Sparkle from '~icons/material-symbols/auto-awesome-outline-rounded';
 import Folder from '~icons/material-symbols/folder-outline-rounded';
@@ -15,7 +14,6 @@ import Policy from '~icons/material-symbols/policy-outline-rounded';
 import Timer from '~icons/material-symbols/timer-outline-rounded';
 import Trophy from '~icons/material-symbols/trophy-outline-rounded';
 import Widgets from '~icons/material-symbols/widgets-outline-rounded';
-import { MotionSheet } from '../components/MotionSheet.tsx';
 import { ListGroup, SectionTitle, SubpageHeader, Switch } from '../components/ui.tsx';
 import { type Member } from '../lib/api.ts';
 import { native, pinTodayWidget } from '../lib/native.ts';
@@ -40,7 +38,6 @@ export function Settings() {
   const taskGroups = (groups?.length ?? 0) - lists;
 
   const showStreaks = me?.showStreaks ?? true;
-  const [motion, setMotion] = useState(false);
   const { data: ai } = useAi();
   const { data: calendars } = useCalendars();
   const push = usePushState();
@@ -72,7 +69,7 @@ export function Settings() {
       <ListGroup
         rows={[
           { icon: <Palette className="size-6" />, title: 'Appearance', subtitle: 'Color, style, light and dark', to: '/appearance' },
-          { icon: <AnimationIcon className="size-6" />, title: 'Motion', subtitle: "Trying out: smart add's reading, and the extras", onClick: () => setMotion(true) },
+          { icon: <AnimationIcon className="size-6" />, title: 'Motion', subtitle: 'Gestures and little touches', to: '/settings/motion' },
           { icon: <Timer className="size-6" />, title: 'Daily capacity', subtitle: capacitySummary(me), to: '/settings/capacity' },
           { icon: <CalendarMonth className="size-6" />, title: 'Calendars', subtitle: calendarSummary, to: '/settings/calendars' },
           { icon: <Bell className="size-6" />, title: 'Notifications', subtitle: notificationSummary(push.state), to: '/settings/notifications' },
@@ -157,7 +154,6 @@ export function Settings() {
           { icon: <Policy className="size-6" />, title: 'Privacy', subtitle: 'What Amble keeps and why', to: '/privacy' },
         ]}
       />
-      <MotionSheet open={motion} onClose={() => setMotion(false)} />
     </>
   );
 }

@@ -189,6 +189,101 @@ describe('calling Anthropic for a device', () => {
   });
 });
 
+describe('streaming the answer as it is written', () => {
+  /** A body sent a piece at a time, `every` characters to a piece. */
+  const pieces = (text: string, every = 9) =>
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (let i = 0; i < text.length; i += every) controller.enqueue(new TextEncoder().encode(text.slice(i, i + every)));
+        controller.close();
+      },
+    });
+  const events = (list: unknown[], named = false) =>
+    list.map((e) => `${named ? `event: ${(e as { type: string }).type}\n` : ''}data: ${typeof e === 'string' ? e : JSON.stringify(e)}\n\n`).join('');
+  const half = Math.floor(good.length / 2);
+
+  it('reads an OpenAI-style answer as it comes, with its usage at the end', async () => {
+    const sent: Sent['body'][] = [];
+    const fetchImpl = (async (_url: string, init: RequestInit) => {
+      sent.push(JSON.parse(init.body as string));
+      const body = events([
+        { choices: [{ delta: { role: 'assistant', content: '' } }] },
+        { choices: [{ delta: { content: good.slice(0, half) } }] },
+        { choices: [{ delta: { content: good.slice(half) }, finish_reason: 'stop' }] },
+        { choices: [], usage: { prompt_tokens: 1200, completion_tokens: 80, prompt_tokens_details: { cached_tokens: 200 } } },
+        '[DONE]',
+      ]);
+      return new Response(pieces(body), { headers: { 'content-type': 'text/event-stream' } });
+    }) as unknown as typeof fetch;
+    const written: string[] = [];
+    const answer = await createAi(testConfig, undefined, fetchImpl).complete(setupFor('openai'), { ...request, onText: (p) => written.push(p) });
+    expect(sent[0]).toMatchObject({ stream: true, stream_options: { include_usage: true } });
+    expect(written).toEqual([good.slice(0, half), good.slice(half)]);
+    expect(answer).toMatchObject({ output: { items: [{ title: 'Call the dentist' }] }, usage: { input: 1000, output: 80, cached: 200 } });
+  });
+
+  it('asks again without streaming when a provider refuses it, and gets the answer all at once', async () => {
+    const { sent, fetchImpl } = provider({ status: 400, error: 'stream is not supported for this model' }, answered(good));
+    const written: string[] = [];
+    const answer = await createAi(testConfig, undefined, fetchImpl).complete(setupFor('custom'), { ...request, onText: (p) => written.push(p) });
+    expect(sent[1]!.body.stream).toBeUndefined();
+    expect(answer.output?.items).toHaveLength(1);
+    expect(written).toEqual([]);
+  });
+
+  it("reads Anthropic's answer as it comes", async () => {
+    const message = { id: 'msg_1', type: 'message', role: 'assistant', model: 'claude-haiku-5-5', content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 10, output_tokens: 1 } };
+    const fetchImpl = (async () => {
+      const body = events(
+        [
+          { type: 'message_start', message },
+          { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+          { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: good.slice(0, half) } },
+          { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: good.slice(half) } },
+          { type: 'content_block_stop', index: 0 },
+          { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 5 } },
+          { type: 'message_stop' },
+        ],
+        true,
+      );
+      return new Response(pieces(body), { headers: { 'content-type': 'text/event-stream' } });
+    }) as unknown as typeof fetch;
+    const ai = createAi(testConfig, undefined, fetchImpl);
+    const written: string[] = [];
+    const own = await ai.complete({ ...setupFor('anthropic'), apiKey: 'key-for-streaming' }, { ...request, onText: (p) => written.push(p) });
+    // And for a device, with its schema and nothing to check against here.
+    const forDevice = await ai.complete(
+      { ...setupFor('anthropic'), apiKey: 'key-for-streaming-a-device' },
+      { ...request, schema: z.unknown(), jsonSchema: strictSchema(Answer), onText: (p) => written.push(p) },
+    );
+    expect(written.join('')).toBe(good + good);
+    for (const answer of [own, forDevice]) expect(answer).toMatchObject({ output: { items: [{ title: 'Call the dentist' }] }, usage: { input: 10, output: 5 } });
+  });
+
+  it("passes on the words from the household's server a line at a time, and takes an answer all at once from one that can't", async () => {
+    const remote = () => ({ url: 'https://amble.test', token: 'device-token', provider: 'anthropic' as const, model: 'claude-haiku-5-5', effort: 'medium' as const });
+    const lines = [{ text: good.slice(0, half) }, { text: good.slice(half) }, { output: JSON.parse(good), usage: { input: 10, output: 5, cached: 0 } }];
+    const replies = [
+      new Response(pieces(lines.map((l) => `${JSON.stringify(l)}\n`).join(''), 5), { headers: { 'content-type': 'application/x-ndjson' } }),
+      new Response(JSON.stringify(lines[2]), { headers: { 'content-type': 'application/json' } }),
+      new Response(pieces(`${JSON.stringify(lines[0])}\n${JSON.stringify({ error: 'This month’s AI budget is used up.' })}\n`), { headers: { 'content-type': 'application/x-ndjson' } }),
+    ];
+    const sent: Record<string, unknown>[] = [];
+    const fetchImpl = (async (_url: string, init: RequestInit) => {
+      sent.push(JSON.parse(init.body as string));
+      return replies.shift()!;
+    }) as unknown as typeof fetch;
+    const ai = createAi(testConfig, undefined, fetchImpl, undefined, remote);
+    const written: string[] = [];
+    const streamed = await ai.complete(ai.setup()!, { ...request, onText: (p) => written.push(p) });
+    expect(sent[0]).toMatchObject({ stream: true });
+    expect(written).toEqual([good.slice(0, half), good.slice(half)]);
+    expect(streamed.output?.items).toHaveLength(1);
+    expect((await ai.complete(ai.setup()!, { ...request, onText: () => {} })).output?.items).toHaveLength(1);
+    await expect(ai.complete(ai.setup()!, { ...request, onText: () => {} })).rejects.toThrow(/budget/);
+  });
+});
+
 describe('AI settings', () => {
   let db: Db;
   beforeEach(() => {

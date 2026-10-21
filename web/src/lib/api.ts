@@ -1,4 +1,5 @@
 import type { AiEffort, AiProviderId } from '../../../shared/ai.ts';
+import { isLines, readLines } from '../../../shared/lines.ts';
 import type { Proposal } from '../../../shared/proposals.ts';
 import type { Repeat } from '../../../shared/repeat.ts';
 import { basePath, deviceFetch } from './device.ts';
@@ -28,7 +29,8 @@ export function send(path: string, init?: RequestInit): Promise<Response> {
   return deviceFetch(path, init);
 }
 
-export async function api<T>(path: string, init?: RequestInit): Promise<T> {
+/** A JSON request: the answer once it's in, or an ApiError (status 0 when it never got there). */
+async function reach(path: string, init?: RequestInit): Promise<Response> {
   let res: Response;
   try {
     res = await send(path, {
@@ -43,8 +45,20 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     const body = (await res.json().catch(() => null)) as { error?: string } | null;
     throw new ApiError(res.status, body?.error ?? `Request failed (${res.status})`);
   }
+  return res;
+}
+
+export async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await reach(path, init);
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
+}
+
+/** A request whose answer comes a line at a time: each line's object goes to `onLine` as it arrives. An answer sent all at once is one line. */
+export async function apiLines<T>(path: string, init: RequestInit, onLine: (line: T) => void): Promise<void> {
+  const res = await reach(path, init);
+  if (!isLines(res) || !res.body) return onLine((await res.json()) as T);
+  await readLines(res.body, (line) => onLine(JSON.parse(line) as T));
 }
 
 export interface Member {
@@ -330,9 +344,9 @@ export interface ServerSettings {
   drive: { account: string | null; on: boolean; name: string | null; syncedAt: string | null; error: string | null } | null;
 }
 
-export type SmartAddResponse =
-  | { proposals: Proposal[]; unclear: string | null; usage: { inputTokens: number; outputTokens: number; ms: number } }
-  | { fallback: string };
+export type SmartAddResult = { proposals: Proposal[]; unclear: string | null; usage: { inputTokens: number; outputTokens: number; ms: number } };
+/** One line of smart add's answer as it's written: a proposal, then the whole answer, or why there's none. */
+export type SmartAddLine = { proposal: Proposal } | { result: SmartAddResult } | { fallback: string } | { error: string } | SmartAddResult;
 
 export interface CapacityDay {
   weekday: number;

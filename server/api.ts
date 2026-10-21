@@ -3,6 +3,7 @@
 import { count, eq, isNull } from 'drizzle-orm';
 import type { Context, Hono } from 'hono';
 import { z } from 'zod';
+import { linesResponse } from '../shared/lines.ts';
 import type { AddHints, Proposal } from '../shared/proposals.ts';
 import { applyOrganize, applyProposals } from './ai/apply.ts';
 import { organizeBacklog, planMyWeek, type OrganizeSuggestion } from './ai/plan.ts';
@@ -814,11 +815,30 @@ export function registerApi(
   });
 
   // Proposals to review, or { fallback } when the model can't help and the app should add it as typed.
+  // Asked to stream, each proposal comes on a line of its own as the model writes it ({ proposal }),
+  // then the whole answer ({ result }), or { fallback } or { error } instead.
   app.post('/api/smart-add', async (c) => {
-    const input = await body(c, z.object({ text: z.string().trim().min(1).max(4000), hints: addHints.optional() }));
+    const input = await body(c, z.object({ text: z.string().trim().min(1).max(4000), hints: addHints.optional(), stream: z.boolean().optional() }));
     if (!me(c).smartAdd) return c.json({ fallback: 'Smart add is off in your settings.' });
+    const run = (onProposal?: (proposal: Proposal) => void) =>
+      smartAdd(db, ai, me(c), { text: input.text, hints: input.hints as AddHints, timezone: config.timezone, onProposal });
+    if (input.stream) {
+      return linesResponse(async (write) => {
+        try {
+          write({ result: await run((proposal) => write({ proposal })) });
+        } catch (err) {
+          if (err instanceof AiUnavailable) {
+            console.warn('Smart add fell back:', err.message);
+            write({ fallback: err.message });
+          } else {
+            console.error('Smart add broke:', err);
+            write({ error: 'Something went wrong. Try again.' });
+          }
+        }
+      });
+    }
     try {
-      return c.json(await smartAdd(db, ai, me(c), { text: input.text, hints: input.hints as AddHints, timezone: config.timezone }));
+      return c.json(await run());
     } catch (err) {
       if (!(err instanceof AiUnavailable)) throw err;
       console.warn('Smart add fell back:', err.message);

@@ -27,7 +27,13 @@ export function fakeAi(answer: (req: FakeRequest) => unknown): Ai & { requests: 
     async complete(_setup, req) {
       const r = { system: req.system, content: req.content };
       requests.push(r);
-      return { output: answer(r) as never, problem: null, usage: { input: 1000, output: 100, cached: 0 } };
+      const output = answer(r);
+      // Asked to stream, it writes its answer out a few characters at a time first.
+      if (req.onText) {
+        const text = JSON.stringify(output);
+        for (let i = 0; i < text.length; i += 7) req.onText(text.slice(i, i + 7));
+      }
+      return { output: output as never, problem: null, usage: { input: 1000, output: 100, cached: 0 } };
     },
     save() {
       throw new Error('fakeAi has no settings');

@@ -1,7 +1,7 @@
 // Where a page came from, so it can grow out of the thing that was tapped and shrink back into it
 // (Material's container transform). Anything marked data-morph="<path>" counts: a tap on it, or on
 // something inside it, notes its place on screen.
-import { reduced } from './motion-demo.ts';
+import { reduced } from './motion-settings.ts';
 
 export interface Origin {
   path: string;

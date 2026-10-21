@@ -265,4 +265,28 @@ describe('syncing with the household’s own server', () => {
       ask(p.db, p.ai, { system: 's', content: 'c', schema: z.object({ hours: z.number() }), effort: null, maxTokens: 500, feature: 'estimate', memberId: home.sam.id, timezone: 'America/Chicago' }),
     ).rejects.toThrow(/doesn't fit/);
   });
+
+  it("streams smart add's cards to the phone as the server's model writes them", async () => {
+    const none = { mode: 'none', every: 0, unit: 'week', weekdays: [], day: 0, nth: 0, weekday: 0, month: 0, months: [] };
+    const task = (title: string) => ({
+      kind: 'add_task',
+      task: { title, notes: '', group: '', for: '', planned: '', due: '', time_of_day: '', must_do: false, estimate_minutes: 10, steps: [], links: [], repeat: none, remind: '' },
+    });
+    const home = server(fakeAi(() => ({ items: [task('Call the dentist'), task('Mow the lawn')], unclear: '' })));
+    const p = phone(home);
+    await p.call('POST', '/device/start', { name: 'Sam' });
+    await p.call('POST', '/sync/server/connect', { url: HOME, ...(await signIn(home, home.sam.id)) });
+
+    const res = await p.app.request('https://localhost/api/smart-add', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text: 'call the dentist and mow the lawn', stream: true }),
+    });
+    expect(res.headers.get('content-type')).toMatch(/ndjson/);
+    const lines = (await res.text()).trim().split('\n').map((l) => JSON.parse(l));
+    expect(lines.map((l) => Object.keys(l)[0])).toEqual(['proposal', 'proposal', 'result']);
+    expect(lines[0].proposal.task.title).toBe('Call the dentist');
+    expect(lines[2].result.proposals).toEqual([lines[0].proposal, lines[1].proposal]);
+    expect(home.db.select().from(aiUsage).all()).toMatchObject([{ feature: 'smart_add', ok: true }]);
+  });
 });

@@ -19,6 +19,7 @@ import { createSyncService, filesThroughServer } from '../../../server/sync/serv
 import journal from '../../../drizzle/meta/_journal.json';
 import { createOpfsFiles } from './files.ts';
 import type { FromWorker, ToWorker } from './protocol.ts';
+import { isLines } from '../../../shared/lines.ts';
 
 const sqlFiles = import.meta.glob('../../../drizzle/*.sql', { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
 
@@ -143,6 +144,23 @@ ready.then(
   },
 );
 
+/** A response that comes a line at a time (smart add's proposals): each piece goes over as it's written. */
+async function stream(id: number, res: Response) {
+  post({ type: 'response', id, status: res.status, headers: [...res.headers], body: null, streaming: true });
+  const reader = res.body!.getReader();
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      const data = value.slice().buffer as ArrayBuffer;
+      post({ type: 'chunk', id, data }, [data]);
+    }
+    post({ type: 'end', id });
+  } catch (err) {
+    post({ type: 'end', id, error: err instanceof Error ? err.message : String(err) });
+  }
+}
+
 async function handle(message: Extract<ToWorker, { type: 'request' }>) {
   const { app, origin, basePath, userAgent } = await ready;
   if (restoring) {
@@ -159,6 +177,7 @@ async function handle(message: Extract<ToWorker, { type: 'request' }>) {
   });
   try {
     const res = await app.fetch(req);
+    if (isLines(res) && res.body) return void (await stream(message.id, res));
     const body = res.status === 204 || res.status === 304 ? null : await res.arrayBuffer();
     post({ type: 'response', id: message.id, status: res.status, headers: [...res.headers], body }, body ? [body] : []);
   } catch (err) {

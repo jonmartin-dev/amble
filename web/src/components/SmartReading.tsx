@@ -1,9 +1,10 @@
-// What smart add shows while the model reads what was typed: the words lit one after another as
-// if being read, cards waiting to be filled in, or Material's loading shape. Each is a choice in
-// Settings, Motion, for now.
+// What smart add shows while the model reads what was typed: a light sweeping across the words until
+// the first card comes, then a card waiting at the end of the list for the next one, and Material's
+// loading shape in the send button throughout.
+import { motion } from 'motion/react';
 import { useEffect, useRef } from 'react';
-import Sparkle from '~icons/material-symbols/auto-awesome-rounded';
-import { reduced } from '../lib/motion-demo.ts';
+import { expressive } from '../lib/motion.ts';
+import { reduced } from '../lib/motion-settings.ts';
 
 // Material 3 Expressive's loading indicator turns through these shapes; as polygons with the same
 // number of points, the browser can morph one into the next.
@@ -91,61 +92,26 @@ export function ShimmerText({ text, className, lines }: { text: string; classNam
   );
 }
 
-/** The words, lit one after another while the model reads them, round and round without a pause. */
-export function ReadAlong({ text, className }: { text: string; className: string }) {
-  const parts = text.split(/(\s+)/);
-  const words = parts.filter((p) => p && !/^\s+$/.test(p)).length;
-  const step = 0.1;
-  // One pass, then a beat, then the next: there's always a word being read.
-  const period = Math.max(1.2, (words + 3) * step);
-  let n = 0;
+/** A card waiting at the end of the list while the model writes the next, a light sweeping over it. */
+export function WaitingCard() {
   return (
-    <p aria-hidden className={className}>
-      {parts.map((p, i) =>
-        !p || /^\s+$/.test(p) ? (
-          p
-        ) : (
-          <span key={i} className="read-word" style={{ animationDuration: `${period}s`, animationDelay: `${n++ * step}s` }}>
-            {p}
-          </span>
-        ),
-      )}
-    </p>
-  );
-}
-
-/** About how many things were typed: commas, "and", new lines. */
-export function guessCount(text: string) {
-  return Math.min(Math.max(text.split(/,|;|\n|\band\b|\balso\b/i).filter((s) => s.trim().length > 1).length, 1), 4);
-}
-
-/** Cards waiting to be filled in, a light sweeping over them. */
-export function WaitingCards({ count }: { count: number }) {
-  return (
-    <ul className="flex flex-col gap-2" aria-label="Reading">
-      {Array.from({ length: count }, (_, i) => (
-        <li key={i} className="waiting-card flex items-start gap-3 rounded-3xl bg-surface-high/60 p-3" style={{ animationDelay: `${i * 0.12}s` }}>
-          <span className="size-9 shrink-0 rounded-full bg-secondary-container" />
-          <span className="flex min-w-0 flex-1 flex-col gap-2 pt-1">
-            <span className="h-3.5 rounded-full bg-on-surface/10" style={{ width: `${[72, 55, 64, 48][i % 4]}%` }} />
-            <span className="h-2.5 w-1/3 rounded-full bg-on-surface/8" />
-          </span>
-          <span className="size-6 shrink-0 rounded-md bg-on-surface/8" />
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-/** The big version: the shape over a line saying what's happening. */
-export function ReadingShape() {
-  return (
-    <div className="flex flex-col items-center py-4" aria-label="Reading">
-      <div className="relative grid size-24 place-items-center">
-        <LoadingShape className="absolute inset-0" tone="bg-primary-container" />
-        <Sparkle className="relative size-8 text-on-primary-container" aria-hidden />
+    <motion.li
+      layout
+      aria-label="Reading the rest"
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.15 } }}
+      transition={{ ...expressive.defaultSpatial, layout: expressive.fastSpatial }}
+      className="rounded-3xl"
+    >
+      <div className="waiting-card flex items-start gap-3 rounded-3xl bg-surface-high/60 p-3">
+        <span className="size-9 shrink-0 rounded-full bg-secondary-container" />
+        <span className="flex min-w-0 flex-1 flex-col gap-2 pt-1">
+          <span className="h-3.5 w-3/5 rounded-full bg-on-surface/10" />
+          <span className="h-2.5 w-1/3 rounded-full bg-on-surface/8" />
+        </span>
+        <span className="size-6 shrink-0 rounded-md bg-on-surface/8" />
       </div>
-      <p className="mt-3 text-sm text-on-surface-variant">Reading what you wrote…</p>
-    </div>
+    </motion.li>
   );
 }

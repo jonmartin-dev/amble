@@ -25,7 +25,7 @@ import { basePath } from './lib/api.ts';
 import { readCalendarsWhileOpen } from './lib/calendar.ts';
 import { EXPANDED, InPane, isDetail, useMedia } from './lib/layout.ts';
 import { findRow, morph, peekOrigin } from './lib/morph.ts';
-import { useMotion } from './lib/motion-demo.ts';
+import { useMotion } from './lib/motion-settings.ts';
 import { refreshViews } from './lib/mutations.ts';
 import { CACHE_MAX_AGE_MS, CACHE_VERSION, claimDevice, idbPersister, prefetchForOffline, shouldSave } from './lib/persist.ts';
 import { syncPhoneReminders } from './lib/push.ts';
@@ -42,6 +42,7 @@ import { Briefing } from './pages/Briefing.tsx';
 import { CalendarsPage } from './pages/Calendars.tsx';
 import { Household } from './pages/Household.tsx';
 import { ADD_TO_LIST, ListPage } from './pages/ListPage.tsx';
+import { MotionSettings } from './pages/MotionSettings.tsx';
 import { Notifications } from './pages/Notifications.tsx';
 import { Privacy } from './pages/Privacy.tsx';
 import { TaskDetail } from './pages/TaskDetail.tsx';
@@ -367,6 +368,7 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/capacity', component: Capacity }),
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/ai', component: AiSettings }),
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/calendars', component: CalendarsPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/settings/motion', component: MotionSettings }),
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/notifications', component: Notifications }),
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/sync', component: SyncSettings }),
   createRoute({ getParentRoute: () => rootRoute, path: '/settings/server', component: ServerSettingsPage }),

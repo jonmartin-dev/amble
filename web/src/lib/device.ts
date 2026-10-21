@@ -32,6 +32,8 @@ const changeListeners = new Set<() => void>();
 let worker: Worker | null = null;
 let nextId = 0;
 const waiting = new Map<number, { resolve: (res: Response) => void; reject: (err: unknown) => void }>();
+// Responses still coming a piece at a time.
+const streams = new Map<number, ReadableStreamDefaultController<Uint8Array>>();
 let readyNow: () => void;
 let ready = new Promise<void>((resolve) => (readyNow = resolve));
 const channel = typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel('almanac-device');
@@ -95,7 +97,16 @@ function startWorker() {
     } else if (m.type === 'response') {
       const w = waiting.get(m.id);
       waiting.delete(m.id);
-      w?.resolve(new Response(m.body, { status: m.status, headers: m.headers }));
+      if (!w) return;
+      if (!m.streaming) return w.resolve(new Response(m.body, { status: m.status, headers: m.headers }));
+      const body = new ReadableStream<Uint8Array>({ start: (controller) => void streams.set(m.id, controller) });
+      w.resolve(new Response(body, { status: m.status, headers: m.headers }));
+    } else if (m.type === 'chunk') streams.get(m.id)?.enqueue(new Uint8Array(m.data));
+    else if (m.type === 'end') {
+      const controller = streams.get(m.id);
+      streams.delete(m.id);
+      if (m.error) controller?.error(new Error(m.error));
+      else controller?.close();
     } else if (m.type === 'notify') {
       // In the Android app the phone shows reminders, mostly ahead of the app noticing them.
       const shown = Capacitor.isNativePlatform() ? import('./native.ts').then((n) => n.showOnPhone(m.message)) : showNotification(m.message);
@@ -115,6 +126,8 @@ function release() {
   worker = null;
   for (const w of waiting.values()) w.reject(new DOMException('Amble moved to another tab.', 'AbortError'));
   waiting.clear();
+  for (const s of streams.values()) s.error(new DOMException('Amble moved to another tab.', 'AbortError'));
+  streams.clear();
   ready = new Promise<void>((resolve) => (readyNow = resolve));
   set('moved');
 }
@@ -155,6 +168,9 @@ export async function deviceFetch(path: string, init: RequestInit = {}): Promise
     init.signal?.addEventListener('abort', () => {
       waiting.delete(id);
       reject(new DOMException('Aborted', 'AbortError'));
+      // One already coming in stops there; the rest of it is dropped as it arrives.
+      streams.get(id)?.error(new DOMException('Aborted', 'AbortError'));
+      streams.delete(id);
     });
     send({ type: 'request', id, method: init.method ?? 'GET', path, headers, body: payload });
   });

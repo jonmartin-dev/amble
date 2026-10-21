@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
 import { findRow, radiusOf, setStageGesture, spring, springEasing, stageGesture, type StageGesture } from '../lib/morph.ts';
-import { reduced } from '../lib/motion-demo.ts';
+import { reduced } from '../lib/motion-settings.ts';
 import { setBackGesture } from '../lib/native.ts';
 import { typingWithKeyboard } from '../lib/viewport.ts';
 

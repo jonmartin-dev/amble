@@ -404,6 +404,78 @@ export function toProposals(output: Output, refs: Refs, me: Member, today: strin
   return proposals;
 }
 
+// ---- reading the answer as it's written ------------------------------------------------------
+
+/**
+ * The entries of the answer's "items" list that are written out in full so far, from the start of
+ * an answer still being written. Whatever comes before the JSON (thinking, a code fence) is passed
+ * over; nothing is read while a model is still thinking aloud.
+ */
+export function itemsSoFar(text: string): unknown[] {
+  const s = text.replace(/<think>[\s\S]*?<\/think>/g, '');
+  if (s.includes('<think>')) return [];
+  const items: unknown[] = [];
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  let stringStart = 0;
+  let lastString = '';
+  let key = '';
+  // Depth 1 is the answer, 2 the items list, 3 one item.
+  let inItems = false;
+  let itemStart = -1;
+  for (let i = Math.max(0, s.indexOf('{')); i < s.length; i++) {
+    const ch = s[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') {
+        inString = false;
+        lastString = s.slice(stringStart + 1, i);
+      }
+    } else if (ch === '"') {
+      inString = true;
+      stringStart = i;
+    } else if (ch === ':' && depth === 1) key = lastString;
+    else if (ch === '{' || ch === '[') {
+      depth++;
+      if (depth === 2 && ch === '[' && key === 'items') inItems = true;
+      else if (depth === 3 && inItems && ch === '{') itemStart = i;
+    } else if (ch === '}' || ch === ']') {
+      if (depth === 3 && itemStart >= 0) {
+        try {
+          items.push(JSON.parse(s.slice(itemStart, i + 1)));
+        } catch {
+          // Not an item after all; the full answer is checked at the end anyway.
+        }
+        itemStart = -1;
+      } else if (depth === 2) inItems = false;
+      depth--;
+    }
+  }
+  return items;
+}
+
+/**
+ * What to hand the model call so that each proposal goes to `onProposal` as soon as the model has
+ * written it: the same proposals, in the same order, that the whole answer makes at the end.
+ */
+function proposalsAsWritten(refs: Refs, me: Member, today: string, onProposal: (p: Proposal) => void) {
+  let text = '';
+  let sent = 0;
+  return (piece: string) => {
+    text += piece;
+    // An item can only have ended where a brace or bracket closes.
+    if (!/[}\]]/.test(piece)) return;
+    const items = itemsSoFar(text).flatMap((i) => {
+      const parsed = Item.safeParse(i);
+      return parsed.success ? [parsed.data] : [];
+    });
+    const proposals = toProposals({ items, unclear: '' }, refs, me, today);
+    for (; sent < proposals.length; sent++) onProposal(proposals[sent]!);
+  };
+}
+
 // ---- the call -------------------------------------------------------------------------------
 
 export interface SmartAddResult {
@@ -416,7 +488,7 @@ export async function smartAdd(
   db: Db,
   ai: Ai,
   me: Member,
-  input: { text: string; hints?: AddHints; effort?: Effort; timezone: string },
+  input: { text: string; hints?: AddHints; effort?: Effort; timezone: string; onProposal?: (p: Proposal) => void },
 ): Promise<SmartAddResult> {
   const setup = requireAi(ai, db, input.timezone);
   const { text: context, refs, today } = buildContext(db, me, input.hints);
@@ -429,6 +501,7 @@ export async function smartAdd(
     schema: Output,
     effort: input.effort ?? (setup.effort === 'default' ? null : setup.effort),
     maxTokens: 16_000,
+    ...(input.onProposal && { onText: proposalsAsWritten(refs, me, today, input.onProposal) }),
   });
   return {
     proposals: toProposals(output, refs, me, today),

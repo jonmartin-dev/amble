@@ -1,28 +1,19 @@
-// The motion still being tried out: how smart add looks while it reads, picked in Settings while
-// Jon tries the choices, and the extras, each on for now. Once he's settled, this file goes.
+// Settings, Motion: the gestures and touches each person can turn off on this device. All start on.
 import { useSyncExternalStore } from 'react';
 
-export const READ_CHOICES = [
-  ['now', 'Shimmer'],
-  ['along', 'Reads along'],
-  ['cards', 'Cards on the way'],
-  ['shape', 'Big shape'],
-] as const;
-
 export const TOGGLES = [
-  ['pull', 'Pull a task down to close it'],
-  ['back', 'Back gesture shrinks the page'],
-  ['morphAdd', '+ grows into the add sheet'],
-  ['press', 'Rows sink in when pressed'],
-  ['finish', 'Finishing sweeps the row'],
-  ['swipePop', 'Swipes pop and tick at the line'],
-  ['cascade', 'Rows cascade in'],
+  ['pull', 'Pull down to close', 'Drag an open task or list down to put it away'],
+  ['back', 'Back swipe shrinks the page', "The page follows your finger as you swipe back, and springs back if you don't"],
+  ['morphAdd', '+ grows into the add sheet', 'The button opens out into the sheet'],
+  ['press', 'Rows sink when pressed', 'A row gives a little under your finger'],
+  ['finish', 'Finishing sweeps the row', 'Color sweeps across a task as you tick it off, and a line draws through it'],
+  ['swipePop', 'Swipes pop at the line', 'A swipe’s icon pops, and the phone ticks, once letting go will act'],
+  ['cascade', 'Rows cascade in', 'A page’s rows arrive one after another'],
 ] as const;
 
-export type Motion = { read: (typeof READ_CHOICES)[number][0] } & { [K in (typeof TOGGLES)[number][0]]: boolean };
+export type Motion = { [K in (typeof TOGGLES)[number][0]]: boolean };
 
 const DEFAULTS: Motion = {
-  read: 'along',
   pull: true,
   back: true,
   morphAdd: true,
@@ -31,7 +22,7 @@ const DEFAULTS: Motion = {
   swipePop: true,
   cascade: true,
 };
-// A new name from the first round's, so everything starts on again.
+// The name from while these were being tried out, so what someone turned off then stays off.
 const KEY = 'amble.motion-try';
 
 function load(): Motion {

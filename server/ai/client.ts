@@ -9,6 +9,7 @@ import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { and, eq, gte, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { aiModel, aiModelName, aiProvider, type AiEffort, type AiProviderId } from '../../shared/ai.ts';
+import { isLines, readLines } from '../../shared/lines.ts';
 import type { Config } from '../config.ts';
 import type { Db } from '../db/index.ts';
 import { aiUsage, serverSettings } from '../db/schema.ts';
@@ -62,6 +63,8 @@ export interface AiRequest<T extends z.ZodType> {
   /** Null sends no effort at all. */
   effort: Effort | null;
   maxTokens: number;
+  /** Each piece of the answer's text as the model writes it, for a feature that shows it coming. */
+  onText?: (piece: string) => void;
 }
 
 export interface AiAnswer<T> {
@@ -287,18 +290,26 @@ async function anthropicRawCall<T extends z.ZodType>(
   req: AiRequest<T> & { jsonSchema: Record<string, unknown> },
   fetchImpl: typeof fetch,
 ): Promise<AiAnswer<z.output<T>>> {
-  const response = await anthropicFor(setup, fetchImpl).messages.create({
+  const client = anthropicFor(setup, fetchImpl);
+  const params = {
     model: setup.model,
     max_tokens: req.maxTokens,
-    output_config: { ...(req.effort && { effort: req.effort }), format: { type: 'json_schema', schema: shareRepeats(req.jsonSchema) } },
+    output_config: { ...(req.effort && { effort: req.effort }), format: { type: 'json_schema' as const, schema: shareRepeats(req.jsonSchema) } },
     system: req.system,
-    messages: [{ role: 'user', content: req.content }],
-  });
+    messages: [{ role: 'user' as const, content: req.content }],
+  };
+  const response = req.onText ? await streamed(client.messages.stream(params), req.onText) : await client.messages.create(params);
   const u = response.usage;
   const usage = { input: u.input_tokens + (u.cache_creation_input_tokens ?? 0), output: u.output_tokens, cached: u.cache_read_input_tokens ?? 0 };
   if (response.stop_reason !== 'end_turn') return { output: null, problem: `stopped early (${response.stop_reason})`, usage };
   const text = response.content.map((b) => (b.type === 'text' ? b.text : '')).join('');
   return checked(req.schema, text, usage);
+}
+
+/** The message a stream ends with, each piece of its text handed on as it comes. */
+function streamed<R>(stream: { on(event: 'text', fn: (piece: string) => void): unknown; finalMessage(): Promise<R> }, onText: (piece: string) => void) {
+  stream.on('text', onText);
+  return stream.finalMessage();
 }
 
 /** Parses an answer's JSON and holds it to the schema. */
@@ -320,13 +331,14 @@ function checked<T extends z.ZodType>(schema: T, text: string, usage: AiUsage): 
 async function anthropicCall<T extends z.ZodType>(setup: AiSetup, req: AiRequest<T>, fetchImpl: typeof fetch): Promise<AiAnswer<z.output<T>>> {
   if (req.jsonSchema) return anthropicRawCall(setup, { ...req, jsonSchema: req.jsonSchema }, fetchImpl);
   const client = anthropicFor(setup, fetchImpl);
-  const response = await client.messages.parse({
+  const params = {
     model: setup.model,
     max_tokens: req.maxTokens,
     output_config: { ...(req.effort && { effort: req.effort }), format: zodOutputFormat(req.schema) },
     system: req.system,
-    messages: [{ role: 'user', content: req.content }],
-  });
+    messages: [{ role: 'user' as const, content: req.content }],
+  };
+  const response = req.onText ? await streamed(client.messages.stream(params), req.onText) : await client.messages.parse(params);
   const u = response.usage;
   const usage = { input: u.input_tokens + (u.cache_creation_input_tokens ?? 0), output: u.output_tokens, cached: u.cache_read_input_tokens ?? 0 };
   const ok = response.stop_reason === 'end_turn' && response.parsed_output != null;
@@ -340,6 +352,8 @@ interface Quirks {
   json: 'schema' | 'object' | 'prompt';
   effort: boolean;
   maxTokens: 'max_completion_tokens' | 'max_tokens';
+  /** Whether it can send its answer as it writes it. */
+  stream: boolean;
 }
 
 // What each address and model turned out to accept, learned from the errors it gave, so only the
@@ -348,6 +362,7 @@ const quirks = new Map<string, Quirks>();
 
 /** The change to make after a request was refused, or null when the refusal isn't about its shape. */
 function adjust(q: Quirks, error: string): Partial<Quirks> | null {
+  if (q.stream && /\bstream/i.test(error)) return { stream: false };
   if (q.effort && /reasoning/i.test(error)) return { effort: false };
   if (q.maxTokens === 'max_completion_tokens' && /max_completion_tokens/i.test(error)) return { maxTokens: 'max_tokens' };
   if (q.json === 'schema' && /response_format|json_schema|schema|strict/i.test(error)) return { json: 'object' };
@@ -407,9 +422,42 @@ function errorMessage(body: string) {
   return body.replace(/\s+/g, ' ').trim().slice(0, 300) || 'no details';
 }
 
+interface ChatAnswer {
+  choices?: { finish_reason?: string | null; message?: { content?: string | { type?: string; text?: string }[] | null; refusal?: string | null } }[];
+  usage?: { prompt_tokens?: number; completion_tokens?: number; prompt_tokens_details?: { cached_tokens?: number } } | null;
+}
+
+/** An answer sent as it's written (server-sent events), put back together as one answer. */
+async function chatStream(res: Response, onText: (piece: string) => void): Promise<ChatAnswer> {
+  let content = '';
+  let refusal = '';
+  let finish: string | null = null;
+  let usage: ChatAnswer['usage'] = null;
+  await readLines(res.body!, (line) => {
+    if (!line.startsWith('data:')) return;
+    const data = line.slice(5).trim();
+    if (data === '[DONE]') return;
+    const chunk = JSON.parse(data) as {
+      choices?: { finish_reason?: string | null; delta?: { content?: string | null; refusal?: string | null } }[];
+      usage?: ChatAnswer['usage'];
+      error?: { message?: string } | string;
+    };
+    if (chunk.error) throw new Error(typeof chunk.error === 'string' ? chunk.error : (chunk.error.message ?? 'the answer stopped with an error'));
+    const choice = chunk.choices?.[0];
+    if (choice?.delta?.content) {
+      content += choice.delta.content;
+      onText(choice.delta.content);
+    }
+    if (choice?.delta?.refusal) refusal += choice.delta.refusal;
+    if (choice?.finish_reason) finish = choice.finish_reason;
+    if (chunk.usage) usage = chunk.usage;
+  });
+  return { choices: [{ finish_reason: finish, message: { content, refusal: refusal || null } }], usage };
+}
+
 async function chatCall<T extends z.ZodType>(setup: AiSetup, req: AiRequest<T>, fetchImpl: typeof fetch): Promise<AiAnswer<z.output<T>>> {
   const id = `${setup.baseUrl}|${setup.model}`;
-  const q: Quirks = { ...(quirks.get(id) ?? { json: aiProvider(setup.provider)?.json ?? 'schema', effort: true, maxTokens: 'max_completion_tokens' }) };
+  const q: Quirks = { ...(quirks.get(id) ?? { json: aiProvider(setup.provider)?.json ?? 'schema', effort: true, maxTokens: 'max_completion_tokens', stream: true }) };
   const schema = req.jsonSchema ?? strictSchema(req.schema);
   const url = `${setup.baseUrl.replace(/\/+$/, '')}/chat/completions`;
 
@@ -428,6 +476,7 @@ async function chatCall<T extends z.ZodType>(setup: AiSetup, req: AiRequest<T>, 
       ...(q.effort && req.effort && { reasoning_effort: req.effort }),
       ...(q.json === 'schema' && { response_format: { type: 'json_schema', json_schema: { name: 'answer', strict: true, schema } } }),
       ...(q.json === 'object' && { response_format: { type: 'json_object' } }),
+      ...(req.onText && q.stream && { stream: true, stream_options: { include_usage: true } }),
       // Only route to a host that honours the JSON format, rather than one that ignores it.
       ...(setup.provider === 'openrouter' && { provider: { require_parameters: true } }),
     };
@@ -446,10 +495,7 @@ async function chatCall<T extends z.ZodType>(setup: AiSetup, req: AiRequest<T>, 
       continue;
     }
     quirks.set(id, { ...q });
-    const data = (await res.json()) as {
-      choices?: { finish_reason?: string; message?: { content?: string | { type?: string; text?: string }[] | null; refusal?: string | null } }[];
-      usage?: { prompt_tokens?: number; completion_tokens?: number; prompt_tokens_details?: { cached_tokens?: number } };
-    };
+    const data = req.onText && res.headers.get('content-type')?.includes('event-stream') ? await chatStream(res, req.onText) : ((await res.json()) as ChatAnswer);
     const cached = data.usage?.prompt_tokens_details?.cached_tokens ?? 0;
     const usage = { input: Math.max(0, (data.usage?.prompt_tokens ?? 0) - cached), output: data.usage?.completion_tokens ?? 0, cached };
     const choice = data.choices?.[0];
@@ -465,15 +511,37 @@ async function chatCall<T extends z.ZodType>(setup: AiSetup, req: AiRequest<T>, 
 
 // ---- the household's server, for a device --------------------------------------------------------
 
+type ServerAnswer = { output?: unknown; usage?: AiUsage; error?: string };
+
 /** Asks the household's server's model. The server meters it; the answer is checked here, against the real schema. */
 async function serverCall<T extends z.ZodType>(r: RemoteAi, req: AiRequest<T>, fetchImpl: typeof fetch): Promise<AiAnswer<z.output<T>>> {
   const res = await fetchImpl(`${r.url}/sync/ai`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${r.token}` },
-    body: JSON.stringify({ feature: req.feature ?? 'device', system: req.system, content: req.content, schema: strictSchema(req.schema), effort: req.effort, maxTokens: req.maxTokens }),
+    body: JSON.stringify({
+      feature: req.feature ?? 'device',
+      system: req.system,
+      content: req.content,
+      schema: strictSchema(req.schema),
+      effort: req.effort,
+      maxTokens: req.maxTokens,
+      ...(req.onText && { stream: true }),
+    }),
     signal: AbortSignal.timeout(60_000),
   });
-  const body = (await res.json().catch(() => null)) as { output?: unknown; usage?: AiUsage; error?: string } | null;
+  let body: ServerAnswer | null = null;
+  // Asked for the words as they come, a server that can sends them a line at a time, the answer last.
+  if (res.ok && req.onText && isLines(res)) {
+    const onText = req.onText;
+    await readLines(res.body!, (line) => {
+      const l = JSON.parse(line) as ServerAnswer & { text?: string };
+      if (typeof l.text === 'string') onText(l.text);
+      else body = l;
+    });
+    const last = body as ServerAnswer | null;
+    if (!last) throw new Error('the server stopped before it answered');
+    if (last.error) throw new Error(last.error);
+  } else body = (await res.json().catch(() => null)) as ServerAnswer | null;
   if (!res.ok) throw new Error(body?.error ?? `the server answered ${res.status}`);
   const usage = body?.usage ?? { input: 0, output: 0, cached: 0 };
   return checked(req.schema, JSON.stringify(body?.output ?? null), usage);

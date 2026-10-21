@@ -14,7 +14,7 @@ import Sun from '~icons/material-symbols/wb-sunny-outline-rounded';
 import type { Task } from '../lib/api.ts';
 import { dayLabel, daysFrom, firstName, reminderLabel } from '../lib/dates.ts';
 import { swapsDetail } from '../lib/layout.ts';
-import { motionChoices, useMotion } from '../lib/motion-demo.ts';
+import { motionChoices, useMotion } from '../lib/motion-settings.ts';
 import { useTaskActions } from '../lib/mutations.ts';
 import { TripBadge } from './TripList.tsx';
 import { Checkbox } from './ui.tsx';

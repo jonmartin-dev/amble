@@ -1,7 +1,7 @@
 // Quick add from the + button. What's typed comes first, in large type; under it one row of chips
 // sets the day, group, person and so on, and a chip's choices open in that same row. With smart
-// add on, what's typed goes to the model and comes back as proposals to review; otherwise each line is
-// added as typed.
+// add on, what's typed goes to the model and comes back as proposals to review, each card showing up
+// as the model writes it; otherwise each line is added as typed.
 import { useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
@@ -18,11 +18,11 @@ import RepeatIcon from '~icons/material-symbols/repeat-rounded';
 import type { AddHints } from '../../../shared/proposals.ts';
 import { parseQuick, quickTitle, type QuickField } from '../../../shared/quick.ts';
 import { describeRepeat } from '../../../shared/repeat.ts';
-import { api, ApiError, type Group, type Proposal, type SmartAddResponse, type TimeOfDay } from '../lib/api.ts';
+import { api, ApiError, apiLines, type Group, type Proposal, type SmartAddLine, type SmartAddResult, type TimeOfDay } from '../lib/api.ts';
 import { dayLabel, firstName, reminderPhrase, todayIso } from '../lib/dates.ts';
 import { editTask } from '../lib/local.ts';
 import { expressive } from '../lib/motion.ts';
-import { useMotion } from '../lib/motion-demo.ts';
+import { useMotion } from '../lib/motion-settings.ts';
 import { peekOrigin } from '../lib/morph.ts';
 import { native } from '../lib/native.ts';
 import { useSend, useTaskActions } from '../lib/mutations.ts';
@@ -31,7 +31,7 @@ import { useSyncState } from '../lib/sync.ts';
 import { DateChip, GroupChips, PersonChips, TimeChips, WhenChips } from './fields.tsx';
 import { GroupIcon } from './icons.tsx';
 import { ProposalCard, type Draft } from './ProposalCard.tsx';
-import { guessCount, LoadingShape, ReadAlong, ReadingShape, ShimmerText, WaitingCards } from './SmartReading.tsx';
+import { LoadingShape, ShimmerText, WaitingCard } from './SmartReading.tsx';
 import { ScrollRow, Sheet } from './ui.tsx';
 
 type Phase = 'compose' | 'thinking' | 'review' | 'done';
@@ -217,7 +217,7 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
   const smart = (ai?.smartAdd ?? false) && online;
   const smartOffline = (ai?.smartAdd ?? false) && !online;
   const members = household?.members ?? [];
-  const { read, morphAdd } = useMotion();
+  const { morphAdd } = useMotion();
 
   const [text, setText] = useState('');
   const [planned, setPlanned] = useState<string | null>(null);
@@ -232,6 +232,9 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
   const [picker, setPicker] = useState<Picker>(null);
   const [phase, setPhase] = useState<Phase>('compose');
   const [drafts, setDrafts] = useState<Draft[]>([]);
+  // While the model is still writing: the cards so far are up, and how many came that way.
+  const [streaming, setStreaming] = useState(false);
+  const [arrived, setArrived] = useState(0);
   const [openCard, setOpenCard] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [applying, setApplying] = useState(false);
@@ -258,6 +261,7 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
       setPicker(null);
       setPhase('compose');
       setDrafts([]);
+      setStreaming(false);
       setNotice(null);
       setAdded(null);
     }
@@ -350,6 +354,7 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
     setDropped(new Set());
     setPhase('compose');
     setDrafts([]);
+    setStreaming(false);
     setNotice(`${why ? `${why} ` : ''}Added ${titles.length === 1 ? `"${titles[0]}"` : plural(titles.length, 'task')}.`);
     input.current?.focus({ preventScroll: true });
   };
@@ -375,23 +380,58 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
     input.current?.blur();
     const ctrl = new AbortController();
     abort.current = ctrl;
+    setDrafts([]);
+    setArrived(0);
+    setOpenCard(null);
+    // Each proposal shows as a card the moment the model has written it; the first one swaps the
+    // text box for the review, and the rest join it until the answer is done.
+    const batch = Date.now();
+    let got = 0;
+    let result: SmartAddResult | null = null;
+    let fallback: string | null = null;
+    let failed: string | null = null;
+    const draft = (proposal: Proposal, i: number): Draft => ({ key: `${batch}-${i}`, include: true, proposal });
     try {
-      const res = await api<SmartAddResponse>('/smart-add', { method: 'POST', body: JSON.stringify({ text: t, hints: hints() }), signal: ctrl.signal });
-      if ('fallback' in res) return addAsTyped(t, "Smart add isn't available right now, so it went in as typed.");
-      if (res.proposals.length === 0) {
-        setPhase('compose');
-        setNotice(res.unclear ?? "Smart add couldn't make anything of that. Try different words, or add it as typed.");
-        return;
-      }
-      setDrafts(res.proposals.map((proposal, i) => ({ key: `${Date.now()}-${i}`, include: true, proposal })));
-      setOpenCard(null);
-      setNotice(res.unclear);
-      setPhase('review');
+      await apiLines<SmartAddLine>('/smart-add', { method: 'POST', body: JSON.stringify({ text: t, hints: hints(), stream: true }), signal: ctrl.signal }, (line) => {
+        if (ctrl.signal.aborted) return;
+        if ('proposal' in line) {
+          const d = draft(line.proposal, got++);
+          setDrafts((all) => [...all, d]);
+          setArrived(got);
+          if (got === 1) {
+            setStreaming(true);
+            setPhase('review');
+          }
+        } else if ('result' in line) result = line.result;
+        else if ('fallback' in line) fallback = line.fallback;
+        else if ('error' in line) failed = line.error;
+        // A server without streaming answers all at once, which comes as one line here.
+        else if ('proposals' in line) result = line;
+      });
     } catch (e) {
       if (ctrl.signal.aborted) return;
-      if (e instanceof ApiError && e.status === 0) return addAsTyped(t, "You're offline, so it went in as typed.");
+      if (got === 0 && e instanceof ApiError && e.status === 0) return addAsTyped(t, "You're offline, so it went in as typed.");
+      failed = e instanceof Error ? e.message : 'Something went wrong.';
+    }
+    if (ctrl.signal.aborted) return;
+    setStreaming(false);
+    const done = result as SmartAddResult | null;
+    if (done && done.proposals.length) {
+      // Anything the cards so far didn't cover (all of it, from a server that doesn't stream).
+      const rest = done.proposals.slice(got).map((p, i) => draft(p, got + i));
+      if (rest.length) setDrafts((all) => [...all, ...rest]);
+      setNotice(done.unclear);
+      setPhase('review');
+    } else if (got > 0) {
+      // It stopped partway: what it got to stays up to check.
+      setNotice('Smart add stopped partway through, so check these and add the rest yourself.');
+    } else if (fallback) addAsTyped(t, "Smart add isn't available right now, so it went in as typed.");
+    else if (done) {
       setPhase('compose');
-      setNotice(e instanceof Error ? e.message : 'Something went wrong.');
+      setNotice(done.unclear ?? "Smart add couldn't make anything of that. Try different words, or add it as typed.");
+    } else {
+      setPhase('compose');
+      setNotice(failed ?? 'Something went wrong.');
     }
   };
 
@@ -416,6 +456,7 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
 
   const cancelThinking = () => {
     abort.current?.abort();
+    setStreaming(false);
     setPhase('compose');
     input.current?.focus({ preventScroll: true });
   };
@@ -545,14 +586,11 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
           enterKeyHint="send"
           readOnly={thinking}
           className={`field-sizing-content block max-h-42 min-h-14 w-full resize-none bg-transparent px-1 pt-1 text-[1.375rem] leading-8 outline-none placeholder:text-on-surface-variant/70 ${
-            thinking ? (read === 'now' || read === 'along' ? 'text-transparent' : 'text-on-surface-variant transition-colors') : ''
+            thinking ? 'text-transparent' : ''
           }`}
         />
-        {thinking && read === 'along' && (
-          <ReadAlong text={text} className="pointer-events-none absolute inset-0 overflow-hidden px-1 pt-1 text-[1.375rem] leading-8 whitespace-pre-wrap" />
-        )}
         {/* While the model reads, a light sweeps across what they typed. */}
-        {thinking && read === 'now' && (
+        {thinking && (
           <ShimmerText text={text} className="pointer-events-none absolute inset-0 overflow-hidden" lines="px-1 pt-1 text-[1.375rem] leading-8 whitespace-pre-wrap" />
         )}
       </div>
@@ -606,6 +644,8 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
       <button
         type="button"
         onClick={() => {
+          abort.current?.abort();
+          setStreaming(false);
           setPhase('compose');
           setDrafts([]);
           setNotice(null);
@@ -619,10 +659,10 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
       <button
         type="button"
         onClick={apply}
-        disabled={!chosen.length || !valid || applying}
+        disabled={streaming || !chosen.length || !valid || applying}
         className="press h-14 flex-[1.4] rounded-full bg-primary font-medium text-on-primary disabled:opacity-40"
       >
-        {applying ? 'Adding…' : chosen.length === drafts.length && chosen.length > 1 ? `Add all ${chosen.length}` : chosen.length ? `Add ${chosen.length}` : 'Nothing picked'}
+        {streaming ? 'Reading…' : applying ? 'Adding…' : chosen.length === drafts.length && chosen.length > 1 ? `Add all ${chosen.length}` : chosen.length ? `Add ${chosen.length}` : 'Nothing picked'}
       </button>
     </div>
   );
@@ -632,7 +672,7 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
     phase === 'review' ? (
       <p className="flex items-center gap-1.5 pb-1 text-sm text-on-surface-variant">
         <Sparkle className="size-4 text-primary" aria-hidden />
-        Here's what I got. Tap one to change it.
+        {streaming ? 'Reading the rest…' : "Here's what I got. Tap one to change it."}
       </p>
     ) : phase === 'compose' && smartOffline ? (
       <p className="pb-1 text-sm text-on-surface-variant">You're offline, so it goes in as typed.</p>
@@ -640,8 +680,6 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
 
   let body: ReactNode = null;
   if (phase === 'done') body = <Done message={doneMessage} onUndo={added ? undo : null} />;
-  else if (phase === 'thinking' && read === 'cards') body = <WaitingCards count={guessCount(text)} />;
-  else if (phase === 'thinking' && read === 'shape') body = <ReadingShape />;
   else if (phase === 'review') {
     body = (
       <>
@@ -650,8 +688,8 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
           {drafts.map((d, i) => (
             <ProposalCard
               key={d.key}
-              index={i}
-              from={read === 'shape' ? 'shape' : read === 'cards' ? 'place' : undefined}
+              // Cards that came one by one arrive as they come; ones that came together, one after another.
+              index={Math.max(0, i - arrived)}
               draft={d}
               ctx={ctx}
               open={openCard === d.key}
@@ -660,8 +698,16 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
               onInclude={(include) => setDrafts((all) => all.map((x) => (x.key === d.key ? { ...x, include } : x)))}
             />
           ))}
+          <AnimatePresence>{streaming && <WaitingCard key="waiting" />}</AnimatePresence>
         </ul>
-        <button type="button" onClick={() => addAsTyped(text.trim())} className="mt-3 mb-1 w-full py-2 text-sm text-on-surface-variant underline-offset-4 hover:underline">
+        <button
+          type="button"
+          onClick={() => {
+            abort.current?.abort();
+            addAsTyped(text.trim());
+          }}
+          className="mt-3 mb-1 w-full py-2 text-sm text-on-surface-variant underline-offset-4 hover:underline"
+        >
           Add it as typed instead
         </button>
       </>
@@ -680,7 +726,7 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
   }
 
   // Each phase crossfades into the next while the sheet glides to its new height.
-  const bodyKey = phase === 'compose' || (phase === 'thinking' && (read === 'now' || read === 'along')) ? `compose-${notice ?? ''}` : phase;
+  const bodyKey = phase === 'compose' || phase === 'thinking' ? `compose-${notice ?? ''}` : phase;
   const footer = phase === 'done' ? null : phase === 'review' ? reviewFooter : composer;
   return (
     <Sheet
@@ -693,7 +739,7 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
         footer && (
           <div className="relative">
             <AnimatePresence mode="popLayout" initial={false}>
-              <motion.div key={phase === 'review' ? 'review' : 'compose'} {...(read === 'now' ? phaseMotion : handOver)}>
+              <motion.div key={phase === 'review' ? 'review' : 'compose'} {...handOver}>
                 {footer}
               </motion.div>
             </AnimatePresence>
