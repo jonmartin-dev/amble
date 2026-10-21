@@ -54,6 +54,43 @@ export function LoadingShape({ className = '', tone }: { className?: string; ton
   );
 }
 
+/**
+ * The words with a light sweeping across them while the model reads. The light is a band that slides
+ * over the words holding its own copy of them in the highlight color, which slides back the other
+ * way at the same pace so the copy stays on the words. Both moves are transforms, so the phone runs
+ * them on its own however busy the page is. `lines` is the text's own padding and type, given to
+ * both copies so they line up.
+ */
+export function ShimmerText({ text, className, lines }: { text: string; className: string; lines: string }) {
+  const band = useRef<HTMLDivElement>(null);
+  const copy = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (!band.current || !copy.current || reduced()) return;
+    const timing = { duration: 1800, iterations: Infinity, easing: 'linear' };
+    // The band is 2/5 of the width: it starts just off the left edge and ends just off the right,
+    // and the copy, the full width, moves the same distance back.
+    const moves = [
+      band.current.animate({ transform: ['translateX(-100%)', 'translateX(250%)'] }, timing),
+      copy.current.animate({ transform: ['translateX(40%)', 'translateX(-100%)'] }, timing),
+    ];
+    return () => moves.forEach((a) => a.cancel());
+  }, []);
+  return (
+    <div aria-hidden className={className}>
+      <p className={`${lines} text-on-surface-variant`}>{text}</p>
+      <div
+        ref={band}
+        className="absolute inset-y-0 left-0 w-2/5 overflow-hidden"
+        style={{ maskImage: 'linear-gradient(90deg, transparent, #000 50%, transparent)' }}
+      >
+        <p ref={copy} className={`${lines} w-[250%] text-primary`}>
+          {text}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 /** The words, lit one after another while the model reads them, round and round without a pause. */
 export function ReadAlong({ text, className }: { text: string; className: string }) {
   const parts = text.split(/(\s+)/);

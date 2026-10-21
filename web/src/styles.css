@@ -290,6 +290,16 @@ body::before {
   }
 }
 
+/* The status pill's sync icon turning while changes save. */
+.sync-spin {
+  animation: sync-spin 1.2s linear infinite;
+}
+@keyframes sync-spin {
+  to {
+    transform: rotate(-360deg);
+  }
+}
+
 /*
  * M3 Expressive chips (Compose's chip tokens, 2026): 32dp tall, a rounded rectangle (12dp) with an
  * outline until it's picked, then fully round on the secondary container; the corners tighten to

@@ -90,9 +90,9 @@ export function StatusPill() {
     status = {
       key: 'syncing',
       icon: (
-        <motion.span animate={{ rotate: -360 }} transition={{ repeat: Infinity, duration: 1.2, ease: 'linear' }} className="grid">
+        <span className="sync-spin grid">
           <Sync className="size-[18px]" aria-hidden />
-        </motion.span>
+        </span>
       ),
       text: `Saving ${changes(sync.pending)}`,
     };
