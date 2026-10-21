@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
 import { setStageGesture, springEasing, stageGesture, type StageGesture } from '../lib/morph.ts';
 import { setBackGesture } from '../lib/native.ts';
+import { typingWithKeyboard } from '../lib/viewport.ts';
 
 /**
  * A task or list on a phone, opened from the page it came from. Opening and closing are a morph
@@ -152,7 +153,10 @@ export function DetailStage({ overlay, setOverlay, building, inSheet, onBack, ba
     return () => setBackGesture(false);
   }, [backGesture]);
 
-  // Pulling down from the top of the page.
+  // Pulling down from the top of the page, from anywhere on it: the title, a field that isn't being
+  // typed in, the empty space below. Not from a sheet or the toolbar over it, nor from the field
+  // being typed in while the keyboard is up (that drag moves the cursor), nor from something
+  // scrolled inside it.
   useEffect(() => {
     const b = box.current;
     if (!pull || !b) return;
@@ -161,10 +165,17 @@ export function DetailStage({ overlay, setOverlay, building, inSheet, onBack, ba
     let y0 = 0;
     let last = { y: 0, t: 0, v: 0 };
     const atTop = () => (floating.current ? b.scrollTop : window.scrollY) <= 0;
+    const onPage = (target: Element) => {
+      if (floating.current ? !b.contains(target) : target.closest('[role="dialog"], nav, .toolbar')) return false;
+      const field = target.closest('textarea, input, [contenteditable]');
+      if (field && field === document.activeElement && typingWithKeyboard()) return false;
+      for (let el: Element | null = target; el && el !== b && el !== document.body; el = el.parentElement) if (el.scrollTop > 0) return false;
+      return true;
+    };
     const onStart = (e: TouchEvent) => {
       const t = e.touches[0];
       if (e.touches.length !== 1 || !t || phase.current !== 'still' || !atTop()) return void (mode = 'idle');
-      if (e.target instanceof Element && e.target.closest('textarea, input, [contenteditable], .scroll-row')) return void (mode = 'idle');
+      if (!(e.target instanceof Element) || !onPage(e.target)) return void (mode = 'idle');
       mode = 'maybe';
       x0 = t.clientX;
       y0 = t.clientY;
@@ -197,15 +208,15 @@ export function DetailStage({ overlay, setOverlay, building, inSheet, onBack, ba
       g()?.end(dy > 140 || (last.v > 0.6 && dy > 40));
     };
     const g = stageGesture;
-    b.addEventListener('touchstart', onStart, { passive: true });
-    b.addEventListener('touchmove', onMove, { passive: false });
-    b.addEventListener('touchend', onEnd);
-    b.addEventListener('touchcancel', onEnd);
+    document.addEventListener('touchstart', onStart, { passive: true });
+    document.addEventListener('touchmove', onMove, { passive: false });
+    document.addEventListener('touchend', onEnd);
+    document.addEventListener('touchcancel', onEnd);
     return () => {
-      b.removeEventListener('touchstart', onStart);
-      b.removeEventListener('touchmove', onMove);
-      b.removeEventListener('touchend', onEnd);
-      b.removeEventListener('touchcancel', onEnd);
+      document.removeEventListener('touchstart', onStart);
+      document.removeEventListener('touchmove', onMove);
+      document.removeEventListener('touchend', onEnd);
+      document.removeEventListener('touchcancel', onEnd);
     };
   }, [pull]);
 
