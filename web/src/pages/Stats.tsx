@@ -155,13 +155,21 @@ function PilingUp({ data }: { data: StatsData }) {
   );
 }
 
-function Tile({ value, label, detail }: { value: ReactNode; label: string; detail?: ReactNode }) {
-  return (
-    <div className="rounded-3xl bg-surface-high p-4">
-      <p className="text-xs text-on-surface-variant">{label}</p>
-      <p className="display mt-1 text-2xl leading-tight font-medium">{value}</p>
-      {detail && <p className="mt-0.5 text-sm text-on-surface-variant">{detail}</p>}
-    </div>
+/** `taskId`: the tile opens that task, growing into its page like a row does. */
+function Tile({ value, label, detail, taskId }: { value: ReactNode; label: string; detail?: ReactNode; taskId?: string }) {
+  const body = (
+    <>
+      <span className="block text-xs text-on-surface-variant">{label}</span>
+      <span className="display mt-1 block text-2xl leading-tight font-medium">{value}</span>
+      {detail && <span className="mt-0.5 block text-sm text-on-surface-variant">{detail}</span>}
+    </>
+  );
+  return taskId ? (
+    <Link to="/task/$taskId" params={{ taskId }} data-morph={`/task/${taskId}`} className="press-soft block rounded-3xl bg-surface-high p-4">
+      {body}
+    </Link>
+  ) : (
+    <div className="rounded-3xl bg-surface-high p-4">{body}</div>
   );
 }
 
@@ -211,13 +219,8 @@ function Records({ records }: { records: NonNullable<StatsData['records']> }) {
       <Tile
         label="Waited longest"
         value={oldestDone ? plural(oldestDone.days, 'day') : '–'}
-        detail={
-          oldestDone ? (
-            <Link to="/task/$taskId" params={{ taskId: oldestDone.taskId }} className="line-clamp-2 text-primary">
-              {oldestDone.title}
-            </Link>
-          ) : undefined
-        }
+        detail={oldestDone ? <span className="line-clamp-2 text-primary">{oldestDone.title}</span> : undefined}
+        taskId={oldestDone?.taskId}
       />
     </div>
   );
