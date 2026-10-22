@@ -139,6 +139,12 @@ const TABS: Record<string, ComponentType> = { '/': memo(Today), '/backlog': memo
 // toolbar steps aside there.
 const SUBPAGES = ['/settings', '/appearance', '/connections', '/household', '/activity'];
 
+// A task or list morphing open over a page or closed back into it moves the page's scroll itself
+// (Root, below), so the router leaves the scroll alone for that change of page. Scrolling first, it
+// would move the old page before the morph took its picture: to the top, with the row that was
+// tapped further down or off the screen.
+let morphing = false;
+
 function Root() {
   const qc = useQueryClient();
   const session = useSession();
@@ -188,7 +194,11 @@ function Root() {
     else if (staged && isDetail(shown) && seen in TABS) {
       setStage({ path: shown, phase: 'building', inSheet: !!peekOrigin(shown)?.inSheet });
       setOverlay(true);
-    } else if (stage && stage.phase !== 'leaving' && !isDetail(shown)) setStage({ ...stage, phase: 'leaving' });
+      morphing = true;
+    } else if (stage && stage.phase !== 'leaving' && !isDetail(shown)) {
+      setStage({ ...stage, phase: 'leaving' });
+      morphing = true;
+    }
   }
   if (stage && !staged) {
     setStage(null);
@@ -408,6 +418,13 @@ const router = createRouter({
   routeTree,
   basepath: basePath || '/',
   defaultErrorComponent: PageError,
+  // Back and forward bring a page back where it was scrolled, and a new one starts at the top; not
+  // while a task or list morphs, which moves the scroll itself (`morphing`, above).
+  scrollRestoration: () => {
+    const free = !morphing;
+    morphing = false;
+    return free;
+  },
 });
 
 declare module '@tanstack/react-router' {

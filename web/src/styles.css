@@ -588,6 +588,30 @@ html[data-morph='close']::view-transition-new(root) {
     filter: brightness(0.7);
   }
 }
+/* With nothing on screen to grow out of or shrink into (a link in a sentence, a reminder tapped, a
+   row that has scrolled away), the page that shows rises in like any other page while the one
+   going fades out under it. Nothing is drawn over the old page first, so it never blanks out. */
+html[data-morph='fade']::view-transition-image-pair(card) {
+  animation: none;
+  background: none;
+}
+html[data-morph='fade']::view-transition-old(root),
+html[data-morph='fade']::view-transition-old(card) {
+  animation: card-fade 90ms ease-in reverse both;
+  /* Over the new background, which is the same color, rather than added to it. */
+  mix-blend-mode: normal;
+  z-index: 1;
+}
+html[data-morph='fade']::view-transition-new(root) {
+  animation: none;
+}
+html[data-morph='fade']::view-transition-new(page) {
+  animation: page-in 420ms var(--spring) 60ms both;
+}
+/* The toolbar stays on top of any page that morphs or fades under it. */
+::view-transition-group(toolbar) {
+  z-index: 1;
+}
 
 /* New colors for the whole app (recolor() in lib/morph.ts) fade in over the old ones. */
 html[data-morph='recolor']::view-transition-old(root),

@@ -45,8 +45,9 @@ export function findRow(path: string): HTMLElement | null {
  * row, or an open page) becomes whatever `update` returns, which it gets by changing the page
  * (React's update included, with flushSync). The browser animates pictures of the two states on
  * its own, so building the new page never holds up a frame. The look is in styles.css, under
- * "card"; `kind` picks it. Without `from` the pages cross-fade, and without the API (or with the
- * phone's animations off) the page just changes.
+ * "card"; `kind` picks it. With nothing to grow from or shrink into (a link in a sentence, a
+ * reminder tapped, a row scrolled away), the new page rises in over the old one fading out,
+ * under "fade". Without the API (or with the phone's animations off) the page just changes.
  */
 export function morph(kind: 'open' | 'close', from: HTMLElement | null, update: () => HTMLElement | null) {
   const start = typeof document !== 'undefined' && 'startViewTransition' in document ? document.startViewTransition.bind(document) : null;
@@ -58,7 +59,6 @@ export function morph(kind: 'open' | 'close', from: HTMLElement | null, update: 
   const root = document.documentElement;
   const mine = (latest = {});
   const spring = kind === 'open' ? OPEN : CLOSE;
-  // With nothing to grow from or shrink into, the two pages just cross-fade.
   root.dataset.morph = from ? kind : 'fade';
   root.style.setProperty('--card-ms', `${spring.duration}ms`);
   root.style.setProperty('--card-easing', spring.easing);
@@ -67,7 +67,15 @@ export function morph(kind: 'open' | 'close', from: HTMLElement | null, update: 
   const vt = start(() => {
     if (from) from.style.viewTransitionName = '';
     to = update();
-    if (to) to.style.viewTransitionName = 'card';
+    if (from && to) {
+      to.style.viewTransitionName = 'card';
+      return;
+    }
+    // Read once this has run, so a close that finds no row to shrink into fades too. The page that
+    // shows rises in as its own picture; the one going (named card, if there was one) fades out.
+    root.dataset.morph = 'fade';
+    to = document.querySelector('main');
+    if (to) to.style.viewTransitionName = 'page';
   });
   // Opening, the page travels from the row settled and only its size bounces: a bounce on the long
   // trip up would fling it under the status bar and back.
