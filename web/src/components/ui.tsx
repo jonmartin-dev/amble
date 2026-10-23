@@ -10,6 +10,7 @@ import type { DayLoad } from '../lib/api.ts';
 import { EXPANDED, isDetail, useInPane, useMedia } from '../lib/layout.ts';
 import { EMPHASIZED, type Origin } from '../lib/morph.ts';
 import { expressive } from '../lib/motion.ts';
+import { useBarTitle } from '../lib/top-edge.ts';
 import { keyboardFromApp, rideKeyboard, typingWithKeyboard, useBackToClose, useScrollLock, useVisualViewport } from '../lib/viewport.ts';
 
 /**
@@ -18,12 +19,16 @@ import { keyboardFromApp, rideKeyboard, typingWithKeyboard, useBackToClose, useS
  */
 export function SubpageHeader({ title, back = '/settings', action }: { title: ReactNode; back?: string; action?: ReactNode }) {
   const goBack = useBack(back);
+  const heading = useRef<HTMLHeadingElement>(null);
+  useBarTitle(heading, typeof title === 'string' ? title : '');
   return (
     <header className="mb-2 flex items-center gap-2">
       <button type="button" onClick={goBack} aria-label="Back" className="-ml-2 grid size-12 place-items-center rounded-full hover:bg-surface-high">
         <ArrowBack className="size-6" aria-hidden />
       </button>
-      <h1 className="display flex-1 text-[1.75rem] font-medium">{title}</h1>
+      <h1 ref={heading} className="display flex-1 text-[1.75rem] font-medium">
+        {title}
+      </h1>
       {action}
     </header>
   );

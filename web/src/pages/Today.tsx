@@ -76,7 +76,7 @@ export function Today() {
 
   return (
     <>
-      <PageHeader eyebrow={longDate(planningDate())} title={`Here's today, ${firstName(me?.name ?? '')}`} />
+      <PageHeader eyebrow={longDate(planningDate())} title={`Here's today, ${firstName(me?.name ?? '')}`} short="Today" />
 
       {others.length > 0 && (
         <ScrollRow className="-mx-4 mb-4 flex gap-2 overflow-x-auto px-4" role="radiogroup" aria-label="Whose day">

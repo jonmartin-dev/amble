@@ -8,6 +8,7 @@ import LightMode from '~icons/material-symbols/light-mode-outline-rounded';
 import { ButtonGroup, SubpageHeader } from '../components/ui.tsx';
 import { expressive } from '../lib/motion.ts';
 import { hasPhoneColors, seeds, styles, swatchColors, type ThemeContrast, type ThemeMode, type ThemePrefs } from '../lib/theme.ts';
+import { EDGES, setEdge, useEdge } from '../lib/top-edge.ts';
 import { useTheme } from '../lib/useTheme.ts';
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -56,6 +57,7 @@ function Swatch({ hex, selected, prefs, onPick, label }: { hex: string | 'phone'
 
 export function Appearance() {
   const { prefs, update } = useTheme();
+  const edge = useEdge();
   // The phone's own colors, on Android 12 and later; a browser has none to offer.
   const phone = hasPhoneColors();
   const fromPhone = phone && prefs.phone;
@@ -131,29 +133,7 @@ export function Appearance() {
 
       {!fromPhone && (
         <Section title="Style">
-          <div role="radiogroup" aria-label="Style" className="flex flex-col gap-1">
-            {styles.map((s, i) => {
-              const on = prefs.style === s.id;
-              return (
-                <button
-                  key={s.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={on}
-                  onClick={() => update({ style: s.id })}
-                  className={`flex items-center gap-4 px-4 py-3 text-left transition-colors ${on ? 'bg-secondary-container text-on-secondary-container' : 'bg-surface-low'} ${
-                    i === 0 ? 'rounded-t-3xl rounded-b-md' : i === styles.length - 1 ? 'rounded-t-md rounded-b-3xl' : 'rounded-md'
-                  }`}
-                >
-                  <span className="flex-1">
-                    <span className="block font-medium">{s.name}</span>
-                    <span className={`block text-sm ${on ? '' : 'text-on-surface-variant'}`}>{s.hint}</span>
-                  </span>
-                  {on && <Check className="size-6" aria-hidden />}
-                </button>
-              );
-            })}
-          </div>
+          <Choices label="Style" value={prefs.style} options={styles} onPick={(style) => update({ style })} />
         </Section>
       )}
 
@@ -170,7 +150,43 @@ export function Appearance() {
         />
       </Section>
 
-      <p className="mt-6 px-1 text-sm text-on-surface-variant">Saved to your account, so it follows you to every device.</p>
+      <Section title="Top of the screen">
+        <Choices label="Top of the screen" value={edge} options={edges} onPick={setEdge} />
+        <p className="mt-2 px-1 text-sm text-on-surface-variant">What the status bar does once a page scrolls up under it. Just on this device while you try them.</p>
+      </Section>
+
+      <p className="mt-6 px-1 text-sm text-on-surface-variant">The rest is saved to your account, so it follows you to every device.</p>
     </>
+  );
+}
+
+const edges = EDGES.map(([id, name, hint]) => ({ id, name, hint }));
+
+/** One of a few, each with a line on what it does: a column of rows, the picked one filled. */
+function Choices<T extends string>({ label, value, options, onPick }: { label: string; value: T; options: readonly { id: T; name: string; hint: string }[]; onPick: (id: T) => void }) {
+  return (
+    <div role="radiogroup" aria-label={label} className="flex flex-col gap-1">
+      {options.map((s, i) => {
+        const on = value === s.id;
+        return (
+          <button
+            key={s.id}
+            type="button"
+            role="radio"
+            aria-checked={on}
+            onClick={() => onPick(s.id)}
+            className={`flex items-center gap-4 px-4 py-3 text-left transition-colors ${on ? 'bg-secondary-container text-on-secondary-container' : 'bg-surface-low'} ${
+              i === 0 ? 'rounded-t-3xl rounded-b-md' : i === options.length - 1 ? 'rounded-t-md rounded-b-3xl' : 'rounded-md'
+            }`}
+          >
+            <span className="flex-1">
+              <span className="block font-medium">{s.name}</span>
+              <span className={`block text-sm ${on ? '' : 'text-on-surface-variant'}`}>{s.hint}</span>
+            </span>
+            {on && <Check className="size-6" aria-hidden />}
+          </button>
+        );
+      })}
+    </div>
   );
 }

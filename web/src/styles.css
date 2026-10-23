@@ -140,10 +140,9 @@ body {
 /*
  * Behind the phone's status bar when the app draws under it (the Android app, or Amble added to
  * an iPhone's home screen): the page's own color, so the clock and icons never sit on what scrolls
- * beneath them. Once something has scrolled under it (data-scrolled, set in main.tsx), it fades
- * out just below the bar rather than stopping at a hard edge; at the top of a page the fade would
- * only cover the page's first line. Where there's no status bar, the inset is 0 and so is all of
- * it. Above the toolbars, under sheets and their scrim.
+ * beneath them. Once something has scrolled under it (data-scrolled, set in main.tsx) it takes the
+ * look picked in Appearance (data-edge, lib/top-edge.ts). Where there's no status bar, the inset is
+ * 0 and so is all of it. Above the toolbars, under sheets and their scrim.
  */
 body::before {
   --fade: 0px;
@@ -151,7 +150,10 @@ body::before {
   position: fixed;
   inset: 0 0 auto;
   height: calc(env(safe-area-inset-top) + var(--fade));
-  transition: height 150ms;
+  transition:
+    height 150ms,
+    background-color 200ms,
+    box-shadow 200ms;
   background: linear-gradient(
     var(--md-surface) env(safe-area-inset-top),
     color-mix(in srgb, var(--md-surface) 55%, transparent) calc(env(safe-area-inset-top) + var(--fade) * 0.4),
@@ -160,8 +162,36 @@ body::before {
   z-index: 15;
   pointer-events: none;
 }
-:root[data-scrolled] body::before {
+/* Fade: it fades out just below the bar rather than stopping at a hard edge. At the top of a page
+   the fade would only cover the page's first line, so it waits for a scroll. */
+:root[data-scrolled][data-edge='fade'] body::before {
   --fade: min(env(safe-area-inset-top), 1.75rem);
+}
+/* The rest stop at a clean edge: as it is, with a hairline under it, or in a deeper tone (Material's
+   app bar once something scrolls under it), which the bar with the page's name (TopBar) shares. */
+:root:not([data-edge='fade']) body::before {
+  background: var(--md-surface);
+}
+:root[data-scrolled][data-edge='line'] body::before {
+  box-shadow: 0 1px 0 var(--md-outline-variant);
+}
+:root[data-scrolled]:is([data-edge='tonal'], [data-edge='title']) body::before {
+  background-color: var(--md-surface-container);
+}
+/* The page's name, once its big title has scrolled up under the status bar. */
+.top-bar {
+  background: var(--md-surface-container);
+  opacity: 0;
+  transform: translateY(-0.5rem);
+  pointer-events: none;
+  transition:
+    opacity 150ms,
+    transform 300ms var(--spring-fast);
+}
+.top-bar[data-shown] {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
 }
 
 /* Expressive headlines lean on the font's roundness axis. */

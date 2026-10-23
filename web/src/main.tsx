@@ -21,6 +21,7 @@ import { DetailStage } from './components/DetailStage.tsx';
 import { FloatingToolbar } from './components/FloatingToolbar.tsx';
 import { NavRail } from './components/NavRail.tsx';
 import { StatusPill } from './components/StatusPill.tsx';
+import { TopBar } from './components/TopBar.tsx';
 import { basePath } from './lib/api.ts';
 import { readCalendarsWhileOpen } from './lib/calendar.ts';
 import { EXPANDED, InPane, isDetail, useMedia } from './lib/layout.ts';
@@ -34,6 +35,7 @@ import { get, useSession } from './lib/queries.ts';
 import { SnackbarProvider, useSnackbar } from './lib/snackbar.tsx';
 import { startSync } from './lib/sync.ts';
 import { applyTheme, loadLocalTheme } from './lib/theme.ts';
+import { applyEdge } from './lib/top-edge.ts';
 import { useSyncMemberTheme } from './lib/useTheme.ts';
 import { Activity } from './pages/Activity.tsx';
 import { Appearance } from './pages/Appearance.tsx';
@@ -352,6 +354,7 @@ function Root() {
         )}
       </div>
       <StatusPill />
+      <TopBar off={!!stage || isDetail(shown)} />
       <FloatingToolbar onAdd={onAdd} label={addLabel} away={subpage} />
       <AddSheet open={adding} onClose={() => setAdding(false)} plannedByDefault={pathname === '/'} />
     </div>
@@ -409,8 +412,10 @@ takeGoogleReturn();
 // Back from signing in on the household's server, the same way.
 takeServerReturn();
 
-// Apply the saved theme before the first paint so there's no flash of the default colors.
+// Apply the saved theme (and the look under the status bar) before the first paint so there's no
+// flash of the default colors.
 applyTheme(loadLocalTheme());
+applyEdge();
 
 // No View Transitions between screens: on a phone the crossfade's snapshots held up every switch,
 // and the page's own rise-in already marks the change.

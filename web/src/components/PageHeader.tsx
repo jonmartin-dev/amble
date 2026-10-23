@@ -5,12 +5,16 @@ import History from '~icons/material-symbols/history-rounded';
 import SettingsIcon from '~icons/material-symbols/settings-outline-rounded';
 import { expressive } from '../lib/motion.ts';
 import { useMe } from '../lib/queries.ts';
+import { useBarTitle } from '../lib/top-edge.ts';
 import { Avatar } from './Avatar.tsx';
 
-export function PageHeader({ eyebrow, title }: { eyebrow?: ReactNode; title: ReactNode }) {
+/** `short`: the page's name for the bar it goes up into once scrolled away, when not the title. */
+export function PageHeader({ eyebrow, title, short }: { eyebrow?: ReactNode; title: ReactNode; short?: string }) {
   const me = useMe();
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const heading = useRef<HTMLHeadingElement>(null);
+  useBarTitle(heading, short ?? (typeof title === 'string' ? title : ''));
 
   useEffect(() => {
     if (!open) return;
@@ -25,7 +29,9 @@ export function PageHeader({ eyebrow, title }: { eyebrow?: ReactNode; title: Rea
     <header className="mb-6 flex items-start justify-between gap-4">
       <div>
         {eyebrow && <p className="text-sm text-on-surface-variant">{eyebrow}</p>}
-        <h1 className="display mt-1 text-[2.25rem] leading-[1.1] font-medium">{title}</h1>
+        <h1 ref={heading} className="display mt-1 text-[2.25rem] leading-[1.1] font-medium">
+          {title}
+        </h1>
       </div>
       {me && (
         <div ref={menuRef} className="relative shrink-0">
