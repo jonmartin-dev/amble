@@ -3,6 +3,7 @@ dist
 data
 secrets
 design
+site
 .env
 .git
 .claude

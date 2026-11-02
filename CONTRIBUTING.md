@@ -51,6 +51,7 @@ Smart add, estimates and the planner's wording need an AI model: set one up in S
 | `scripts/` | Demo data, screenshots, browser checks and the smart add eval |
 | `docs/` | Guides: running a server, sign-in, Google Drive, the Android app, Claude and ChatGPT, the privacy policy |
 | `deploy/` | The setup script for a household server (`setup.sh`, and `setup.cmd` on Windows) |
+| `site/` | The website: a front page and the privacy policy, built from the app's own styles and theme by `pnpm site` into `dist/site` |
 | `.github/` | Issue forms and the checks that run on every pull request |
 
 A new list template makes a good first change: one JSON file in `templates/` and a line in `shared/templates.ts`. [templates/README.md](templates/README.md) describes the format, which is open for any app to use.

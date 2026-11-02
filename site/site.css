@@ -1,0 +1,27 @@
+/* The website's styles are the app's own, its font included. */
+@import '@fontsource-variable/google-sans-flex/rond.css';
+@import '../web/src/styles.css';
+
+html {
+  scroll-behavior: smooth;
+}
+
+/* The shape behind the phones on the front page, growing in on the app's spring. */
+.grow-in {
+  animation: grow-in 600ms var(--spring) backwards;
+}
+@keyframes grow-in {
+  from {
+    opacity: 0;
+    transform: scale(0.6) rotate(-20deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .grow-in {
+    animation: none;
+  }
+}

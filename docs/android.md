@@ -66,7 +66,7 @@ Play installs the app signed with its own key (Play App Signing). What you uploa
 
 5. Upload it in the Play Console. After the first upload, App integrity shows Play's app signing key: add its SHA-1 as another Android client in Google Cloud ([above](#google-sign-in)), or Drive sign-in fails in the app people install from Play.
 
-The listing's words and pictures are kept with the code in `fastlane/metadata/android/en-US` (the layout fastlane and F-Droid read): the title, short and full descriptions, release notes in `changelogs/<versionCode>.txt`, the icon, the feature graphic and the phone screenshots. `node scripts/play-graphics.ts` draws the icon and feature graphic, and `AMBLE_SHOTS=play node scripts/readme-shots.ts` takes the screenshots from the demo household at 1080x1920, the 9:16 Play asks for. The privacy policy the listing links to is [privacy-policy.md](privacy-policy.md).
+The listing's words and pictures are kept with the code in `fastlane/metadata/android/en-US` (the layout fastlane and F-Droid read): the title, short and full descriptions, release notes in `changelogs/<versionCode>.txt`, the icon, the feature graphic and the phone screenshots. `node scripts/play-graphics.ts` draws the icon and feature graphic, and `AMBLE_SHOTS=play node scripts/readme-shots.ts` takes the screenshots from the demo household at 1080x1920, the 9:16 Play asks for. The privacy policy the listing links to is [privacy-policy.md](privacy-policy.md), which the website (`site/`, built by `pnpm site`) shows at /privacy.
 
 A new personal Play developer account has to run a closed test with at least 12 testers opted in for 14 days in a row before it can publish to everyone.
 
