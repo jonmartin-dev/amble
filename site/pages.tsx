@@ -273,7 +273,7 @@ function WhyAmble() {
             “I got really tired of paying for planners and of figuring out which flaky app connectors would actually work. So I made my own, and I made it free
             for everyone.”
           </blockquote>
-          <p className="mt-5 text-on-surface-variant">Jon, who started Amble</p>
+          <p className="mt-5 text-on-surface-variant">Jon</p>
         </figure>
         <ul data-cascade className="grid gap-x-6 gap-y-8 medium:grid-cols-2">
           {promises.map((p) => (
