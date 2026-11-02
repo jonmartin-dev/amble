@@ -276,13 +276,13 @@ describe('lists', () => {
 describe('load', () => {
   it('counts planned minutes against capacity, guessing 30 for unestimated tasks', () => {
     createTasks(db, asJon, [
-      { title: 'Big', plannedDate: today, estimateMinutes: 120 },
+      { title: 'Big', plannedDate: today, estimateMinutes: 60 },
       { title: 'Unknown', plannedDate: today },
       { title: 'Alex', plannedDate: today, assigneeId: alex.id, estimateMinutes: 60 },
     ]);
     const [day] = getLoad(db, jon, jon, today, today);
-    expect(day).toMatchObject({ tasks: 2, plannedMinutes: 150, guessed: 1 });
-    expect(['moderate', 'full']).toContain(day!.level);
+    // 90 minutes against 2 hours on a weekday or 3 on a weekend.
+    expect(day).toMatchObject({ tasks: 2, plannedMinutes: 90, guessed: 1, level: 'moderate' });
   });
 
   it('suggests the lightest day before the due date, preferring earlier on ties', () => {

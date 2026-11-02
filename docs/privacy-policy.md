@@ -1,12 +1,12 @@
 # Amble privacy policy
 
-Last updated November 1, 2026
+Last updated November 2, 2026
 
 This covers the Amble app for Android. Amble keeps everything you put in it (tasks, lists, notes, links, photos and files) in its own storage on your phone, and nothing leaves the phone unless you turn on or use one of the things below. There's no account to make, no ads and no analytics. Amble has no servers of its own, and its developer never receives your data.
 
 ## Sync with Google Drive
 
-If you turn on sync, Amble keeps a copy in your Google Drive and brings your other devices in step with it. For just you the copy is in Amble's own hidden folder in your Drive, which only Amble can open. For a household, it's a file in the Drive of whoever made the household, shared with the people they add. Everyone in it has the whole file, including lists marked as only theirs, which Amble keeps out of others' view but doesn't keep out of the file.
+If you turn on sync, Amble keeps a copy in your Google Drive and brings your other devices in step with it. For just you the copy is in Amble's own hidden folder in your Drive, which only Amble can open. For a household, it's a file in the Drive of whoever made the household, shared with the people they add. Everyone in it has the whole file, including lists marked as only theirs and how someone said their day was looking, which Amble keeps out of others' view but doesn't keep out of the file.
 
 Amble asks Google only for its own files: the hidden folder, and files it made or that you picked for it. It can't see anything else in your Drive. Android gives the app a key to your Drive that lasts about an hour, and a fresh one while you allow Amble. Photos and files on tasks stay on the phone of whoever added them, unless your household syncs with its own server.
 

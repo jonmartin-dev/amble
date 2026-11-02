@@ -236,7 +236,7 @@ export async function planMyWeek(db: Db, ai: Ai, me: Member, { note, timezone }:
   const days = before.map((d) => {
     const added = picks.filter((p) => p.date === d.date);
     const plannedMinutes = d.plannedMinutes + added.reduce((n, p) => n + (p.task.estimateMinutes ?? DEFAULT_ESTIMATE_MINUTES), 0);
-    return { ...d, plannedMinutes, tasks: d.tasks + added.length, level: loadLevel(plannedMinutes, d.capacityMinutes) };
+    return { ...d, plannedMinutes, tasks: d.tasks + added.length, level: loadLevel(plannedMinutes, d.capacityMinutes, d.fullAt) };
   });
   for (const p of picks) p.fits = days.find((d) => d.date === p.date)!.plannedMinutes <= days.find((d) => d.date === p.date)!.capacityMinutes;
   picks.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));

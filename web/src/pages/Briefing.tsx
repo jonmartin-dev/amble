@@ -6,9 +6,9 @@ import Check from '~icons/material-symbols/check-rounded';
 import { calendarLine, EventList } from '../components/Events.tsx';
 import { MoveSheet } from '../components/MoveSheet.tsx';
 import { TaskRow } from '../components/TaskRow.tsx';
-import { LoadBar, loadWord, minutesLabel, SectionTitle } from '../components/ui.tsx';
-import type { Briefing as BriefingData, Suggestion, Task } from '../lib/api.ts';
-import { dayLabel, longDate, planningDate } from '../lib/dates.ts';
+import { ButtonGroup, LoadBar, loadWord, minutesLabel, SectionTitle } from '../components/ui.tsx';
+import type { Briefing as BriefingData, Outlook, Suggestion, Task } from '../lib/api.ts';
+import { addDays, dayLabel, longDate, planningDate } from '../lib/dates.ts';
 import { expressive } from '../lib/motion.ts';
 import { useSend, useTaskActions } from '../lib/mutations.ts';
 import { useBriefing, useMe } from '../lib/queries.ts';
@@ -32,7 +32,35 @@ function rememberShown(date: string) {
   }
 }
 
-function SuggestionCard({ s, added, onAdd, onLater, today }: { s: Suggestion; added: boolean; onAdd: () => void; onLater: () => void; today: string }) {
+const OUTLOOKS: { value: Outlook | 'normal'; label: string }[] = [
+  { value: 'lighter', label: 'Lighter' },
+  { value: 'normal', label: 'Normal' },
+  { value: 'rough', label: 'Rough' },
+];
+
+/** "Fold the laundry, Call the vet and 2 more" */
+function someOf(tasks: Task[]) {
+  const titles = tasks.slice(0, tasks.length > 3 ? 2 : 3).map((t) => t.title);
+  if (tasks.length > 3) titles.push(`${tasks.length - 2} more`);
+  return titles.length === 1 ? titles[0]! : `${titles.slice(0, -1).join(', ')} and ${titles.at(-1)}`;
+}
+
+function SuggestionCard({
+  s,
+  added,
+  fits,
+  onAdd,
+  onLater,
+  today,
+}: {
+  s: Suggestion;
+  added: boolean;
+  /** Whether it fits in the room today has now, which changes as things come and go. */
+  fits: boolean;
+  onAdd: () => void;
+  onLater: () => void;
+  today: string;
+}) {
   const meta = [s.task.dueDate && `Due ${dayLabel(s.task.dueDate, today, true)}`, s.task.groupName, s.task.estimateMinutes && minutesLabel(s.task.estimateMinutes)].filter(Boolean);
   return (
     <motion.li
@@ -72,16 +100,16 @@ function SuggestionCard({ s, added, onAdd, onLater, today }: { s: Suggestion; ad
             Later
           </button>
         )}
-        {!s.fits && !added && <span className="ml-auto text-xs text-warm">Today's already full</span>}
+        {!fits && !added && <span className="ml-auto text-xs text-warm">Today's already full</span>}
       </div>
     </motion.li>
   );
 }
 
 /**
- * "Here's today": the first thing someone sees each morning. How full the day is, what's on the
- * calendar, what was handed over, and a few things worth pulling in, each with a reason. Nothing
- * changes until they tap Add.
+ * "Here's today": the first thing someone sees each morning. How the day is looking, how full it
+ * is, what's on the calendar, what was handed over, and a few things worth pulling in, each with a
+ * reason. Nothing changes until they tap Add.
  */
 export function Briefing() {
   const me = useMe();
@@ -89,16 +117,21 @@ export function Briefing() {
   const navigate = useNavigate();
   const send = useSend();
   const actions = useTaskActions();
-  const { data } = useBriefing();
-  // The suggestions as they first came, so cards don't jump about as the day fills.
-  const [shown, setShown] = useState<Suggestion[] | null>(null);
+  const { data, isFetchedAfterMount } = useBriefing();
+  // The suggestions as they first came for how the day is looking, so cards don't jump about as
+  // the day fills; saying it's rough or lighter brings a fresh set. Kept only from a fresh read,
+  // not the copy saved from the last visit.
+  const [shown, setShown] = useState<{ outlook: Outlook | null; list: Suggestion[] } | null>(null);
   const [added, setAdded] = useState<Set<string>>(new Set());
   const [moving, setMoving] = useState<Task | null>(null);
+  // Picked here, shown at once while the day's room catches up.
+  const [picked, setPicked] = useState<Outlook | 'normal' | null>(null);
   const today = data?.date ?? '';
+  const outlook = picked ?? data?.outlook ?? 'normal';
 
   useEffect(() => {
-    if (data && shown === null) setShown(data.suggestions);
-  }, [data, shown]);
+    if (data && isFetchedAfterMount && (shown === null || shown.outlook !== data.outlook)) setShown({ outlook: data.outlook, list: data.suggestions });
+  }, [data, isFetchedAfterMount, shown]);
 
   // Opening it counts as seeing it, so it doesn't come up again today on another device.
   useEffect(() => {
@@ -113,12 +146,19 @@ export function Briefing() {
     actions.move(s.task, today, today);
   };
   const later = (s: Suggestion) => {
-    setShown((list) => list?.filter((x) => x.task.id !== s.task.id) ?? null);
+    setShown((was) => was && { ...was, list: was.list.filter((x) => x.task.id !== s.task.id) });
     send('POST', '/briefing/later', { taskId: s.task.id }, `Put off ${s.task.title}`);
+  };
+  const look = (v: Outlook | 'normal') => {
+    setPicked(v);
+    send('POST', '/briefing/outlook', { outlook: v === 'normal' ? null : v }, 'Say how today is looking');
   };
 
   const line = data && calendarLine(data.load);
-  const suggestions = shown ?? [];
+  const suggestions = shown?.list ?? data?.suggestions ?? [];
+  const rough = outlook === 'rough';
+  // Deciding ahead what gives keeps a plan useful on a day that doesn't go to plan.
+  const canWait = data && (rough || data.load.level === 'full' || data.load.level === 'over') ? data.canWait : [];
 
   return (
     <>
@@ -126,6 +166,13 @@ export function Briefing() {
         <p className="text-sm text-on-surface-variant">{longDate(planningDate())}</p>
         <h1 className="display mt-1 text-[2.25rem] leading-[1.1] font-medium">{data?.greeting ?? `Here's today`}</h1>
       </header>
+
+      {data && (
+        <div className="mb-4">
+          <h2 className="mb-2 px-1 text-sm text-on-surface-variant">How's today looking?</h2>
+          <ButtonGroup size="sm" label="How's today looking?" value={outlook} options={OUTLOOKS} onChange={look} />
+        </div>
+      )}
 
       {data && (
         <section className="rounded-[2rem] bg-primary-container p-5 text-on-primary-container">
@@ -144,6 +191,22 @@ export function Briefing() {
                 : `${data.load.tasks} planned, about ${minutesLabel(data.load.plannedMinutes)} of ${minutesLabel(data.load.capacityMinutes)}.`}
             {line && ` ${line}`}
           </p>
+          {canWait.length > 0 && (
+            <div className="mt-4 border-t border-on-primary-container/15 pt-4">
+              <p className="text-sm">
+                {rough ? 'On a rough day, these can wait' : 'If today goes sideways, these can wait'}: {someOf(canWait)}.
+              </p>
+              {rough && (
+                <button
+                  type="button"
+                  onClick={() => actions.moveAll(canWait, addDays(today, 1), today)}
+                  className="press mt-3 h-10 rounded-full bg-primary px-4 text-sm font-medium text-on-primary"
+                >
+                  {canWait.length === 1 ? 'Move it to tomorrow' : 'Move them to tomorrow'}
+                </button>
+              )}
+            </div>
+          )}
         </section>
       )}
 
@@ -205,7 +268,15 @@ export function Briefing() {
             <ul className="flex flex-col gap-2">
               <AnimatePresence initial={false}>
                 {suggestions.map((s) => (
-                  <SuggestionCard key={s.task.id} s={s} today={today} added={added.has(s.task.id)} onAdd={() => add(s)} onLater={() => later(s)} />
+                  <SuggestionCard
+                    key={s.task.id}
+                    s={s}
+                    today={today}
+                    added={added.has(s.task.id)}
+                    fits={(s.task.estimateMinutes ?? 30) <= data.load.capacityMinutes - data.load.plannedMinutes}
+                    onAdd={() => add(s)}
+                    onLater={() => later(s)}
+                  />
                 ))}
               </AnimatePresence>
             </ul>

@@ -217,7 +217,7 @@ describe('phase 5 API', () => {
     expect((await api.post('/tasks', { title: 'x', repeat: { mode: 'schedule', every: 0, unit: 'day' } })).status).toBe(400);
     const capacity = (await api.get('/capacity')).json.days;
     expect(capacity).toHaveLength(7);
-    expect(capacity[0]).toMatchObject({ weekday: 1, default: 180, pinned: null, samples: 0 });
+    expect(capacity[0]).toMatchObject({ weekday: 1, default: 120, pinned: null, samples: 0 });
   });
 
   it('makes templated lists, edits items, keeps history and resets', async () => {

@@ -22,7 +22,7 @@
 Most planners show you everything you haven't done yet. Amble starts from a different question: how much room does today actually have?
 
 - **It knows when you're busy.** Amble reads the phone calendars you pick and learns how much you usually get done, so a busy day gets fewer tasks. Only how many minutes of each day are busy ever leaves your phone.
-- **Today stays light.** Your day is split into morning, afternoon and evening with a meter for how full it is. Each morning shows what's on your calendar, what someone handed you and a few backlog tasks worth pulling in. Nothing moves until you tap Add.
+- **Today stays light.** Your day is split into morning, afternoon and evening with a meter for how full it is. Each morning asks how the day is looking and shows what's on your calendar, what someone handed you and a few backlog tasks worth pulling in. Nothing moves until you tap Add.
 - **Things due later land on a good day.** A task with a deadline shows the day with the most room before it, and Plan my week lays out the next seven days around your calendar.
 - **No guilt.** No red overdue counts, no badges, no streaks to keep up, and no notifications except the reminders you ask for. Anything you didn't get to comes back quietly as a suggestion.
 

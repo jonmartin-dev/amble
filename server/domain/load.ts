@@ -1,16 +1,30 @@
-import { and, eq, gte, lt } from 'drizzle-orm';
+import { and, between, eq, gte, isNotNull, lt } from 'drizzle-orm';
 import type { Db } from '../db/index.ts';
-import { activity, tasks, type Member } from '../db/schema.ts';
-import { addDays, dateOf, dateRange, daysBetween, isWeekend, planningDate, planningDayStart, weekday } from '../lib/dates.ts';
+import { activity, dayRecords, tasks, type DayRecord, type Member } from '../db/schema.ts';
+import { addDays, dateOf, dateRange, daysBetween, planningDate, planningDayStart, weekday } from '../lib/dates.ts';
 import { busyByDay, usualBusy, WAKING_MINUTES } from './events.ts';
 import { DomainError } from './household.ts';
 import { listTasks } from './tasks.ts';
 
-// Capacity starts at these defaults and is learned from what each member finishes. Anyone can pin
-// their own number per weekday in Settings, which wins over what was learned.
+// Capacity starts at what someone said a usual weekday has, or at these defaults, and is learned
+// from what each member finishes. Anyone can pin their own number per weekday in Settings, which
+// wins over what was learned. The defaults are about what time-use surveys find people spend on
+// all household work, cooking included, so a plan errs light rather than heavy.
 export const DEFAULT_ESTIMATE_MINUTES = 30;
-export const DEFAULT_CAPACITY = { weekday: 180, weekend: 240 };
+export const DEFAULT_CAPACITY = { weekday: 120, weekend: 180 };
+// Weekends start this much above what someone said a weekday has.
+const WEEKEND_EXTRA = 60;
 export const MAX_CAPACITY_MINUTES = 720;
+// How full someone likes their days: "plan my week" fills days to `plan` of their room, and a day
+// reads as Full from `full` of it. Packed fills a day all the way but turns Full a little before.
+export const DAY_FILL = {
+  roomy: { plan: 0.7, full: 0.7 },
+  balanced: { plan: 0.85, full: 0.85 },
+  packed: { plan: 1, full: 0.95 },
+} as const;
+export type DayFill = keyof typeof DAY_FILL;
+// A rough day keeps this share of its room, and a lighter one gets this much.
+const OUTLOOK_SHARE = { rough: 0.6, lighter: 1.25 };
 const LEARN_WEEKS = 12;
 // This many same-weekday samples (about six weeks of use) and the default no longer counts.
 const FULL_WEIGHT_SAMPLES = 6;
@@ -52,11 +66,26 @@ export interface DayLoad {
   events: number;
   /** Busy calendar time on a usual day like this weekday. */
   usualEventMinutes: number;
+  /** The share of the room where the day reads as Full, from how full they like their days. */
+  fullAt: number;
   level: LoadLevel;
 }
 
-export function defaultCapacity(isoWeekday: number) {
-  return isoWeekday >= 6 ? DEFAULT_CAPACITY.weekend : DEFAULT_CAPACITY.weekday;
+/** Where a weekday's capacity starts: what they said a usual weekday has (weekends an hour more), or the default. */
+export function defaultCapacity(isoWeekday: number, member?: Partial<Pick<Member, 'startMinutes'>> | null) {
+  const weekend = isoWeekday >= 6;
+  if (member?.startMinutes != null) return member.startMinutes + (weekend ? WEEKEND_EXTRA : 0);
+  return weekend ? DEFAULT_CAPACITY.weekend : DEFAULT_CAPACITY.weekday;
+}
+
+/** How someone said each day between two dates was looking, for the days they said. */
+export function outlooks(db: Db, memberId: string, start: string, end: string): Map<string, NonNullable<DayRecord['outlook']>> {
+  const said = db
+    .select({ date: dayRecords.date, outlook: dayRecords.outlook })
+    .from(dayRecords)
+    .where(and(eq(dayRecords.memberId, memberId), between(dayRecords.date, start, end), isNotNull(dayRecords.outlook)))
+    .all();
+  return new Map(said.map((d) => [d.date, d.outlook!]));
 }
 
 export interface LearnedDay {
@@ -92,6 +121,8 @@ export function learnedCapacity(db: Db, member: Member, today = planningDate(mem
     const share = freeShare(busy.get(day)?.minutes ?? 0, usual.get(Temporal.PlainDate.from(day).dayOfWeek) ?? 0);
     return Math.min(Math.max(share > 0 ? 1 / share : 2, 0.5), 2);
   };
+  // A day they said was rough or lighter than usual says nothing about an ordinary one.
+  const unusual = outlooks(db, member.id, start, addDays(today, -1));
   const from = planningDayStart(member, start);
   const until = planningDayStart(member, today);
   const active = new Set(
@@ -114,9 +145,9 @@ export function learnedCapacity(db: Db, member: Member, today = planningDate(mem
   }
   return [1, 2, 3, 4, 5, 6, 7].map((dow) => {
     const samples = [...active]
-      .filter((d) => Temporal.PlainDate.from(d).dayOfWeek === dow)
+      .filter((d) => Temporal.PlainDate.from(d).dayOfWeek === dow && !unusual.has(d))
       .map((d) => (finished.get(d) ?? 0) * scale(d));
-    const base = defaultCapacity(dow);
+    const base = defaultCapacity(dow, member);
     if (samples.length === 0) return { weekday: dow, minutes: base, samples: 0, confidence: 0 };
     const confidence = Math.min(samples.length / FULL_WEIGHT_SAMPLES, 1);
     const observed = Math.max(percentile(samples, 0.75), base * MIN_LEARNED_SHARE);
@@ -130,26 +161,29 @@ export function learnedCapacity(db: Db, member: Member, today = planningDate(mem
  * Task minutes that fit on a date for this member: the number they pinned for that weekday, else
  * what Amble learned, else the default.
  */
-export function capacityFor(date: string, member?: Pick<Member, 'capacity'>, learned?: LearnedDay[]) {
+export function capacityFor(date: string, member?: Partial<Pick<Member, 'capacity' | 'startMinutes'>>, learned?: LearnedDay[]) {
   const dow = Temporal.PlainDate.from(date).dayOfWeek;
   const pinned = member?.capacity?.[String(dow)];
   if (pinned != null) return pinned;
-  return learned?.find((d) => d.weekday === dow)?.minutes ?? (isWeekend(date) ? DEFAULT_CAPACITY.weekend : DEFAULT_CAPACITY.weekday);
+  return learned?.find((d) => d.weekday === dow)?.minutes ?? defaultCapacity(dow, member);
 }
 
-/** Room for tasks on a date once its calendar is counted against a usual day's. */
-export function roomAfterEvents(base: number, busyMinutes: number, usualMinutes: number) {
+/**
+ * Room for tasks on a date once its calendar is counted against a usual day's, and how they said
+ * the day was looking.
+ */
+export function roomAfterEvents(base: number, busyMinutes: number, usualMinutes: number, outlook?: DayRecord['outlook']) {
   if (base === 0) return 0;
-  const room = base * freeShare(busyMinutes, usualMinutes);
-  return Math.min(Math.round(room / 5) * 5, Math.round(base * MAX_ROOM_SHARE));
+  const room = Math.min(base * freeShare(busyMinutes, usualMinutes), base * MAX_ROOM_SHARE) * (outlook ? OUTLOOK_SHARE[outlook] : 1);
+  return Math.round(room / 5) * 5;
 }
 
-export function loadLevel(minutes: number, capacity: number): LoadLevel {
+export function loadLevel(minutes: number, capacity: number, fullAt: number = DAY_FILL.balanced.full): LoadLevel {
   // A day off has no room, so anything on it is too much.
   if (capacity === 0) return minutes > 0 ? 'over' : 'light';
   const ratio = minutes / capacity;
   if (ratio < 0.5) return 'light';
-  if (ratio < 0.85) return 'moderate';
+  if (ratio < fullAt) return 'moderate';
   if (ratio <= 1) return 'full';
   return 'over';
 }
@@ -169,13 +203,16 @@ export function getLoad(db: Db, me: Member, forMember: Member, start: string, en
   const learned = learnedCapacity(db, forMember);
   const busy = busyByDay(db, forMember, start, end);
   const usual = usualBusy(db, forMember, planningDate(forMember));
+  // Everyone sees how a day they said was rough or lighter changes its room, never what they said.
+  const said = outlooks(db, forMember.id, start, end);
+  const fullAt = DAY_FILL[forMember.dayFill].full;
   return dateRange(start, end).map((date) => {
     const day = planned.filter((t) => t.plannedDate === date);
     const minutes = day.reduce((sum, t) => sum + (t.estimateMinutes ?? DEFAULT_ESTIMATE_MINUTES), 0);
     const base = capacityFor(date, forMember, learned);
     const cal = busy.get(date) ?? { minutes: 0, events: 0 };
     const usualMinutes = usual.get(Temporal.PlainDate.from(date).dayOfWeek) ?? 0;
-    const capacity = roomAfterEvents(base, cal.minutes, usualMinutes);
+    const capacity = roomAfterEvents(base, cal.minutes, usualMinutes, said.get(date));
     return {
       date,
       weekday: weekday(date),
@@ -188,7 +225,8 @@ export function getLoad(db: Db, me: Member, forMember: Member, start: string, en
       eventMinutes: cal.minutes,
       events: cal.events,
       usualEventMinutes: usualMinutes,
-      level: loadLevel(minutes, capacity),
+      fullAt,
+      level: loadLevel(minutes, capacity, fullAt),
     };
   });
 }

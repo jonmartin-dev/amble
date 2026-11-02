@@ -12,7 +12,7 @@ import EventAvailable from '~icons/material-symbols/event-available-outline-roun
 import Favorite from '~icons/material-symbols/favorite-outline-rounded';
 import Lock from '~icons/material-symbols/lock-outline-rounded';
 import OpenInNew from '~icons/material-symbols/open-in-new-rounded';
-import { api, ApiError, appUrl, servedBy, type Member } from '../lib/api.ts';
+import { api, ApiError, appUrl, servedBy, type DayFill, type Member } from '../lib/api.ts';
 import { deviceFailure, useHere, type DeviceState } from '../lib/device.ts';
 import { refreshStatus } from '../lib/drive-sync.ts';
 import { applyUpdate, useUpdateReady } from '../lib/pwa.ts';
@@ -20,6 +20,8 @@ import { googleConfigured, resumeAfterGoogle, tokenFromTap } from '../lib/google
 import { useServerReturn } from '../lib/server-sync.ts';
 import { useRestoreCopy } from '../components/CopySection.tsx';
 import { ServerForm } from '../components/ServerForm.tsx';
+import { ChoiceList } from '../components/ui.tsx';
+import { FILL_CHOICES, START_CHOICES } from './Capacity.tsx';
 import { joinHousehold } from './SyncSettings.tsx';
 import { expressive } from '../lib/motion.ts';
 import { PROJECT_URL } from '../lib/project.ts';
@@ -41,7 +43,7 @@ function Frame({ children }: { children: React.ReactNode }) {
   );
 }
 
-type Step = 'intro' | 'you' | 'ai';
+type Step = 'intro' | 'you' | 'days' | 'ai';
 
 // Opened from the code on a server's page (shared/qr.ts): straight to joining it.
 const joining = servedBy != null && new URLSearchParams(location.search).has('join');
@@ -71,13 +73,16 @@ function StepIn({ step, children }: { step: Step; children: React.ReactNode }) {
 
 /**
  * The first screens: what Amble is, said plainly; then a name to start with, or a way back in to a
- * household that already uses it; then, for someone starting fresh, a word about the optional AI.
+ * household that already uses it; then, for someone starting fresh, two optional questions that
+ * size their days, and a word about the optional AI.
  */
 export function Welcome() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [step, setStep] = useState<Step>(joining ? 'you' : 'intro');
   const [name, setName] = useState('');
+  const [startMinutes, setStartMinutes] = useState<number | null>(null);
+  const [dayFill, setDayFill] = useState<DayFill | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [server, setServer] = useState(false);
@@ -134,12 +139,21 @@ export function Welcome() {
     setError(null);
     try {
       await api<{ member: Member }>('/device/start', { method: 'POST', body: JSON.stringify({ name: name.trim() }) });
-      setStep('ai');
+      setStep('days');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "That didn't work. Try again.");
     } finally {
       setSaving(false);
     }
+  };
+
+  // Whatever they answered; Amble learns the rest as they go, so nothing here is worth stopping for.
+  const sizeDays = async () => {
+    const answers = { ...(startMinutes != null && { startMinutes }), ...(dayFill && { dayFill }) };
+    setSaving(true);
+    if (Object.keys(answers).length) await api('/me', { method: 'PATCH', body: JSON.stringify(answers) }).catch(() => null);
+    setSaving(false);
+    setStep('ai');
   };
 
   const enter = async (to?: '/settings/ai') => {
@@ -259,9 +273,24 @@ export function Welcome() {
           </StepIn>
         )}
 
+        {step === 'days' && (
+          <StepIn step="days">
+            <p className="mt-3 text-lg">Hi, {name.trim()}. Two quick questions so your days start out the right size. Both are optional, and Amble learns as you go.</p>
+            <h2 className="mt-8 mb-3 px-1 font-medium">On a usual weekday, how much time goes to chores, errands and life admin?</h2>
+            <ChoiceList label="Time on a usual weekday" value={startMinutes} options={START_CHOICES} onChange={setStartMinutes} />
+            <h2 className="mt-8 mb-3 px-1 font-medium">How full do you like your days?</h2>
+            <ChoiceList label="How full you like your days" value={dayFill} options={FILL_CHOICES} onChange={setDayFill} />
+            <div className="mt-8 flex flex-col">
+              <button type="button" onClick={() => void sizeDays()} disabled={saving} className={primary}>
+                Next
+              </button>
+            </div>
+          </StepIn>
+        )}
+
         {step === 'ai' && (
           <StepIn step="ai">
-            <p className="mt-3 text-lg">Hi, {name.trim()}. One optional extra, and then you're in.</p>
+            <p className="mt-3 text-lg">One optional extra, and then you're in.</p>
             <div className="mt-6 flex flex-col gap-4 text-on-surface-variant">
               <p>Amble picks up days and times as you type: "dentist Thursday at 3" goes on Thursday afternoon.</p>
               <p>

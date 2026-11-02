@@ -621,7 +621,7 @@ export function createMcpServer({
     {
       title: 'Day load',
       description:
-        "How full each day is: planned task minutes against the room that day has for tasks (capacityMinutes). Room is learned per person and weekday from what they actually finish (about 3 hours on weekdays and 4 on weekends to start; anyone can pin their own in Settings), then their calendar adjusts it: a day busier than a usual one for that weekday (eventMinutes against usualEventMinutes) has less room, and a lighter one gives some back. Amble knows only how busy each day is, from the person's phone, never what the events are. Tasks without an estimate count as 30 minutes.",
+        "How full each day is: planned task minutes against the room that day has for tasks (capacityMinutes). Room is learned per person and weekday from what they actually finish (to start, what they said a usual weekday has, or about 2 hours on weekdays and 3 on weekends; anyone can pin their own in Settings), then their calendar adjusts it: a day busier than a usual one for that weekday (eventMinutes against usualEventMinutes) has less room, and a lighter one gives some back. Someone can also give today less room or more in the morning briefing. Amble knows only how busy each day is, from the person's phone, never what the events are. A day is full from fullAt of its room, which depends on how full the person likes their days. Tasks without an estimate count as 30 minutes.",
       inputSchema: z.object({
         start: dateArg.optional().describe('Default today'),
         end: dateArg.optional().describe('Default 6 days after start'),
@@ -681,7 +681,7 @@ export function createMcpServer({
     {
       title: 'Plan the week',
       description:
-        "A draft plan for the next seven days: anything left over from earlier days and the most pressing backlog tasks, each on the day with the most room, filling days to about 85% and never past a deadline. Tasks that don't fit stay in the backlog. It only suggests: show the plan, adjust it with the person, then use move_tasks for what they agree to.",
+        "A draft plan for the next seven days: anything left over from earlier days and the most pressing backlog tasks, each on the day with the most room, filling days only as full as the person likes them (70%, 85% or all of the room) and never past a deadline. Tasks that don't fit stay in the backlog. It only suggests: show the plan, adjust it with the person, then use move_tasks for what they agree to.",
       inputSchema: z.object({}),
       annotations: read,
     },

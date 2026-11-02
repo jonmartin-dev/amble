@@ -16,7 +16,7 @@ function task(fields: Partial<Task> & { id: string }): Task {
 }
 
 function load(date: string, fields: Partial<DayLoad> = {}): DayLoad {
-  return { date, weekday: 'Wed', tasks: 0, mustDo: 0, plannedMinutes: 0, guessed: 0, capacityMinutes: 60, baseCapacityMinutes: 60, eventMinutes: 0, events: 0, usualEventMinutes: 0, level: 'light', ...fields };
+  return { date, weekday: 'Wed', tasks: 0, mustDo: 0, plannedMinutes: 0, guessed: 0, capacityMinutes: 60, baseCapacityMinutes: 60, eventMinutes: 0, events: 0, usualEventMinutes: 0, fullAt: 0.85, level: 'light', ...fields };
 }
 
 const today = (who = 'me') => qc.getQueryData<Today>(['today', who])!;
@@ -25,7 +25,7 @@ const titles = (list: Task[]) => list.map((t) => t.id);
 beforeEach(() => {
   qc = new QueryClient();
   qc.setQueryData<Session>(['session'], {
-    member: { id: ME, email: 'me@example.com', name: 'Me Person', avatarUrl: null, color: 'green', role: 'admin', theme: null, capacity: null, showStreaks: true, smartAdd: true },
+    member: { id: ME, email: 'me@example.com', name: 'Me Person', avatarUrl: null, color: 'green', role: 'admin', theme: null, capacity: null, startMinutes: null, dayFill: 'balanced', showStreaks: true, smartAdd: true },
     auth: { provider: 'Google', oidc: true, devEmails: [], privacyContact: '', ai: null },
   });
   qc.setQueryData<{ groups: Group[] }>(['groups'], {

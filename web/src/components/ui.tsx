@@ -220,6 +220,45 @@ export function ButtonGroup<T extends string | number>({
   );
 }
 
+/** A short list of answers to one question, one picked: a grouped list, the picked row tinted with a check. */
+export function ChoiceList<T extends string | number>({
+  value,
+  options,
+  onChange,
+  label,
+}: {
+  value: T | null;
+  options: { value: T; label: string; note?: string }[];
+  onChange: (v: T) => void;
+  label: string;
+}) {
+  return (
+    <div role="radiogroup" aria-label={label} className="flex flex-col gap-0.5">
+      {options.map((o, i) => {
+        const on = o.value === value;
+        return (
+          <button
+            key={String(o.value)}
+            type="button"
+            role="radio"
+            aria-checked={on}
+            onClick={() => onChange(o.value)}
+            className={`flex min-h-14 w-full items-center gap-3 px-4 py-2.5 text-left transition-colors ${segment(i, options.length)} ${
+              on ? 'bg-secondary-container text-on-secondary-container' : 'bg-surface-low hover:bg-surface-container'
+            }`}
+          >
+            <span className="min-w-0 flex-1">
+              <span className="block font-medium">{o.label}</span>
+              {o.note && <span className={`block text-sm ${on ? '' : 'text-on-surface-variant'}`}>{o.note}</span>}
+            </span>
+            {on && <Check className="size-6 shrink-0" aria-hidden />}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /**
  * M3 bottom sheet with a scrim. Drag the handle down, tap outside, press Escape or the phone's
  * Back to close. It rides on top of the on-screen keyboard, and `footer` (a text box, the main

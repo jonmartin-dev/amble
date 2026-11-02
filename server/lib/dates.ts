@@ -24,10 +24,6 @@ export function weekday(date: string): string {
   return Temporal.PlainDate.from(date).toLocaleString('en-US', { weekday: 'short' });
 }
 
-export function isWeekend(date: string): boolean {
-  return Temporal.PlainDate.from(date).dayOfWeek >= 6;
-}
-
 /** Every date from start to end, inclusive. */
 export function dateRange(start: string, end: string): string[] {
   const out: string[] = [];

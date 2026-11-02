@@ -106,11 +106,11 @@ function bucketFor(t: Task, today: string): Bucket | null {
   return null;
 }
 
-function loadLevel(minutes: number, capacity: number): DayLoad['level'] {
+function loadLevel(minutes: number, capacity: number, fullAt: number): DayLoad['level'] {
   if (capacity === 0) return minutes > 0 ? 'over' : 'light';
   const ratio = minutes / capacity;
   if (ratio < 0.5) return 'light';
-  if (ratio < 0.85) return 'moderate';
+  if (ratio < fullAt) return 'moderate';
   if (ratio <= 1) return 'full';
   return 'over';
 }
@@ -125,7 +125,7 @@ function shiftLoad(day: DayLoad, t: Task | null, person: string, sign: 1 | -1): 
     mustDo: day.mustDo + (t.mustDo ? sign : 0),
     guessed: day.guessed + (t.estimateMinutes == null ? sign : 0),
     plannedMinutes: minutes,
-    level: loadLevel(minutes, day.capacityMinutes),
+    level: loadLevel(minutes, day.capacityMinutes, day.fullAt),
   };
 }
 

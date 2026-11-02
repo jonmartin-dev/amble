@@ -8,7 +8,7 @@ import { dayRecords, members, sessions, type Member } from '../db/schema.ts';
 import { seedStarterGroups } from '../db/seed.ts';
 import { addDays, planningDate } from '../lib/dates.ts';
 import { resolveGroup, type Actor } from './household.ts';
-import { dismissSuggestion, findGaps, getBriefing, markBriefingSeen, planWeek, score, suggestForDay } from './planner.ts';
+import { dismissSuggestion, findGaps, getBriefing, markBriefingSeen, planWeek, score, setOutlook, suggestForDay } from './planner.ts';
 import { assignTask, createTasks, getTask, listTasks, moveTasks } from './tasks.ts';
 
 let db: Db;
@@ -81,6 +81,38 @@ describe('suggestions for today', () => {
     dismissSuggestion(db, jon, form!.id);
     expect(getBriefing(db, jon).suggestions.map((s) => s.task.title)).toEqual(['Fix the gate']);
   });
+
+  it("saves the last pick for something that matters but isn't due, and not a third quick one", () => {
+    createTasks(db, asJon, [
+      { title: 'Due in two days', dueDate: addDays(today, 2), estimateMinutes: 10 },
+      { title: 'Due in three days', dueDate: addDays(today, 3), estimateMinutes: 10 },
+      { title: 'Due in four days', dueDate: addDays(today, 4), estimateMinutes: 10 },
+    ]);
+    createTasks(db, weeksAgo(3), [
+      { title: 'Sort the mail', estimateMinutes: 10 },
+      { title: 'Clean the gutters', estimateMinutes: 60 },
+    ]);
+    expect(suggestForDay(db, jon).map((p) => [p.task.title, p.why])).toEqual([
+      ['Due in two days', 'due'],
+      ['Due in three days', 'due'],
+      ['Clean the gutters', 'waiting'],
+    ]);
+
+    // Nothing due today gives way for it, though.
+    createTasks(db, asJon, [1, 2, 3].map((i) => ({ title: `Due today ${i}`, dueDate: today, estimateMinutes: 10 })));
+    expect(suggestForDay(db, jon).every((p) => p.task.title.startsWith('Due today'))).toBe(true);
+  });
+
+  it('on a rough day, suggests only must-dos and what is due today', () => {
+    createTasks(db, asJon, [
+      { title: 'Due today', dueDate: today, estimateMinutes: 10 },
+      { title: 'Due tomorrow', dueDate: addDays(today, 1), estimateMinutes: 10 },
+      { title: 'Must do', mustDo: true, estimateMinutes: 10 },
+    ]);
+    expect(suggestForDay(db, jon)).toHaveLength(3);
+    setOutlook(db, jon, 'rough');
+    expect(suggestForDay(db, jon).map((p) => p.task.title)).toEqual(['Due today', 'Must do']);
+  });
 });
 
 describe('the morning briefing', () => {
@@ -99,6 +131,23 @@ describe('the morning briefing', () => {
     expect(briefing.carriedOver.map((t) => t.id)).toEqual([left!.id]);
     markBriefingSeen(db, jon);
     expect(getBriefing(db, jon).seen).toBe(true);
+  });
+
+  it('names what on today can wait, and keeps how the day is looking', () => {
+    createTasks(db, asJon, [
+      { title: 'Fold the laundry', plannedDate: today, estimateMinutes: 30 },
+      { title: 'Pay the rent', plannedDate: today, dueDate: today, estimateMinutes: 10 },
+      { title: 'Call the vet', plannedDate: today, mustDo: true },
+    ]);
+    createTasks(db, asAlex, [{ title: "Alex's laundry", plannedDate: today, assigneeId: alex.id }]);
+    const briefing = getBriefing(db, jon);
+    expect(briefing.outlook).toBeNull();
+    expect(briefing.canWait.map((t) => t.title)).toEqual(['Fold the laundry']);
+    setOutlook(db, jon, 'rough');
+    // 120 minutes pinned, and a rough day keeps 60% of it.
+    expect(getBriefing(db, jon)).toMatchObject({ outlook: 'rough', load: { capacityMinutes: 70, baseCapacityMinutes: 120 } });
+    // Alex sees Jon's day with less room, and never why.
+    expect(getBriefing(db, alex).outlook).toBeNull();
   });
 
   it("writes the day's reasons once, ahead of time, with Haiku's wording", async () => {
@@ -145,6 +194,27 @@ describe('finding days', () => {
     // of which holds the 90-minute task and one the 60-minute leftover.
     for (const d of plan.days) expect(d.plannedMinutes).toBeLessThanOrEqual(120);
     expect(titles.filter((t) => t.startsWith('Chore'))).toHaveLength(5);
+  });
+
+  it('fills days only as full as someone likes them', () => {
+    const picks = (dayFill: Member['dayFill']) => {
+      jon = db.update(members).set({ dayFill }).where(eq(members.id, jon.id)).returning().get();
+      return planWeek(db, jon).picks.length;
+    };
+    // 120 minutes a day: 70% of it holds one 50-minute chore and 85% two.
+    createTasks(db, weeksAgo(1), Array.from({ length: 14 }, (_, i) => ({ title: `Chore ${i}`, estimateMinutes: 50 })));
+    expect(picks('roomy')).toBe(7);
+    expect(picks('balanced')).toBe(14);
+  });
+
+  it('fills days all the way for someone who likes them packed', () => {
+    const picks = (dayFill: Member['dayFill']) => {
+      jon = db.update(members).set({ dayFill }).where(eq(members.id, jon.id)).returning().get();
+      return planWeek(db, jon).picks.length;
+    };
+    createTasks(db, weeksAgo(1), Array.from({ length: 14 }, (_, i) => ({ title: `Chore ${i}`, estimateMinutes: 60 })));
+    expect(picks('balanced')).toBe(7);
+    expect(picks('packed')).toBe(14);
   });
 
   it("lets Haiku follow what someone said, but never past a deadline or outside the week", async () => {

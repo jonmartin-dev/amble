@@ -24,6 +24,11 @@ export const members = sqliteTable('members', {
   theme: text('theme', { mode: 'json' }).$type<Record<string, unknown>>(),
   // Minutes of task time per ISO weekday ("1" is Monday); missing days use the default.
   capacity: text('capacity', { mode: 'json' }).$type<Partial<Record<string, number>>>(),
+  // What they said a usual weekday has for chores and errands, when they started. Capacity starts
+  // there (weekends an hour more) instead of the default, and is learned from it.
+  startMinutes: integer('start_minutes'),
+  // How full they like their days: where a day reads as Full, and how far "plan my week" fills one.
+  dayFill: text('day_fill', { enum: ['roomy', 'balanced', 'packed'] }).notNull().default('balanced'),
   showStreaks: integer('show_streaks', { mode: 'boolean' }).notNull().default(true),
   // Quick add sends what's typed to the AI model for review, when one is set up.
   smartAdd: integer('smart_add', { mode: 'boolean' }).notNull().default(true),
@@ -364,6 +369,8 @@ export const dayRecords = sqliteTable(
     reasonsBy: text('reasons_by', { enum: ['template', 'ai'] }),
     // Tasks they said "Later" to today.
     dismissed: text('dismissed', { mode: 'json' }).$type<string[]>().notNull().default(sql`'[]'`),
+    // How they said the day was looking, which gives it less room or more. None is a normal day.
+    outlook: text('outlook', { enum: ['lighter', 'rough'] }),
     createdAt: createdAt(),
   },
   (t) => [primaryKey({ columns: [t.memberId, t.date] })],

@@ -71,6 +71,10 @@ export interface Member {
   theme: Partial<ThemePrefs> | null;
   /** Task minutes per ISO weekday ("1" is Monday); missing days use the default. */
   capacity: Partial<Record<string, number>> | null;
+  /** What they said a usual weekday has for tasks, where capacity starts; null is the default. */
+  startMinutes: number | null;
+  /** How full they like their days. */
+  dayFill: DayFill;
   showStreaks: boolean;
   smartAdd: boolean;
 }
@@ -191,8 +195,13 @@ export interface DayLoad {
   events: number;
   /** Busy calendar time on a usual day like this weekday. */
   usualEventMinutes: number;
+  /** The share of the room where the day reads as Full, from how full they like their days. */
+  fullAt: number;
   level: 'light' | 'moderate' | 'full' | 'over';
 }
+
+export type DayFill = 'roomy' | 'balanced' | 'packed';
+export type Outlook = 'lighter' | 'rough';
 
 export interface CalendarEvent {
   id: string;
@@ -233,6 +242,10 @@ export interface Briefing {
   handedOver: { task: Task; from: string; note: string | null }[];
   carriedOver: Task[];
   suggestions: Suggestion[];
+  /** How they said today was looking; null is a normal day. */
+  outlook: Outlook | null;
+  /** On today with no deadline and not must-do. */
+  canWait: Task[];
 }
 
 export interface DayPick {

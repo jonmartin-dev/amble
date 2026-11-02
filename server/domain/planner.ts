@@ -7,12 +7,12 @@ import { activity, dayRecords, members, tasks, type DayRecord, type Member, type
 import { addDays, daysBetween, planningDate, planningDayStart, weekday } from '../lib/dates.ts';
 import { listEvents, type EventView } from './events.ts';
 import { DomainError, firstName } from './household.ts';
-import { DEFAULT_ESTIMATE_MINUTES, getLoad, loadLevel, type DayLoad } from './load.ts';
+import { DAY_FILL, DEFAULT_ESTIMATE_MINUTES, getLoad, loadLevel, outlooks, type DayLoad } from './load.ts';
 import { getTask, listTasks, type TaskDetail } from './tasks.ts';
 
 const SUGGESTIONS = 3;
-// A plan fills days to this share of their room, leaving some slack.
-const PLAN_FILL = 0.85;
+// A task this short is a quick one.
+const QUICK_MINUTES = 15;
 const PLAN_DAYS = 7;
 const PLAN_MAX = 20;
 const GAP_HORIZON_DAYS = 30;
@@ -95,7 +95,7 @@ function reasonFor(t: TaskDetail, today: string, createdOn: string, ahead: DayLo
   const wait = waited(createdOn, today);
   if (wait && parts.length === 0) parts.push(`${wait}.`);
   const minutes = minutesOf(t);
-  if (minutes <= room && room > 0 && parts.length < 2) parts.push(minutes <= 15 ? 'A quick one.' : `It fits in the time today has left.`);
+  if (minutes <= room && room > 0 && parts.length < 2) parts.push(minutes <= QUICK_MINUTES ? 'A quick one.' : `It fits in the time today has left.`);
   return parts.join(' ') || 'There\'s room for it today.';
 }
 
@@ -104,16 +104,23 @@ function backlogFor(db: Db, me: Member) {
   return listTasks(db, me, { status: 'open', unplanned: true, assignee: { memberId: me.id, includeShared: true } });
 }
 
+/** Due today or before: it's suggested whether or not it fits. */
+const dueBy = (t: Pick<TaskDetail, 'dueDate'>, today: string) => !!t.dueDate && t.dueDate <= today;
+
 /**
  * The few backlog tasks most worth pulling into today, best first. Each must fit in the room the
- * day has left, except overdue or due-today ones, which are suggested regardless.
+ * day has left, except overdue or due-today ones, which are suggested regardless. People lean to
+ * urgent over important and to easy over hard, so the last pick goes to something that matters
+ * but isn't due (a must-do, or what's waited longest) when nothing before it does, and isn't a
+ * third quick one. On a day they said was rough, only must-dos and what's due today come up.
  */
 export function suggestForDay(db: Db, me: Member, { exclude = new Set<string>(), limit = SUGGESTIONS } = {}): Suggestion[] {
   const today = planningDate(me);
+  const rough = outlooks(db, me.id, today, today).get(today) === 'rough';
   const [todayLoad, ...ahead] = getLoad(db, me, me, today, addDays(today, 14));
   let room = todayLoad!.capacityMinutes - todayLoad!.plannedMinutes;
-  const scored = backlogFor(db, me)
-    .filter((t) => !exclude.has(t.id))
+  const left = backlogFor(db, me)
+    .filter((t) => !exclude.has(t.id) && (!rough || t.mustDo || dueBy(t, today)))
     .map((t) => {
       const createdOn = planningDate(me, Temporal.Instant.fromEpochMilliseconds(t.createdAt.getTime()));
       return { t, createdOn, score: score(t, today, createdOn) };
@@ -122,13 +129,20 @@ export function suggestForDay(db: Db, me: Member, { exclude = new Set<string>(),
     .filter((s) => s.score >= 5)
     .sort((a, b) => b.score - a.score || a.t.createdAt.getTime() - b.t.createdAt.getTime());
   const picked: Suggestion[] = [];
-  for (const { t, createdOn } of scored) {
-    if (picked.length >= limit) break;
-    const minutes = minutesOf(t);
-    const urgent = !!t.dueDate && t.dueDate <= today;
-    const fits = minutes <= room;
-    if (!fits && !urgent) continue;
-    picked.push({ task: t, reason: reasonFor(t, today, createdOn, ahead, room), why: why(t, today), fits });
+  while (picked.length < limit) {
+    const can = left.filter(({ t }) => minutesOf(t) <= room || dueBy(t, today));
+    let next = can[0];
+    if (!next) break;
+    if (limit > 1 && picked.length === limit - 1 && !dueBy(next.t, today)) {
+      const needImportant = !picked.some((p) => p.why === 'must' || p.why === 'waiting');
+      const needBigger = picked.every((p) => minutesOf(p.task) <= QUICK_MINUTES);
+      const important = (s: (typeof can)[number]) => !needImportant || ['must', 'waiting'].includes(why(s.t, today));
+      const bigger = (s: (typeof can)[number]) => !needBigger || minutesOf(s.t) > QUICK_MINUTES;
+      next = can.find((s) => important(s) && bigger(s)) ?? can.find(important) ?? can.find(bigger) ?? next;
+    }
+    left.splice(left.indexOf(next), 1);
+    const minutes = minutesOf(next.t);
+    picked.push({ task: next.t, reason: reasonFor(next.t, today, next.createdOn, ahead, room), why: why(next.t, today), fits: minutes <= room });
     room -= minutes;
   }
   return picked;
@@ -153,6 +167,10 @@ export interface Briefing {
   /** Planned before today and still open. */
   carriedOver: TaskDetail[];
   suggestions: Suggestion[];
+  /** How they said today was looking; null is a normal day. */
+  outlook: DayRecord['outlook'];
+  /** On today with no deadline and not must-do: what can wait if the day goes sideways. */
+  canWait: TaskDetail[];
 }
 
 export function dayRecord(db: Db, memberId: string, date: string): DayRecord {
@@ -212,6 +230,7 @@ export function getBriefing(db: Db, me: Member): Briefing {
   const today = planningDate(me);
   const record = dayRecord(db, me.id, today);
   const [load] = getLoad(db, me, me, today, today);
+  const planned = listTasks(db, me, { plannedOn: today, assignee: { memberId: me.id, includeShared: true } });
   return {
     date: today,
     seen: record.briefingSeenAt != null,
@@ -221,7 +240,19 @@ export function getBriefing(db: Db, me: Member): Briefing {
     handedOver: handedOver(db, me, today),
     carriedOver: listTasks(db, me, { plannedBefore: today, assignee: { memberId: me.id, includeShared: true } }),
     suggestions: daySuggestions(db, me, record),
+    outlook: record.outlook,
+    canWait: planned.filter((t) => !t.dueDate && !t.mustDo),
   };
+}
+
+/** How today is looking, which gives it less room or more. Null is a normal day. */
+export function setOutlook(db: Db, me: Member, outlook: DayRecord['outlook']) {
+  const today = planningDate(me);
+  dayRecord(db, me.id, today);
+  db.update(dayRecords)
+    .set({ outlook })
+    .where(and(eq(dayRecords.memberId, me.id), eq(dayRecords.date, today)))
+    .run();
 }
 
 export function markBriefingSeen(db: Db, me: Member) {
@@ -316,12 +347,14 @@ export interface WeekPlan {
 
 /**
  * A plan for the next seven days: the most pressing backlog tasks, and anything left over from
- * earlier days, each on the day with the most room. Days fill to 85% so there's slack. Deadlines
- * are kept; tasks without one only go where there's room, and the rest stay in the backlog.
+ * earlier days, each on the day with the most room. Days fill only as full as the person likes
+ * them (85% to start), so there's slack. Deadlines are kept; tasks without one only go where
+ * there's room, and the rest stay in the backlog.
  */
 export function planWeek(db: Db, me: Member): WeekPlan {
   const today = planningDate(me);
   const end = addDays(today, PLAN_DAYS - 1);
+  const fill = DAY_FILL[me.dayFill].plan;
   const loads = getLoad(db, me, me, today, end);
   const days: Slot[] = loads.map((d) => ({ ...d, added: 0 }));
   const leftOver = listTasks(db, me, { plannedBefore: today, assignee: { memberId: me.id, includeShared: true } });
@@ -340,7 +373,7 @@ export function planWeek(db: Db, me: Member): WeekPlan {
     const deadline = t.dueDate && t.dueDate >= today && t.dueDate <= end ? t.dueDate : null;
     const urgent = !!t.plannedDate || (!!t.dueDate && t.dueDate <= end);
     const allowed = deadline ? days.filter((d) => d.date <= deadline) : days;
-    const pick = lightest(allowed, minutes, PLAN_FILL);
+    const pick = lightest(allowed, minutes, fill);
     if (!pick || (!pick.fits && !urgent)) continue;
     pick.d.added += minutes;
     const when = dayName(pick.d.date, today);
@@ -355,7 +388,7 @@ export function planWeek(db: Db, me: Member): WeekPlan {
   const after = loads.map((d) => {
     const added = days.find((x) => x.date === d.date)!.added;
     const plannedMinutes = d.plannedMinutes + added;
-    return { ...d, plannedMinutes, tasks: d.tasks + picks.filter((p) => p.date === d.date).length, level: loadLevel(plannedMinutes, d.capacityMinutes) };
+    return { ...d, plannedMinutes, tasks: d.tasks + picks.filter((p) => p.date === d.date).length, level: loadLevel(plannedMinutes, d.capacityMinutes, d.fullAt) };
   });
   return { start: today, days: after, picks };
 }

@@ -47,7 +47,7 @@ import {
 } from './domain/household.ts';
 import { addListItems, checkListItems, getListItems, listHistory, openTrip, resetList, setListSections, updateListItem } from './domain/lists.ts';
 import { defaultCapacity, findGap, getLoad, learnedCapacity, MAX_CAPACITY_MINUTES } from './domain/load.ts';
-import { dismissSuggestion, findGaps, getBriefing, markBriefingSeen } from './domain/planner.ts';
+import { dismissSuggestion, findGaps, getBriefing, markBriefingSeen, setOutlook } from './domain/planner.ts';
 import { snoozeReminder, upcomingReminders } from './domain/reminders.ts';
 import { repeatSchema } from './domain/repeat.ts';
 import { getStats } from './domain/stats.ts';
@@ -271,18 +271,23 @@ export function registerApi(
           .partialRecord(z.enum(['1', '2', '3', '4', '5', '6', '7']), z.number().int().min(0).max(MAX_CAPACITY_MINUTES))
           .nullable()
           .optional(),
+        // startMinutes: null goes back to the default starting point.
+        startMinutes: z.number().int().min(0).max(MAX_CAPACITY_MINUTES).nullable().optional(),
+        dayFill: z.enum(['roomy', 'balanced', 'packed']).optional(),
         showStreaks: z.boolean().optional(),
         smartAdd: z.boolean().optional(),
       })
       .safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: 'Those settings look wrong. Try again.' }, 400);
     const me = c.get('member')!;
-    const { theme, capacity, showStreaks, smartAdd } = parsed.data;
+    const { theme, capacity, startMinutes, dayFill, showStreaks, smartAdd } = parsed.data;
     const updated = db
       .update(members)
       .set({
         ...(theme !== undefined && { theme }),
         ...(capacity !== undefined && { capacity }),
+        ...(startMinutes !== undefined && { startMinutes }),
+        ...(dayFill !== undefined && { dayFill }),
         ...(showStreaks !== undefined && { showStreaks }),
         ...(smartAdd !== undefined && { smartAdd }),
       })
@@ -423,7 +428,7 @@ export function registerApi(
   // What Amble has learned about the viewer's capacity, next to the defaults and their pins.
   app.get('/api/capacity', (c) => {
     const m = me(c);
-    const days = learnedCapacity(db, m).map((d) => ({ ...d, default: defaultCapacity(d.weekday), pinned: m.capacity?.[String(d.weekday)] ?? null }));
+    const days = learnedCapacity(db, m).map((d) => ({ ...d, default: defaultCapacity(d.weekday, m), pinned: m.capacity?.[String(d.weekday)] ?? null }));
     return c.json({ days });
   });
 
@@ -749,6 +754,12 @@ export function registerApi(
   app.post('/api/briefing/later', async (c) => {
     const { taskId } = await body(c, z.object({ taskId: z.string() }));
     dismissSuggestion(db, me(c), taskId);
+    return c.body(null, 204);
+  });
+
+  app.post('/api/briefing/outlook', async (c) => {
+    const { outlook } = await body(c, z.object({ outlook: z.enum(['lighter', 'rough']).nullable() }));
+    setOutlook(db, me(c), outlook);
     return c.body(null, 204);
   });
 

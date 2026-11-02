@@ -3,8 +3,8 @@ import { useEffect, useRef, useState } from 'react';
 import Add from '~icons/material-symbols/add-rounded';
 import PushPin from '~icons/material-symbols/keep-rounded';
 import Remove from '~icons/material-symbols/remove-rounded';
-import { minutesLabel, segment, SubpageHeader } from '../components/ui.tsx';
-import { type CapacityDay } from '../lib/api.ts';
+import { ChoiceList, minutesLabel, SectionTitle, segment, SubpageHeader } from '../components/ui.tsx';
+import { type CapacityDay, type DayFill } from '../lib/api.ts';
 import { weekdayName, weekStartDay } from '../lib/dates.ts';
 import { expressive } from '../lib/motion.ts';
 import { useSaveMe } from '../lib/mutations.ts';
@@ -12,6 +12,20 @@ import { useCapacity, useMe } from '../lib/queries.ts';
 
 const STEP = 30;
 const MAX = 720;
+
+/** How much a usual weekday has for chores, errands and life admin, as the first screens ask it: the minutes capacity starts at. */
+export const START_CHOICES = [
+  { value: 45, label: 'Under an hour' },
+  { value: 60, label: 'About an hour' },
+  { value: 120, label: 'About two hours' },
+  { value: 180, label: 'Three hours or more' },
+];
+
+export const FILL_CHOICES: { value: DayFill; label: string; note: string }[] = [
+  { value: 'roomy', label: 'Room to breathe', note: 'Plans leave a good part of the day free' },
+  { value: 'balanced', label: 'Balanced', note: 'Plans leave some time for surprises' },
+  { value: 'packed', label: 'Packed', note: 'Plans use all the time you have' },
+];
 
 function learnedNote(day: CapacityDay) {
   if (day.samples === 0) return 'Starting point until Amble has seen a few of these';
@@ -44,12 +58,13 @@ export function Capacity() {
   };
 
   const learnedFor = (d: number) => learned?.find((x) => x.weekday === d);
+  const start = (d: number) => learnedFor(d)?.default ?? 0;
   const update = (next: Record<number, number | undefined>) => {
     setPins(next);
     save(next);
   };
   const change = (d: number, by: number) => {
-    const current = pins[d] ?? learnedFor(d)?.minutes ?? 180;
+    const current = pins[d] ?? learnedFor(d)?.minutes ?? 120;
     update({ ...pins, [d]: Math.min(MAX, Math.max(0, current + by)) });
   };
   const anyPinned = days.some((d) => pins[d] !== undefined);
@@ -127,10 +142,14 @@ export function Capacity() {
             ))}
         </div>
       )}
-      <p className="mt-4 px-1 text-sm text-on-surface-variant">
-        It starts at {minutesLabel(180)} on weekdays and {minutesLabel(240)} on weekends and moves toward a good day's worth of what you finish,
-        counting tasks without an estimate as half an hour. It won't learn a day below half its starting point; pin a lower number (or 0 for a day off) if that's what you want. Days you don't open Amble don't count against you.
+      <p className={`mt-4 px-1 text-sm text-on-surface-variant ${learned ? '' : 'invisible'}`}>
+        It starts at {minutesLabel(start(1))} on weekdays and {minutesLabel(start(6))} on weekends and moves toward a good day's worth of what you finish,
+        counting tasks without an estimate as half an hour. It won't learn a day below half its starting point; pin a lower number (or 0 for a day off) if that's what you want. Days you don't open Amble don't count against you, and neither do days you said were rough or lighter than usual.
       </p>
+
+      <SectionTitle>How full do you like your days?</SectionTitle>
+      <ChoiceList label="How full do you like your days?" value={me?.dayFill ?? 'balanced'} options={FILL_CHOICES} onChange={(dayFill) => saveMe({ dayFill }, 'Change how full you like your days')} />
+      <p className="mt-3 px-1 text-sm text-on-surface-variant">Plan my week fills your days this full, and a day shows as Full from there.</p>
     </>
   );
 }

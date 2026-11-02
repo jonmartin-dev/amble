@@ -53,7 +53,7 @@ export function useSend() {
 export function useSaveMe() {
   const qc = useQueryClient();
   const send = useSend();
-  return (patch: Partial<Pick<Member, 'theme' | 'capacity' | 'showStreaks' | 'smartAdd'>>, label: string) => {
+  return (patch: Partial<Pick<Member, 'theme' | 'capacity' | 'startMinutes' | 'dayFill' | 'showStreaks' | 'smartAdd'>>, label: string) => {
     qc.setQueryData<Session>(['session'], (s) => (s?.member ? { ...s, member: { ...s.member, ...patch } } : s));
     send('PATCH', '/me', patch, label);
   };
