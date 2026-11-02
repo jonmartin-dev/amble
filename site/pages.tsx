@@ -8,6 +8,7 @@ import Attach from '~icons/material-symbols/attach-file-rounded';
 import Spark from '~icons/material-symbols/auto-awesome-outline-rounded';
 import Bug from '~icons/material-symbols/bug-report-outline-rounded';
 import Call from '~icons/material-symbols/call-outline-rounded';
+import Checklist from '~icons/material-symbols/checklist-rounded';
 import Offline from '~icons/material-symbols/cloud-off-outline-rounded';
 import Code from '~icons/material-symbols/code-rounded';
 import Computer from '~icons/material-symbols/computer-outline-rounded';
@@ -16,6 +17,7 @@ import Server from '~icons/material-symbols/dns-outline-rounded';
 import EventAvailable from '~icons/material-symbols/event-available-outline-rounded';
 import Favorite from '~icons/material-symbols/favorite-outline-rounded';
 import Group from '~icons/material-symbols/group-outline-rounded';
+import Hub from '~icons/material-symbols/hub-outline-rounded';
 import Lightbulb from '~icons/material-symbols/lightbulb-outline-rounded';
 import Lock from '~icons/material-symbols/lock-outline-rounded';
 import Mail from '~icons/material-symbols/mail-outline-rounded';
@@ -27,6 +29,7 @@ import Cart from '~icons/material-symbols/shopping-cart-outline-rounded';
 import Spa from '~icons/material-symbols/spa-outline-rounded';
 import Sunny from '~icons/material-symbols/sunny-outline-rounded';
 import Sync from '~icons/material-symbols/sync-rounded';
+import Terminal from '~icons/material-symbols/terminal-rounded';
 import Widgets from '~icons/material-symbols/widgets-outline-rounded';
 import { GroupIcon, tone } from '../web/src/components/icons.tsx';
 import { PROJECT_URL } from '../web/src/lib/project.ts';
@@ -210,10 +213,10 @@ function Hero() {
           <Favorite aria-hidden />
           Free, for you, forever
         </p>
-        <h1 className="display mt-6 text-[2.75rem] leading-[1.05] font-medium text-balance medium:text-[4rem]">A simple planner for you and your household</h1>
+        <h1 className="display mt-6 text-[2.75rem] leading-[1.05] font-medium text-balance medium:text-[4rem]">Get it all out of your head. Amble works out when.</h1>
         <p className="mt-6 max-w-xl text-lg text-on-surface-variant medium:text-xl">
-          Amble knows how full each day already is, from your tasks and your phone’s calendar, so it can tell you what fits today and which day has room for
-          the rest. It never nags.
+          Most to-do apps keep a growing list of what you haven’t done. Amble knows how full each day already is from your tasks and your phone’s calendar, so
+          it shows what fits today and finds a day with room for the rest. It’s free and it never nags.
         </p>
         <div className="mt-8 flex flex-wrap gap-3">
           <a href={JOIN_TEST} className="press flex h-14 items-center gap-2.5 rounded-full bg-primary px-7 text-lg font-medium text-on-primary">
@@ -235,6 +238,52 @@ function Hero() {
         <Shot file="today" alt="" className="page-in absolute top-[17%] left-[3%] w-[33%] -rotate-6 shadow-xl" style={{ animationDelay: '140ms' }} />
         <Shot file="calendar" alt="" className="page-in absolute top-[17%] right-[3%] w-[33%] rotate-6 shadow-xl" style={{ animationDelay: '200ms' }} />
         <Shot file="briefing" alt="" className="page-in absolute top-[6%] left-1/2 w-[39%] -translate-x-1/2 shadow-2xl" style={{ animationDelay: '60ms' }} />
+      </div>
+    </section>
+  );
+}
+
+const promises: { icon: Icon; title: string; body: string }[] = [
+  { icon: Favorite, title: 'Free, all of it', body: 'Every feature is free with no account or ads or subscription.' },
+  {
+    icon: Hub,
+    title: 'Works with what you already use',
+    body: 'Amble reads your phone’s calendar and syncs through your own Google Drive. Claude can add and plan your tasks through a household server, and the AI features work with whatever model you pick, from Gemini’s free tier to one on your own computer.',
+  },
+  {
+    icon: Terminal,
+    title: 'Easy to set up',
+    body: 'On Android you install it and start. A household server is one Docker container, and there’s a setup script for Linux and Mac and one for Windows.',
+  },
+  {
+    icon: Checklist,
+    title: 'Keeps track of everything',
+    body: 'Tasks, chores, groceries, errands and who’s doing what all go in one place. Anything you didn’t get to comes back quietly as a suggestion.',
+  },
+];
+
+/** Why Amble exists, from the person who made it, and what that means for anyone who uses it. */
+function WhyAmble() {
+  return (
+    <section className="mx-auto max-w-6xl px-4 py-6 medium:px-6">
+      <div className="grid gap-10 rounded-[2.5rem] bg-surface-container px-6 py-10 medium:px-10 expanded:grid-cols-[1fr_1.5fr] expanded:py-12">
+        <figure className="flex flex-col">
+          <figcaption className="px-0.5 text-sm font-medium text-primary">From one tired dad to all of you</figcaption>
+          <blockquote className="display mt-4 text-[1.75rem] leading-snug medium:text-[2rem]">
+            “I got really tired of paying for planners and of figuring out which flaky app connectors would actually work. So I made my own, and I made it free
+            for everyone.”
+          </blockquote>
+          <p className="mt-5 text-on-surface-variant">Jon, who makes Amble</p>
+        </figure>
+        <ul data-cascade className="grid gap-x-6 gap-y-8 medium:grid-cols-2">
+          {promises.map((p) => (
+            <li key={p.title} className="flex flex-col gap-3">
+              <Badge icon={p.icon} className="bg-primary-container text-on-primary-container" />
+              <h3 className="text-lg font-medium">{p.title}</h3>
+              <p className="text-on-surface-variant">{p.body}</p>
+            </li>
+          ))}
+        </ul>
       </div>
     </section>
   );
@@ -294,7 +343,9 @@ function Home({ data }: { data: SiteData }) {
     <main>
       <Hero />
 
-      <Section eyebrow="Why it’s different" title="Most planners show you everything you haven’t done. Amble asks how much room today has.">
+      <WhyAmble />
+
+      <Section eyebrow="How it plans" title="Amble asks how much room today has, and plans around it">
         <ul data-cascade className="mt-10 grid gap-3 medium:grid-cols-2">
           {different.map((d) => (
             <li key={d.title} className="flex flex-col gap-4 rounded-[1.75rem] bg-surface-container p-6">
