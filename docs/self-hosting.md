@@ -14,7 +14,7 @@ Once a household has a server, everyone uses the Android app or the web app it s
 
 ## What you need
 
-- **A computer that stays on**, with [Docker](https://docs.docker.com/get-docker/) and Docker Compose: a home server, a NAS or a mini PC. Amble runs on x86-64 Linux; ARM boards such as a Raspberry Pi should work too, but nobody has tried one yet. Docker Desktop on a Mac or Windows works if the computer doesn't sleep.
+- **A computer that stays on**, with [Docker](https://docs.docker.com/get-docker/) and Docker Compose: a home server, a NAS or a mini PC. Amble runs on x86-64 Linux; ARM boards such as a Raspberry Pi should work too, but nobody has tried one yet. Docker Desktop on a Mac or Windows works if the computer doesn't sleep. On Windows you also need [Git for Windows](https://git-scm.com), whose Git Bash runs the setup script.
 - **An address your devices can reach.** [Tailscale](https://tailscale.com) is the easiest: free for a household, and it gives the server an HTTPS address that only your devices reach. Your own domain behind a reverse proxy works too.
 - **A sign-in provider.** Google is the default and free: you make a sign-in client in Google Cloud, which takes about five minutes. Any OpenID Connect provider you run yourself works instead ([sign-in.md](sign-in.md)).
 - **Optional: an AI provider key.** You can set it later in the app. Gemini and GLM have free tiers.
@@ -28,7 +28,8 @@ I want to run an Amble server on this computer. Clone https://github.com/jonmart
 yet, then follow docs/self-hosting.md step by step. Ask me for the values it needs, one at a time. When a step needs me in a
 browser (Google Cloud, Tailscale's admin page, my router), tell me exactly what to click and what to copy
 back. Never ask me to paste a secret into the chat: have me save it to a file on the server instead.
-Run deploy/setup.sh --check after each step, and fix whatever it reports before going on.
+Run deploy/setup.sh --check (deploy\setup.cmd --check on Windows) after each step, and fix whatever
+it reports before going on.
 ```
 
 ## Step by step
@@ -40,7 +41,7 @@ git clone https://github.com/jonmartin-dev/amble.git amble
 cd amble
 ```
 
-Every command below runs in this folder, on the server.
+Every command below runs in this folder, on the server. On Windows, run them in PowerShell and use `deploy\setup.cmd` wherever this guide says `deploy/setup.sh`: it runs the same script in Git Bash and takes the same options.
 
 ### 2. Choose the address
 
@@ -69,6 +70,12 @@ For another provider, [sign-in.md](sign-in.md) has the steps. You'll also need i
 deploy/setup.sh
 ```
 
+On Windows, in PowerShell:
+
+```powershell
+deploy\setup.cmd
+```
+
 It asks for the address, your email (you'll be the admin), anyone else who may sign in, your time zone, and the sign-in client's ID and secret. Then it writes `.env` and `secrets/`, builds and starts the server, and checks each part. The first build takes a few minutes. Run it again whenever you want to change an answer; it keeps what you set before and backs up the old `.env`.
 
 An assistant can run it without questions:
@@ -87,7 +94,7 @@ The server now answers on `127.0.0.1:18085` on the server itself (choose another
 
 ### 5. Put the address in front of it
 
-- **Tailscale:** `sudo tailscale serve --bg 18085`. Your devices on Tailscale can now open the address. The first time, the command may give you a link to turn HTTPS on.
+- **Tailscale:** `sudo tailscale serve --bg 18085` (on Windows, without `sudo`). Your devices on Tailscale can now open the address. The first time, the command may give you a link to turn HTTPS on.
 - **A reverse proxy:** send the address to `http://127.0.0.1:18085`. With Caddy, which gets the HTTPS certificate itself:
 
   ```text
@@ -113,7 +120,7 @@ Open `<your address>/server` in a browser and sign in with the admin email. That
 ### 8. Extras
 
 - **AI:** in the app, Settings, AI, Your household's model. Pick a provider, paste its key and set a monthly cap; everyone's devices use it.
-- **Claude and ChatGPT:** these need the address reachable from the internet, not just your tailnet: `sudo tailscale funnel --bg 18085` instead of `serve`, or a public domain. Then follow [Use it from Claude or ChatGPT](../README.md#use-it-from-claude-or-chatgpt).
+- **Claude and ChatGPT:** these need the address reachable from the internet, not just your tailnet: `sudo tailscale funnel --bg 18085` instead of `serve` (on Windows, without `sudo`), or a public domain. Then follow [assistants.md](assistants.md).
 - **A household already in Google Drive:** the server joins the Drive file, and each device then offers a move to the server ([google-drive.md](google-drive.md#a-server-in-the-household)).
 
 ## Keeping it running
@@ -142,3 +149,33 @@ Start with `deploy/setup.sh --check`. Each `[fix]` line says what to change. The
 | data/ and secrets/ have to belong to the container's user | `sudo chown -R 1000:1000 data secrets` |
 
 If sign-in itself fails in the browser, [sign-in.md](sign-in.md#when-sign-in-fails) explains each message.
+
+## Without the script
+
+The setup script writes two things and starts Docker. By hand, that's:
+
+```sh
+cp .env.example .env    # set AMBLE_PUBLIC_URL, the emails, OIDC_CLIENT_ID, and AMBLE_DEV_LOGIN=0
+mkdir -p data secrets
+printf '%s' 'your-client-secret' > secrets/oidc_client_secret
+printf '%s' 'your-ai-key' > secrets/ai_api_key   # optional: or set the model later in the app, Settings, AI
+docker compose up -d --build
+```
+
+`.env.example` explains every setting. A few worth knowing:
+
+- `AMBLE_PORT` moves the server off `127.0.0.1:18085`.
+- `AMBLE_PUBLIC_URL` can include a path, like `https://example.com/amble`; the proxy may pass the path on or strip it.
+- `AMBLE_PRIVACY_CONTACT` puts a contact on the app's `/privacy` page, which Google's consent screen links to.
+- `AMBLE_GOOGLE_API_KEY` turns on Google's file picker for Google Drive in a browser that opened the web app from the server; the server's address also has to be in your Google Cloud setup ([google-drive.md](google-drive.md#google-cloud-setup)).
+- `AMBLE_APP_ORIGINS` lets a copy of the web app hosted somewhere else sync with the server.
+
+## Just the web app, with no server
+
+The web app also runs as plain static files, with everything kept in the browser and sync through Google Drive:
+
+```sh
+AMBLE_BASE=/ pnpm build    # static files in dist/web
+```
+
+Host `dist/web` anywhere that serves `index.html` for paths it doesn't have. `AMBLE_BASE` is the path it's served under, with slashes at both ends. [google-drive.md](google-drive.md#building-the-app-with-google-settings) has the Google settings to build it with, so Drive sync works there too.

@@ -1,0 +1,19 @@
+name: An idea
+description: Something that would make Amble better for your household.
+labels: [idea]
+body:
+  - type: markdown
+    attributes:
+      value: Amble tries to stay simple and calm, so the best ideas start from a problem in your week rather than a feature from another app.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What gets in the way
+      description: What you were trying to do, and where Amble made it harder than it should be.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help
+      description: How you'd like it to work, if you have a picture of it.

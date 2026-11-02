@@ -24,15 +24,13 @@ pnpm dev                 # the app on http://127.0.0.1:5174, the server on 8787 
 
 The app runs on the device even here: its API runs in a worker in the browser, on SQLite in WebAssembly. To try syncing with the server, choose Use my own server and enter `127.0.0.1:5174`. With dev sign-in on, the server's sign-in page offers "sign in as" for everyone in `AMBLE_ADMIN_EMAILS`, `AMBLE_ALLOWED_EMAILS` and its database, or `dev@amble.local` when there's nobody yet. [docs/google-drive.md](docs/google-drive.md) has what sync through Google Drive needs. `node scripts/android.ts run` builds the Android app and puts it on a plugged-in phone or an emulator ([docs/android.md](docs/android.md)).
 
-For something to look at, build the demo household in an empty folder and run the built app on it, served by the server:
+For something to look at, run the built app on a demo household, the same way on Windows, macOS and Linux:
 
 ```sh
-node scripts/demo.ts ../amble-demo sam@example.com
-pnpm build
-AMBLE_PUBLIC_URL=http://localhost:8787 AMBLE_DATA_DIR=../amble-demo node --env-file=.env server/index.ts
+pnpm demo                # http://localhost:8787
 ```
 
-Then open http://localhost:8787, choose Use my own server, and sign in as Sam.
+Open it, choose Use my own server, and sign in as Sam. The first time, it makes the household in `.demo/` and builds the app. After you change the app, run `pnpm build` again; delete `.demo/` to start the household over.
 
 Smart add, estimates and the planner's wording need an AI model: set one up in Settings, AI, or on the server in `.env` (see `.env.example`) for devices that sync with it. Any provider works, including a local model through Ollama with no key. Without one, quick add takes text as typed and everything else still works. New AI features go through `ask()` in `server/ai/client.ts`, which meters every call and works with every provider; don't call a provider's SDK directly.
 
@@ -51,13 +49,15 @@ Smart add, estimates and the planner's wording need an AI model: set one up in S
 | `drizzle/` | Database migrations, applied when Amble starts, on a device or the server |
 | `skill/amble/` | The Claude skill that teaches Claude to use the connector the calm way |
 | `scripts/` | Demo data, screenshots, browser checks and the smart add eval |
-| `docs/` | Guides for self-hosters |
+| `docs/` | Guides: running a server, sign-in, Google Drive, the Android app, Claude and ChatGPT, the privacy policy |
+| `deploy/` | The setup script for a household server (`setup.sh`, and `setup.cmd` on Windows) |
+| `.github/` | Issue forms and the checks that run on every pull request |
 
 A new list template makes a good first change: one JSON file in `templates/` and a line in `shared/templates.ts`. [templates/README.md](templates/README.md) describes the format, which is open for any app to use.
 
 ## Help wanted
 
-- **An iPhone app.** On an iPhone, Amble runs in the browser from a household's server, so a household without one can't use it there. The Android app is Capacitor around the web app, so an iOS project (`pnpm exec cap add ios`) gets most of the way. What's left is the native parts, which are Android-only today (`android/app/src/main/java/dev/jonmartin/amble/`): reminders with the app closed, the background check for reminders set elsewhere, reading the phone's calendars, Google sign-in for Drive, the code scanner and the home-screen widget. It needs a Mac with Xcode, and Apple's developer program to put it on phones other than your own.
+- **A native iPhone app.** On an iPhone, Amble runs in the browser from a household's server, so a household without one can't use it there. Amble looks like Android on purpose (Material 3 Expressive), and on an iPhone it should look like an iPhone app instead: SwiftUI, following Apple's own design. The household's data, rules and sync are TypeScript that runs on the device (`server/local.ts`, `server/domain/`, `server/sync/`), so a native app either runs that code somewhere out of sight, such as an off-screen web view, or carries its own copy of the sync format. The quicker route is Capacitor around the web app as it is (`pnpm exec cap add ios`), with iOS versions of the Android-only parts in `android/app/src/main/java/dev/jonmartin/amble/`: reminders with the app closed, the background check for reminders set elsewhere, reading the phone's calendars, Google sign-in for Drive, the code scanner and the home-screen widget. Open an issue before starting, so we can talk through which way to go. Either way it needs a Mac with Xcode, and Apple's developer program to put it on phones other than your own.
 - **Connect a real ChatGPT account.** The ChatGPT side of the connector follows OpenAI's auth docs and is tested against ChatGPT's real client metadata document, but nobody has signed in from ChatGPT itself yet. If your plan has Developer mode (Business, Enterprise or Edu to make changes, Pro to read), follow the ChatGPT steps on Connect an assistant against your own Amble, ask `@Amble` to add a task, and check that Activity says "via ChatGPT". Open an issue with how it went, especially any error during sign-in or the tool scan.
 - **Sign in with ChatGPT.** OpenAI has a preview that lets people use their ChatGPT plan in other apps instead of an API key, through the Responses API (with `store: false` and streaming). It's built for local tools that sign in through a loopback address, and each app has to ask OpenAI for a client id, so nobody knows yet whether an open-source app like Amble can use it. Finding out would help as much as building it; the AI providers are in `shared/ai.ts` and `server/ai/client.ts`. Claude subscriptions can't be used this way, since Anthropic's terms keep them to Claude's own apps, so Claude stays on API keys.
 
@@ -106,7 +106,7 @@ Keep a pull request to one change, and say in its description what changes for t
 
 ## Security
 
-Please report security problems privately through the repository's Security tab rather than in a public issue.
+Please report security problems privately, as [SECURITY.md](SECURITY.md) says, rather than in a public issue.
 
 ## License
 

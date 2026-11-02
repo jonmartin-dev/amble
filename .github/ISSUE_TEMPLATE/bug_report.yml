@@ -1,0 +1,34 @@
+name: Something's wrong
+description: Amble did something it shouldn't, or didn't do something it should.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what Amble did instead. A screenshot or a screen recording helps a lot.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to make it happen again
+      description: The steps, if you know them. "It happens sometimes" is fine too.
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where
+      multiple: true
+      options:
+        - The Android app
+        - The web app in a browser
+        - Syncing through Google Drive
+        - My own server, or setting it up
+        - Claude or ChatGPT, through the connector
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Phone or browser
+      placeholder: Pixel 9, Android 17 / Firefox 150 on Windows

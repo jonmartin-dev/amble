@@ -1,0 +1,31 @@
+name: A new list template
+description: A kind of list you'd use every week that Amble doesn't have yet.
+labels: [list template]
+body:
+  - type: markdown
+    attributes:
+      value: If you'd like to write it yourself, a template is one JSON file, and templates/README.md shows how. A pull request with the file is welcome without an issue first.
+  - type: input
+    id: name
+    attributes:
+      label: What it's called
+      placeholder: Pharmacy run
+    validations:
+      required: true
+  - type: textarea
+    id: use
+    attributes:
+      label: What it's for
+      description: When you'd use it, and what goes on it.
+    validations:
+      required: true
+  - type: textarea
+    id: sections
+    attributes:
+      label: Sections and starter items
+      description: How the items should be grouped (by aisle, person, place, day), and anything it should start with.
+  - type: textarea
+    id: actions
+    attributes:
+      label: Anything it should do
+      description: Plan as one trip, start over for next time, start out private, send items to another list.
