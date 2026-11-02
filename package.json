@@ -15,6 +15,7 @@
     "dev:web": "vite",
     "build": "vite build",
     "start": "node server/index.ts",
+    "demo": "node --env-file-if-exists=.env scripts/demo-server.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:wasm": "node scripts/test-wasm.ts",

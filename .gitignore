@@ -18,3 +18,6 @@ deploy/local.env
 # What deploy/setup.sh writes for a server: its secrets, and the .env it replaced
 secrets/
 .env.backup-*
+
+# The household pnpm demo serves
+.demo/

@@ -94,6 +94,8 @@ for (const [i, shot] of shots.entries()) {
     isMobile: true,
     hasTouch: true,
     colorScheme: shot.theme.mode === 'dark' ? 'dark' : 'light',
+    // The app's own motion turns off, so no page is caught halfway through rising in.
+    reducedMotion: 'reduce',
   });
   const page = await context.newPage();
   page.on('pageerror', (e) => errors.push(`${shot.name}: ${e.message}`));
@@ -102,10 +104,12 @@ for (const [i, shot] of shots.entries()) {
   // Saved as the member's theme too, so the household's copy doesn't override it.
   await local(page).patch(`/me`, { data: { theme: shot.theme } });
   await page.evaluate((t) => localStorage.setItem('almanac-theme', JSON.stringify(t)), shot.theme);
+  // Today's first open shows Here's today over everything else, so only its own shot leaves it unseen.
+  if (shot.name !== 'briefing') await local(page).post(`/briefing/seen`, { data: {} });
   await shot.open(page);
   await page.waitForTimeout(900);
   const file = play ? `${out}/${i + 1}_${shot.name}.png` : `${out}/${shot.name}.png`;
-  await page.screenshot({ path: file });
+  await page.screenshot({ path: file, animations: 'disabled' });
   console.log(file);
   await context.close();
 }

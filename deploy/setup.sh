@@ -8,6 +8,8 @@
 #   deploy/setup.sh --check    check a setup and say what to fix; exits 1 if anything needs fixing
 #   deploy/setup.sh --update   back up the database, get the latest code (in a git clone), rebuild
 #
+# On Windows, deploy\setup.cmd runs this in Git Bash and takes the same options.
+#
 # Flags, for setting up without questions (with --yes, anything missing is an error instead):
 #   --url https://amble.example.com    the address people use, with its path if it has one
 #   --admin you@example.com            admins, comma-separated
@@ -21,6 +23,8 @@
 #   --privacy-contact EMAIL            optional: shown on the app's /privacy page
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# How to run this again, for the hints it prints. deploy\setup.cmd names itself.
+me=${AMBLE_SETUP_AS:-deploy/setup.sh}
 
 mode=setup yes=0 problems=0 reachable=0
 url='' admin='' allow='' client_id='' secret_file='' issuer='' provider='' tz='' port='' ai_provider='' ai_key_file='' privacy=''
@@ -49,7 +53,7 @@ while [ $# -gt 0 ]; do
     --ai-key-file) ai_key_file=$(value "$@"); shift ;;
     --privacy-contact) privacy=$(value "$@"); shift ;;
     -h | --help)
-      sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '/^set -euo/q; 2,$p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *)
@@ -145,7 +149,7 @@ check() {
   problems=0
   docker_ready || true
   if [ ! -f .env ]; then
-    bad "There's no .env here yet: run deploy/setup.sh to make one."
+    bad "There's no .env here yet: run $me to make one."
     return
   fi
   local u i name id p admins
@@ -180,7 +184,7 @@ check() {
     bad "secrets/oidc_client_secret is missing or empty: put the sign-in client's secret in it."
   fi
   if [ ! -d data ]; then
-    bad "There's no data/ folder: run deploy/setup.sh."
+    bad "There's no data/ folder: run $me."
   elif ! docker_desktop && ! owned_by_container; then
     bad "data/ and secrets/ have to belong to the container's user (uid 1000): sudo chown -R 1000:1000 data secrets"
   fi
@@ -188,7 +192,7 @@ check() {
   if local_health "$p"; then
     ok "The server is running on 127.0.0.1:$p"
   else
-    bad "Nothing answers on 127.0.0.1:$p: start it with deploy/setup.sh, and read docker compose logs amble if it won't start."
+    bad "Nothing answers on 127.0.0.1:$p: start it with $me, and read docker compose logs amble if it won't start."
   fi
 
   # A Tailscale name can resolve to Funnel's public relay on a computer that doesn't use Tailscale's
@@ -273,7 +277,7 @@ command -v curl >/dev/null 2>&1 || die "curl is missing: install it (it checks t
 docker_ready || exit 1
 
 if [ "$mode" = update ]; then
-  [ -f .env ] || die "There's no .env here yet: run deploy/setup.sh first."
+  [ -f .env ] || die "There's no .env here yet: run $me first."
   port=$(env_get AMBLE_PORT)
   port=${port:-18085}
   if local_health "$port"; then
@@ -420,7 +424,7 @@ if [ "$reachable" = 0 ]; then
   echo "  - The sign-in client's redirect URI has to be exactly: $url/auth/callback"
 fi
 if [ "$problems" != 0 ]; then
-  echo "  - Fix what's marked [fix] above, and run deploy/setup.sh --check until it passes."
+  echo "  - Fix what's marked [fix] above, and run $me --check until it passes."
 fi
 echo "  - Open $url/server and sign in as ${admin%%,*}."
 echo "  - Add phones with the code in Settings, Your server (docs/self-hosting.md, step 7)."
