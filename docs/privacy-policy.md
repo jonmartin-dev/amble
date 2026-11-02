@@ -1,8 +1,8 @@
 # Amble privacy policy
 
-Last updated October 21, 2026
+Last updated November 1, 2026
 
-This covers the Amble app for Android. Amble keeps everything you put in it (tasks, lists, notes, links, photos and files) in its own storage on your phone, and nothing leaves the phone unless you turn on one of the things below. There's no account to make, no ads and no analytics. Amble has no servers of its own, and its developer never receives your data.
+This covers the Amble app for Android. Amble keeps everything you put in it (tasks, lists, notes, links, photos and files) in its own storage on your phone, and nothing leaves the phone unless you turn on or use one of the things below. There's no account to make, no ads and no analytics. Amble has no servers of its own, and its developer never receives your data.
 
 ## Sync with Google Drive
 
@@ -17,6 +17,10 @@ If your household runs an Amble server and you sync with it, the server keeps a 
 ## Calendars
 
 If you turn on Calendars, Amble reads the calendars on your phone that you choose, through Android's calendar permission, to work out how busy your days are and plan around them. The events from 12 weeks back to 6 months ahead stay on the phone and are read again whenever Amble opens. Only how many minutes of each day are busy goes into the household's copy, so everyone else (and any Amble server) sees that a day is busier but never what's on it. Amble only reads. It never adds or edits or deletes events. Turning Calendars off removes the events from Amble.
+
+## Joining a server by its code
+
+Use my own server, Scan the code opens Google's code scanner, which comes with Google Play services and needs no camera permission. Amble gets only what the code says. When you scan, Google's scanner may send Google diagnostics about it, such as the phone's model and Android version, an install identifier and how the scan went, under [Google's privacy policy](https://policies.google.com/privacy). Typing the server's address instead skips the scanner.
 
 ## Reminders
 
