@@ -262,7 +262,7 @@ const promises: { icon: Icon; title: string; body: string }[] = [
   },
 ];
 
-/** Why Amble exists, from the person who made it, and what that means for anyone who uses it. */
+/** Why Amble exists, from the person who started it, and what that means for anyone who uses it. */
 function WhyAmble() {
   return (
     <section className="mx-auto max-w-6xl px-4 py-6 medium:px-6">
@@ -273,7 +273,7 @@ function WhyAmble() {
             “I got really tired of paying for planners and of figuring out which flaky app connectors would actually work. So I made my own, and I made it free
             for everyone.”
           </blockquote>
-          <p className="mt-5 text-on-surface-variant">Jon, who makes Amble</p>
+          <p className="mt-5 text-on-surface-variant">Jon, who started Amble</p>
         </figure>
         <ul data-cascade className="grid gap-x-6 gap-y-8 medium:grid-cols-2">
           {promises.map((p) => (
