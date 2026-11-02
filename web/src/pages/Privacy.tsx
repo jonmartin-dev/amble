@@ -26,7 +26,7 @@ export function Privacy() {
         Amble
       </a>
       <h1 className="display mt-4 text-4xl font-medium">Privacy</h1>
-      <p className="mt-2 text-on-surface-variant">Last updated October 15, 2026</p>
+      <p className="mt-2 text-on-surface-variant">Last updated November 1, 2026</p>
 
       <div className="mt-8 flex flex-col gap-5 [&_h2]:display [&_h2]:text-xl [&_h2]:font-medium">
         <p>
@@ -66,6 +66,17 @@ export function Privacy() {
           household's copy, so everyone else, and any Amble server, sees that a day is busier but never what's on it. Amble only reads:
           it never adds, edits or deletes events. Turning Calendars off removes the events from Amble.
         </p>
+        {native && (
+          <>
+            <h2>Joining a server by its code</h2>
+            <p>
+              Use my own server, Scan the code opens Google's code scanner, which comes with Google Play services and needs no camera
+              permission. Amble gets only what the code says. When you scan, Google's scanner may send Google diagnostics about it, such
+              as the phone's model and Android version, an install identifier and how the scan went. Typing the server's address instead
+              skips the scanner.
+            </p>
+          </>
+        )}
         <h2>AI features</h2>
         {auth?.ai ? (
           <p>
