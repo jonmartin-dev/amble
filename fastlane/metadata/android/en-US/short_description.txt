@@ -1,1 +1,1 @@
-A simple household planner that knows how full each day is. Free, forever.
+A simple household planner that knows how full each day is. It never nags.
