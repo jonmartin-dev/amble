@@ -13,6 +13,8 @@ export async function joinHousehold(page: Page, base: string, email: string) {
   const address = page.getByLabel("Your server's address");
   if (!(await address.inputValue())) await address.fill(base);
   await page.getByRole('button', { name: 'Continue' }).click();
+  // A server that takes codes asks for one first; dev sign-in is its other way in.
+  await page.getByRole('button', { name: /^Sign in with .+ instead$/ }).click();
   const dev = page.getByRole('link', { name: `Dev sign-in as ${email}` });
   if (!(await dev.waitFor({ timeout: 10_000 }).then(() => true, () => false))) throw new Error(`No dev sign-in for ${email} at ${base}. Is AMBLE_DEV_LOGIN=1, and is it on the allowlist?`);
   await dev.click();

@@ -123,10 +123,9 @@ export function registerSyncHub(
   );
 
   // For a device checking that an address is an Amble server before it lets someone in: whether it
-  // takes codes, and the sign-in provider it has, if any.
-  app.get('/sync/hello', (c) =>
-    c.json({ amble: 1, url: config.publicUrl, schema, pairing: true, signIn: config.oidc.clientId && config.oidc.clientSecret ? config.oidc.providerName : null }),
-  );
+  // takes codes, and the sign-in provider it has, if any (dev sign-in counts, for the scripts).
+  const signIn = config.oidc.clientId && config.oidc.clientSecret ? config.oidc.providerName : config.devLogin ? 'a test account' : null;
+  app.get('/sync/hello', (c) => c.json({ amble: 1, url: config.publicUrl, schema, pairing: true, signIn }));
 
   // A device getting in with a code: as the person it's for, or for an invite, as the device's own
   // person (the household's row for them if it has one) or someone new by the name they gave.
