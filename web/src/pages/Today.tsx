@@ -4,12 +4,12 @@ import { useEffect, useState } from 'react';
 import ChevronRight from '~icons/material-symbols/chevron-right-rounded';
 import Sparkle from '~icons/material-symbols/auto-awesome-outline-rounded';
 import Sun from '~icons/material-symbols/wb-sunny-outline-rounded';
-import { calendarLine, EventList } from '../components/Events.tsx';
+import { EventList } from '../components/Events.tsx';
 import { MoveSheet } from '../components/MoveSheet.tsx';
 import { PageHeader } from '../components/PageHeader.tsx';
 import { TaskRow } from '../components/TaskRow.tsx';
-import { Chip, DoneMark, LoadBar, loadWord, minutesLabel, ScrollRow, SectionTitle, SectionToggle, titleAction } from '../components/ui.tsx';
-import type { Task, TimeOfDay } from '../lib/api.ts';
+import { Chip, DoneMark, LoadRing, loadWord, minutesLabel, ScrollRow, SectionTitle, SectionToggle, titleAction } from '../components/ui.tsx';
+import type { DayLoad, Task, TimeOfDay } from '../lib/api.ts';
 import { firstName, longDate, planningDate } from '../lib/dates.ts';
 import { expressive } from '../lib/motion.ts';
 import { useTaskActions } from '../lib/mutations.ts';
@@ -41,6 +41,54 @@ function TaskList({ tasks, render }: { tasks: Task[]; render: (t: Task) => React
         ))}
       </AnimatePresence>
     </ul>
+  );
+}
+
+/**
+ * The day's load in one short card: a ring, its word and the hours. Your own day opens the
+ * briefing, which has the rest (the calendar, what can wait), and the card says how many picks it has.
+ */
+function LoadCard({ load, whose, done, picks }: { load: DayLoad; whose: string; done: number; picks?: number }) {
+  const word = loadWord(load);
+  const hours =
+    load.tasks === 0
+      ? done
+        ? `${done} done today`
+        : load.capacityMinutes
+          ? `Room for about ${minutesLabel(load.capacityMinutes)}`
+          : 'Nothing planned'
+      : load.capacityMinutes
+        ? `${minutesLabel(load.plannedMinutes)} of ${minutesLabel(load.capacityMinutes)}`
+        : `${minutesLabel(load.plannedMinutes)} planned`;
+  const card = 'flex min-h-16 items-center gap-3 rounded-3xl bg-primary-container py-2.5 pr-2.5 pl-3 text-on-primary-container';
+  const body = (
+    <>
+      <LoadRing load={load} />
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="display text-lg leading-tight font-medium">{word}</span>
+        <span className="truncate text-sm text-on-primary-container/80">{hours}</span>
+      </span>
+    </>
+  );
+  if (picks === undefined)
+    return (
+      <section aria-label={`${whose} load`} className={card}>
+        {body}
+      </section>
+    );
+  return (
+    <Link to="/briefing" aria-label={`${whose} day: ${word}, ${hours}. ${picks ? `${picks === 1 ? '1 thing' : `${picks} things`} worth doing today` : 'Open the briefing'}`} className={card}>
+      {body}
+      {picks > 0 ? (
+        <span className="flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-on-primary-container/8 pr-1.5 pl-3 text-sm font-medium">
+          <Sparkle className="size-4.5 text-primary" aria-hidden />
+          {picks === 1 ? '1 pick' : `${picks} picks`}
+          <ChevronRight className="size-5" aria-hidden />
+        </span>
+      ) : (
+        <ChevronRight className="mr-1 size-5 text-on-primary-container/70" aria-hidden />
+      )}
+    </Link>
   );
 }
 
@@ -93,33 +141,7 @@ export function Today() {
         </ScrollRow>
       )}
 
-      {data && (
-        <section className="rounded-[2rem] bg-primary-container p-5 text-on-primary-container">
-          <div className="flex items-baseline justify-between">
-            <h2 className="text-sm">{whose} load</h2>
-            <p className="display text-2xl font-medium">{loadWord(data.load)}</p>
-          </div>
-          <LoadBar load={data.load} className="mt-3" fill="bg-on-primary-container" />
-          <p className="mt-3 text-sm">
-            {data.load.tasks === 0
-              ? allDone
-                ? `Everything's done: ${data.done.length} finished today.`
-                : 'Nothing planned yet. Add something with the plus button, or pull one in from the backlog.'
-              : `${data.load.tasks} planned, about ${minutesLabel(data.load.plannedMinutes)} of ${minutesLabel(data.load.capacityMinutes)}.`}
-            {who !== 'everyone' && calendarLine(data.load, who === 'me' ? 'your' : 'their') && ` ${calendarLine(data.load, who === 'me' ? 'your' : 'their')}`}
-          </p>
-        </section>
-      )}
-
-      {who === 'me' && briefing.data && briefing.data.suggestions.length > 0 && (
-        <Link to="/briefing" className="mt-2 flex min-h-12 items-center gap-3 rounded-3xl bg-surface-low py-3 pr-3 pl-4 transition-colors hover:bg-surface-container">
-          <Sparkle className="size-5 text-primary" aria-hidden />
-          <span className="flex-1 text-sm">
-            {briefing.data.suggestions.length === 1 ? '1 thing' : `${briefing.data.suggestions.length} things`} worth doing today
-          </span>
-          <ChevronRight className="size-5 text-on-surface-variant" aria-hidden />
-        </Link>
-      )}
+      {data && <LoadCard load={data.load} whose={whose} done={allDone ? data.done.length : 0} picks={who === 'me' ? briefing.data?.suggestions.length : undefined} />}
 
       {who === 'me' && events && events.length > 0 && (
         <>

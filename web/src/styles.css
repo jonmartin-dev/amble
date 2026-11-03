@@ -251,7 +251,9 @@ body::before {
  * starts, and runs it on the main thread otherwise.
  */
 .fill-glide {
-  transition: transform 420ms var(--spring);
+  transition:
+    transform 420ms var(--spring),
+    stroke-dashoffset 420ms var(--spring);
 }
 .enter-up {
   animation: enter-up 420ms var(--spring) backwards;

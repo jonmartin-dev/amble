@@ -668,13 +668,13 @@ export function loadWord(load: DayLoad) {
   return load.tasks === 0 ? 'Wide open' : loadWords[load.level];
 }
 
-/** How full a day is. Heavy days turn amber. */
 /** How much of a day's capacity is planned, from 0 to 1 (a day off with anything on it is full). */
 export function loadRatio(load: DayLoad) {
   if (load.capacityMinutes === 0) return load.plannedMinutes > 0 ? 1 : 0;
   return Math.min(load.plannedMinutes / load.capacityMinutes, 1);
 }
 
+/** How full a day is. Heavy days turn amber. */
 export function LoadBar({
   load,
   className = '',
@@ -693,6 +693,32 @@ export function LoadBar({
       {/* Full width, slid left so only `pct` of it shows: the round end stays round. */}
       <div className={`fill-glide h-full rounded-full ${heavy ? 'bg-warm' : fill}`} style={{ transform: `translateX(${pct - 100}%)` }} />
     </div>
+  );
+}
+
+/**
+ * The load bar bent into a ring, for where a bar would take a row of its own. It fills clockwise
+ * from the top, and an empty day is an empty ring, since a sliver of one reads as a dot.
+ */
+export function LoadRing({ load, className = 'size-10' }: { load: DayLoad; className?: string }) {
+  const pct = load.tasks ? Math.max(loadRatio(load) * 100, 4) : 0;
+  const heavy = load.level === 'full' || load.level === 'over';
+  return (
+    <svg viewBox="0 0 40 40" className={`shrink-0 -rotate-90 ${className}`} aria-hidden>
+      <circle cx="20" cy="20" r="17" fill="none" strokeWidth="4.5" className="stroke-on-primary-container/15" />
+      <circle
+        cx="20"
+        cy="20"
+        r="17"
+        fill="none"
+        strokeWidth="4.5"
+        strokeLinecap="round"
+        pathLength={100}
+        strokeDasharray="100 100"
+        strokeDashoffset={100 - pct}
+        className={`fill-glide ${heavy ? 'stroke-warm' : 'stroke-primary'} ${pct ? '' : 'opacity-0'}`}
+      />
+    </svg>
   );
 }
 
