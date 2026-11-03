@@ -1,8 +1,8 @@
 # Sign-in
 
-An Amble server signs people in through an OpenID Connect provider and lets in only the emails on its list. The app itself has no account: on a phone or in a browser it keeps everything on the device. Signing in to a server is how a device syncs with it (Use my own server), how Claude or ChatGPT connect, and how an admin reaches the server's own page.
+An Amble server doesn't need a sign-in provider. Phones, computers and browsers get in with a short code from a device that's already in (Settings, Your server, Add a phone or computer), and the setup script shows the first one ([self-hosting.md](self-hosting.md#5-get-in)). The app itself has no account: on a phone or in a browser it keeps everything on the device. Getting into a server is how a device syncs with it (Use my own server), how Claude or ChatGPT connect, and how an admin reaches the server's own page.
 
-Google is the default. Any provider that speaks OpenID Connect works, including the ones people self-host: Authelia, Authentik, Keycloak, Pocket ID, Zitadel and Kanidm.
+A sign-in provider is an option on top of codes, for a household that would rather sign in with an account. The server then also lets in the emails on its list through the provider. Google is the usual one, and any provider that speaks OpenID Connect works, including the ones people self-host: Authelia, Authentik, Keycloak, Pocket ID, Zitadel and Kanidm. `deploy/setup.sh` sets one up when you answer `provider` to how people get in, or with `--client-id`.
 
 The steps below were checked against Google, Authelia 4.39 and Keycloak 26.8, signing in through each from a fresh Docker setup. The Authentik notes follow its documentation.
 

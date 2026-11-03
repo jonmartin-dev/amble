@@ -2,15 +2,24 @@
 // one: deploy/setup.sh runs it inside the container once the server is up.
 //
 //   node server/pair.ts admin    a code that makes whoever uses it an admin (lasts a day)
+//   node server/pair.ts first    the same, but only while nobody's in yet (exits 3 when someone is)
 //   node server/pair.ts          a code that brings in someone new (lasts 10 minutes)
+import { count } from 'drizzle-orm';
 import { encode } from 'uqr';
 import { joinLink } from '../shared/qr.ts';
 import { makeCode } from './auth/pairing.ts';
 import { config } from './config.ts';
 import { openDatabase } from './db/index.ts';
+import { members } from './db/schema.ts';
 
-const admin = process.argv[2] === 'admin';
+const asked = process.argv[2];
+const admin = asked === 'admin' || asked === 'first';
 const db = openDatabase();
+
+if (asked === 'first' && (db.select({ n: count() }).from(members).get()?.n ?? 0) > 0) {
+  console.log("Someone's already in, so codes for more phones and computers come from Amble: Settings, Your server, Add a phone or computer.");
+  process.exit(3);
+}
 const { code, expiresAt } = makeCode(db, { kind: 'invite', role: admin ? 'admin' : 'member', by: null });
 const link = joinLink(config.publicUrl, code);
 

@@ -1,33 +1,40 @@
 #!/usr/bin/env bash
 # Sets up an Amble server with Docker on this computer, or checks one. It asks for what it needs
 # (or takes it from flags, so an AI assistant can run it without questions), writes .env and
-# secrets/, builds and starts the container, and checks each part. docs/self-hosting.md walks
-# through it.
+# secrets/, builds and starts the container, points Tailscale at it, checks each part, and shows
+# the code that lets the first phone in as the admin. docs/self-hosting.md walks through it.
 #
-#   deploy/setup.sh            set up, asking for anything not given (run again, it keeps what's set)
-#   deploy/setup.sh --check    check a setup and say what to fix; exits 1 if anything needs fixing
-#   deploy/setup.sh --update   back up the database, get the latest code (in a git clone), rebuild
+#   deploy/setup.sh               set up, asking for anything not given (run again, it keeps what's set)
+#   deploy/setup.sh --check       check a setup and say what to fix; exits 1 if anything needs fixing
+#   deploy/setup.sh --update      back up the database, get the latest code (in a git clone), rebuild
+#   deploy/setup.sh --admin-code  a new code that makes whoever uses it an admin, if every phone is lost
 #
 # On Windows, deploy\setup.cmd runs this in Git Bash and takes the same options.
 #
+# People get in with codes from a phone that's already in, so a server needs no sign-in provider.
+# One is optional: Google (a client you make in Google Cloud) or any OpenID Connect provider.
+#
 # Flags, for setting up without questions (with --yes, anything missing is an error instead):
 #   --url https://amble.example.com    the address people use, with its path if it has one
-#   --admin you@example.com            admins, comma-separated
-#   --allow partner@example.com        others who may sign in, comma-separated
+#   --timezone Area/City               the household's time zone (this computer's by default)
+#   --port 18085                       the port on this computer the server listens on
+#   --assistants yes|no                whether Claude and ChatGPT can reach the server: with a
+#                                      Tailscale address, Tailscale Funnel puts it on the internet
+#   --ai-provider NAME --ai-key-file PATH   optional: or set the AI model later in the app
+#   --privacy-contact EMAIL            optional: shown on the app's /privacy page
+# Optional, for signing in with a provider as well as codes:
 #   --client-id ID                     the sign-in client's ID
 #   --client-secret-file PATH          a file holding the sign-in client's secret
 #   --issuer URL --provider-name NAME  another OpenID Connect provider (Google by default)
-#   --timezone Area/City               the household's time zone (this computer's by default)
-#   --port 18085                       the port on this computer the server listens on
-#   --ai-provider NAME --ai-key-file PATH   optional: or set the AI model later in the app
-#   --privacy-contact EMAIL            optional: shown on the app's /privacy page
+#   --admin you@example.com            who signs in as an admin, comma-separated
+#   --allow partner@example.com        others who may sign in, comma-separated
 set -euo pipefail
 cd "$(dirname "$0")/.."
 # How to run this again, for the hints it prints. deploy\setup.cmd names itself.
 me=${AMBLE_SETUP_AS:-deploy/setup.sh}
 
 mode=setup yes=0 problems=0 reachable=0
-url='' admin='' allow='' client_id='' secret_file='' issuer='' provider='' tz='' port='' ai_provider='' ai_key_file='' privacy=''
+url='' admin='' allow='' client_id='' secret_file='' issuer='' provider='' tz='' port='' ai_provider='' ai_key_file='' privacy='' assistants=''
 value() {
   if [ $# -lt 2 ] || [ -z "$2" ]; then
     echo "$1 needs a value (see --help)" >&2
@@ -39,6 +46,8 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --check) mode=check ;;
     --update) mode=update ;;
+    --admin-code) mode=admin-code ;;
+    --assistants) assistants=$(value "$@"); shift ;;
     --yes) yes=1 ;;
     --url) url=$(value "$@"); shift ;;
     --admin) admin=$(value "$@"); shift ;;
@@ -135,6 +144,38 @@ docker_ready() {
   return 1
 }
 
+url_host() {
+  local h=${1#*://}
+  h=${h%%/*}
+  printf '%s' "${h%%:*}"
+}
+url_path() {
+  local p=${1#*://}
+  case "$p" in */*) printf '/%s' "${p#*/}" ;; esac
+}
+# A Tailscale name, on a computer with Tailscale, which can point it at the server itself.
+tailscale_name() {
+  case "$(url_host "$1")" in *.ts.net) command -v tailscale >/dev/null 2>&1 ;; *) return 1 ;; esac
+}
+# Tailscale as this user, or with sudo on Linux, where changing it usually needs root.
+ts() {
+  if tailscale "$@"; then return 0; fi
+  if [ "$(id -u)" != 0 ] && [ "$(uname -s)" = Linux ] && command -v sudo >/dev/null 2>&1; then
+    local asking=-n
+    if [ "$yes" = 0 ] && [ -t 0 ]; then asking=; fi
+    sudo $asking tailscale "$@"
+  else
+    return 1
+  fi
+}
+# Whether Tailscale Funnel puts the server on the internet, where Claude and ChatGPT can reach it.
+funnel_on() { tailscale funnel status 2>/dev/null | grep -q 'Funnel on' || sudo -n tailscale funnel status 2>/dev/null | grep -q 'Funnel on'; }
+
+# A long random string, for what the server seals its keys under.
+new_secret() {
+  if command -v openssl >/dev/null 2>&1; then openssl rand -base64 32 | tr -d '\n'; else head -c 32 /dev/urandom | base64 | tr -d '\n'; fi
+}
+
 local_health() { curl -fsS --max-time 5 "http://127.0.0.1:$1/healthz" >/dev/null 2>&1; }
 wait_healthy() {
   local _
@@ -171,17 +212,21 @@ check() {
   case "$u" in
     http://*) note "The address isn't HTTPS. The Android app is fine with that at home or over Tailscale, but browsers, Google sign-in, and Claude and ChatGPT need HTTPS." ;;
   esac
-  if [ -n "$admins" ]; then ok "Admins: $admins"; else bad "AMBLE_ADMIN_EMAILS isn't set in .env: your own email, so you can sign in."; fi
-  if [ -n "$id" ]; then ok "Sign-in client: $id"; else bad "OIDC_CLIENT_ID isn't set in .env: the client ID from your sign-in provider (docs/self-hosting.md, step 3)."; fi
   # secrets/ can belong to the container's user, and then only it (and root) can look inside.
   local sealed=0
   if [ -d secrets ] && [ ! -x secrets ]; then sealed=1; fi
-  if [ -s secrets/oidc_client_secret ]; then
-    ok "The sign-in client's secret is in secrets/oidc_client_secret"
-  elif [ "$sealed" = 1 ]; then
-    note "secrets/ belongs to the container's user, so this user can't look inside it; the server can."
+  if [ -z "$id" ]; then
+    ok "Sign-in: codes from a phone or computer that's already in (no sign-in provider)"
   else
-    bad "secrets/oidc_client_secret is missing or empty: put the sign-in client's secret in it."
+    ok "Sign-in: codes, or $name with the client $id"
+    if [ -n "$admins" ]; then ok "Admins who sign in with $name: $admins"; else bad "AMBLE_ADMIN_EMAILS isn't set in .env: your own email, so you can sign in with $name."; fi
+    if [ -s secrets/oidc_client_secret ]; then
+      ok "The sign-in client's secret is in secrets/oidc_client_secret"
+    elif [ "$sealed" = 1 ]; then
+      note "secrets/ belongs to the container's user, so this user can't look inside it; the server can."
+    else
+      bad "secrets/oidc_client_secret is missing or empty: put the sign-in client's secret in it."
+    fi
   fi
   if [ ! -d data ]; then
     bad "There's no data/ folder: run $me."
@@ -220,11 +265,21 @@ check() {
     reachable=1
     ok "Reachable at $u (from this computer)"
   elif [ -n "$u" ]; then
-    bad "Not reachable at $u yet: point your reverse proxy or Tailscale at 127.0.0.1:$p (docs/self-hosting.md, step 5)."
+    bad "Not reachable at $u yet: point your reverse proxy or Tailscale at 127.0.0.1:$p (docs/self-hosting.md, step 4)."
+  fi
+
+  if tailscale_name "$u"; then
+    if funnel_on; then
+      ok "Claude and ChatGPT can reach it: Tailscale Funnel puts it on the internet"
+    else
+      note "Only your own devices on Tailscale reach $u, so Claude and ChatGPT can't. To let them: $me --assistants yes"
+    fi
   fi
 
   local discovery reported
-  if discovery=$(curl -fsS --max-time 10 "${i%/}/.well-known/openid-configuration" 2>/dev/null); then
+  if [ -z "$id" ]; then
+    :
+  elif discovery=$(curl -fsS --max-time 10 "${i%/}/.well-known/openid-configuration" 2>/dev/null); then
     reported=$(printf '%s' "$discovery" | tr -d '\n' | sed -n 's/.*"issuer"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
     if [ "$reported" = "$i" ]; then ok "Sign-in provider: $name ($i)"; else bad "OIDC_ISSUER is $i, but the provider calls itself $reported: copy that exactly, trailing slash and all."; fi
   else
@@ -232,7 +287,9 @@ check() {
   fi
 
   # Google answers a sign-in for an address it doesn't know right away, so ask it.
-  if [ "$reachable" = 1 ] && [ "$i" = https://accounts.google.com ]; then
+  if [ -z "$id" ]; then
+    :
+  elif [ "$reachable" = 1 ] && [ "$i" = https://accounts.google.com ]; then
     local start page
     start=$(curl "${via[@]}" -sS -o /dev/null --max-time 10 -w '%{redirect_url}' "$u/auth/login?direct=1" 2>/dev/null || true)
     case "$start" in
@@ -276,6 +333,12 @@ fi
 command -v curl >/dev/null 2>&1 || die "curl is missing: install it (it checks the server once it's up)."
 docker_ready || exit 1
 
+# A new code for an admin, for a household that lost every phone that was in.
+if [ "$mode" = admin-code ]; then
+  docker compose exec -T amble node server/pair.ts admin || die "Couldn't make a code. Is the server running? Start it with $me."
+  exit
+fi
+
 if [ "$mode" = update ]; then
   [ -f .env ] || die "There's no .env here yet: run $me first."
   port=$(env_get AMBLE_PORT)
@@ -306,33 +369,56 @@ case "$url" in
   '') die "The address is needed (--url): https://amble.example.com, or a Tailscale name like https://server.tail1234.ts.net" ;;
   *) die "The address has to start with https:// (or http://): $url" ;;
 esac
-ask admin "Your email, to sign in as the admin (more, comma-separated)" "${admin:-$(env_get AMBLE_ADMIN_EMAILS)}"
-case "$admin" in *@*) ;; *) die "An admin email is needed (--admin)." ;; esac
-ask allow "Others in the household who may sign in (comma-separated, or none)" "${allow:-$(env_get AMBLE_ALLOWED_EMAILS)}"
-[ "$allow" = none ] && allow=
 tz=${tz:-$(env_get AMBLE_TIMEZONE)}
 tz=${tz:-$(host_timezone)}
 ask tz "The household's time zone, like America/Chicago or Europe/Berlin" "$tz"
 [ -n "$tz" ] || die "A time zone is needed (--timezone), like America/Chicago."
-issuer=${issuer:-$(env_get OIDC_ISSUER)}
-# Kept exactly as given: it has to match what the provider calls itself, trailing slash and all.
-ask issuer "The sign-in provider's issuer (Enter for Google)" "${issuer:-https://accounts.google.com}"
-provider=${provider:-$(env_get OIDC_PROVIDER_NAME)}
-if [ "$issuer" = https://accounts.google.com ]; then provider=${provider:-Google}; fi
-ask provider "The sign-in provider's name, for its button (\"Continue with ...\")" "$provider"
-[ -n "$provider" ] || die "A name for the sign-in provider is needed (--provider-name), like Authelia."
-ask client_id "The sign-in client's ID" "${client_id:-$(env_get OIDC_CLIENT_ID)}"
-[ -n "$client_id" ] || die "The sign-in client's ID is needed (--client-id): docs/self-hosting.md, step 3."
+
+# People get in with codes from a phone that's already in. A sign-in provider is optional, on top.
+signin=codes
+if [ -n "$client_id$issuer" ] || [ -n "$(env_get OIDC_CLIENT_ID)" ]; then signin=provider; fi
+ask signin "How people get in: codes (nothing to set up) or provider (Google or your own, as well)" "$signin"
+case "$signin" in
+  codes) admin='' allow='' issuer='' provider='' client_id='' ;;
+  provider)
+    ask admin "Your email, to sign in as the admin (more, comma-separated)" "${admin:-$(env_get AMBLE_ADMIN_EMAILS)}"
+    case "$admin" in *@*) ;; *) die "An admin email is needed (--admin)." ;; esac
+    ask allow "Others in the household who may sign in (comma-separated, or none)" "${allow:-$(env_get AMBLE_ALLOWED_EMAILS)}"
+    [ "$allow" = none ] && allow=
+    issuer=${issuer:-$(env_get OIDC_ISSUER)}
+    # Kept exactly as given: it has to match what the provider calls itself, trailing slash and all.
+    ask issuer "The sign-in provider's issuer (Enter for Google)" "${issuer:-https://accounts.google.com}"
+    provider=${provider:-$(env_get OIDC_PROVIDER_NAME)}
+    if [ "$issuer" = https://accounts.google.com ]; then provider=${provider:-Google}; fi
+    ask provider "The sign-in provider's name, for its button (\"Continue with ...\")" "$provider"
+    [ -n "$provider" ] || die "A name for the sign-in provider is needed (--provider-name), like Authelia."
+    ask client_id "The sign-in client's ID" "${client_id:-$(env_get OIDC_CLIENT_ID)}"
+    [ -n "$client_id" ] || die "The sign-in client's ID is needed (--client-id): docs/sign-in.md."
+    ;;
+  *) die "Answer codes or provider." ;;
+esac
+
+# Claude and ChatGPT need the address on the internet; with Tailscale, that's Funnel.
+if tailscale_name "$url"; then
+  if [ -z "$assistants" ]; then
+    assistants=no
+    if funnel_on; then assistants=yes; fi
+  fi
+  ask assistants "Should Claude and ChatGPT be able to reach Amble? That puts the address on the internet with Tailscale Funnel; getting in still takes a code or a sign-in (yes/no)" "$assistants"
+fi
+case "${assistants:-no}" in yes | no) ;; *) die "Answer yes or no for --assistants." ;; esac
 port=${port:-$(env_get AMBLE_PORT)}
 port=${port:-18085}
 privacy=${privacy:-$(env_get AMBLE_PRIVACY_CONTACT)}
 ai_provider=${ai_provider:-$(env_get AMBLE_AI_PROVIDER)}
 
 secret=
-if [ -n "$secret_file" ]; then
+if [ "$signin" = codes ]; then
+  :
+elif [ -n "$secret_file" ]; then
   [ -s "$secret_file" ] || die "$secret_file is missing or empty."
   secret=$(tr -d '\r\n' <"$secret_file")
-elif [ ! -s secrets/oidc_client_secret ]; then
+elif [ ! -s secrets/oidc_client_secret ] && { [ ! -d secrets ] || [ -x secrets ]; }; then
   if [ "$yes" = 1 ] || [ ! -t 0 ]; then die "The sign-in client's secret is needed (--client-secret-file)."; fi
   read -r -s -p "The sign-in client's secret (it won't show): " secret
   echo
@@ -365,11 +451,13 @@ fi
   echo "AMBLE_PUBLIC_URL=$url"
   echo "AMBLE_TIMEZONE=$tz"
   echo "AMBLE_PORT=$port"
-  echo "AMBLE_ADMIN_EMAILS=$admin"
-  echo "AMBLE_ALLOWED_EMAILS=$allow"
-  echo "OIDC_ISSUER=$issuer"
-  echo "OIDC_PROVIDER_NAME=$provider"
-  echo "OIDC_CLIENT_ID=$client_id"
+  if [ "$signin" = provider ]; then
+    echo "AMBLE_ADMIN_EMAILS=$admin"
+    echo "AMBLE_ALLOWED_EMAILS=$allow"
+    echo "OIDC_ISSUER=$issuer"
+    echo "OIDC_PROVIDER_NAME=$provider"
+    echo "OIDC_CLIENT_ID=$client_id"
+  fi
   if [ -n "$privacy" ]; then echo "AMBLE_PRIVACY_CONTACT=$privacy"; fi
   if [ -n "$ai_provider" ]; then echo "AMBLE_AI_PROVIDER=$ai_provider"; fi
   if [ -n "$kept" ]; then
@@ -393,6 +481,11 @@ put_secret() {
 }
 if [ -n "$secret" ]; then put_secret oidc_client_secret "$secret"; fi
 if [ -n "$ai_key" ]; then put_secret ai_api_key "$ai_key"; fi
+# What the server seals its keys under. A server that already seals them under its sign-in client's
+# secret, or a secret it made itself in data/, keeps using that (server/lib/secret.ts).
+if [ -w secrets ] && [ ! -s secrets/amble_secret ] && [ ! -s secrets/oidc_client_secret ] && [ ! -s data/secret ]; then
+  put_secret amble_secret "$(new_secret)"
+fi
 ok "Secrets are in secrets/, readable only by their owner"
 if ! docker_desktop && ! owned_by_container; then
   if [ "$(id -u)" = 0 ]; then
@@ -415,16 +508,50 @@ wait_healthy "$port" || {
   die "The server didn't come up within a minute; the log is above."
 }
 ok "The server is running on 127.0.0.1:$port"
+
+# The Tailscale address, pointed at the server: serve for the household's own devices, funnel for
+# the internet too. It may stop to give a link to turn HTTPS on the first time.
+if tailscale_name "$url"; then
+  if [ -n "$(url_path "$url")" ]; then
+    note "The address has a path ($(url_path "$url")), so point Tailscale at it yourself: docs/self-hosting.md, step 4."
+  else
+    how=serve
+    if [ "$assistants" = yes ]; then how=funnel; elif funnel_on; then ts funnel --https=443 off >/dev/null 2>&1 || true; fi
+    if ts "$how" --bg "$port"; then
+      ok "Tailscale ($how) sends $url to port $port"
+    else
+      note "Couldn't run tailscale $how. Run it yourself: sudo tailscale $how --bg $port (on Windows and Macs, without sudo)."
+    fi
+  fi
+fi
+
 echo
 check
 echo
+
+# The first admin's code, while nobody's in yet. Once someone is, codes come from Amble's Settings.
+coded=0
+if [ "$reachable" = 1 ] || local_health "$port"; then
+  echo "Getting in:"
+  status=0
+  docker compose exec -T amble node server/pair.ts first || status=$?
+  case "$status" in
+    0) coded=1 ;;
+    3) ;;
+    *) note "Couldn't make the first code. Run $me --admin-code once the server is up." ;;
+  esac
+  echo
+fi
+
 echo "Next:"
 if [ "$reachable" = 0 ]; then
-  echo "  - Make $url reach port $port on this computer (docs/self-hosting.md, step 5)."
-  echo "  - The sign-in client's redirect URI has to be exactly: $url/auth/callback"
+  echo "  - Make $url reach port $port on this computer (docs/self-hosting.md, step 4)."
+  if [ "$signin" = provider ]; then echo "  - The sign-in client's redirect URI has to be exactly: $url/auth/callback"; fi
 fi
 if [ "$problems" != 0 ]; then
   echo "  - Fix what's marked [fix] above, and run $me --check until it passes."
 fi
-echo "  - Open $url/server and sign in as ${admin%%,*}."
-echo "  - Add phones with the code in Settings, Your server (docs/self-hosting.md, step 7)."
+if [ "$coded" = 1 ]; then echo "  - Scan the code above in the Amble app (Use my own server, then Scan the code) to get in as the admin."; fi
+echo "  - Add everyone else from Amble's Settings, Your server, Add a phone or computer."
+if [ "$signin" = provider ]; then echo "  - Or open $url/server and sign in as ${admin%%,*}."; fi
+if [ "${assistants:-no}" = yes ]; then echo "  - Connect Claude or ChatGPT: docs/assistants.md."; fi
