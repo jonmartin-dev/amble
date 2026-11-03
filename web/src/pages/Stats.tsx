@@ -110,9 +110,11 @@ function TimesOfDay({ data }: { data: StatsData }) {
             <span key={t.key} style={{ flexGrow: t.count, background: timeFills[t.key] }} className="block" />
           ))}
       </div>
-      <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
+      {/* Two columns, or one when the phone's big text no longer fits half the width. Its text size
+          scales glyphs but not CSS lengths, so only the text's own width can decide. */}
+      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 text-sm">
         {data.timesOfDay.map((t) => (
-          <span key={t.key} className="flex items-center gap-2">
+          <span key={t.key} className="flex min-w-fit grow basis-[calc(50%-0.5rem)] items-center gap-2">
             <span className="size-2.5 rounded-full" style={{ background: timeFills[t.key] }} />
             <span className="flex-1">{timeWords[t.key]}</span>
             <span className="text-on-surface-variant">{Math.round((t.count / total) * 100)}%</span>

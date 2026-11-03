@@ -186,7 +186,9 @@ export function ButtonGroup<T extends string | number>({
   // and making the shape jump as it animates.
   const round = size === 'sm' ? 20 : 24;
   return (
-    <div role="radiogroup" aria-label={label} className="flex gap-0.5">
+    // With big text, a button's check goes above its label and the group takes a second row, so
+    // nothing spills into the next button.
+    <div role="radiogroup" aria-label={label} className="flex flex-wrap gap-0.5">
       {options.map((o, i) => {
         const on = o.value === value;
         const first = i === 0;
@@ -208,7 +210,7 @@ export function ButtonGroup<T extends string | number>({
             animate={corners(8)}
             transition={expressive.fastSpatial}
             whileTap={corners(4)}
-            className={`flex flex-1 items-center justify-center gap-2 text-sm font-medium transition-colors ${size === 'sm' ? 'tap h-10' : 'h-12'} ${
+            className={`flex flex-1 flex-wrap content-center items-center justify-center gap-x-2 px-2 py-1 text-center text-sm font-medium transition-colors ${size === 'sm' ? 'tap min-h-10' : 'min-h-12'} ${
               on ? 'bg-primary text-on-primary' : 'bg-surface-high text-on-surface'
             }`}
           >

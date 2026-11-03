@@ -120,7 +120,7 @@ function Gaps({ gaps, today }: { gaps: DayPick[]; today: string }) {
               className="flex items-center gap-3 rounded-2xl bg-surface-high py-2 pr-2 pl-4"
             >
               <span className="min-w-0 flex-1">
-                <span className="block truncate">{g.task.title}</span>
+                <span className="line-clamp-2">{g.task.title}</span>
                 <span className={`block text-xs ${g.fits ? 'text-on-surface-variant' : 'text-warm'}`}>{g.reason}</span>
               </span>
               <button

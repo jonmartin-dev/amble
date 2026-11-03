@@ -60,16 +60,17 @@ function LoadCard({ load, whose, done, picks }: { load: DayLoad; whose: string; 
       : load.capacityMinutes
         ? `${minutesLabel(load.plannedMinutes)} of ${minutesLabel(load.capacityMinutes)}`
         : `${minutesLabel(load.plannedMinutes)} planned`;
-  const card = 'flex min-h-16 items-center gap-3 rounded-3xl bg-primary-container py-2.5 pr-2.5 pl-3 text-on-primary-container';
+  // With big text the picks go under the rest rather than squeezing it.
+  const card = 'flex min-h-16 flex-wrap items-center gap-3 rounded-3xl bg-primary-container py-2.5 pr-2.5 pl-3 text-on-primary-container';
   // Read aloud as it shows, with who it's for first: "Your day: Light, 2 h of 5 h, 3 picks".
   const body = (
     <>
       <LoadRing load={load} />
-      <span className="flex min-w-0 flex-1 flex-col">
+      <span className="flex min-w-0 grow basis-20 flex-col">
         <span className="sr-only">{whose} day: </span>
         <span className="display text-lg leading-tight font-medium">{word}</span>
         <span className="sr-only">, </span>
-        <span className="truncate text-sm">{hours}</span>
+        <span className="text-sm">{hours}</span>
       </span>
     </>
   );
@@ -83,7 +84,7 @@ function LoadCard({ load, whose, done, picks }: { load: DayLoad; whose: string; 
     <Link to="/briefing" className={card}>
       {body}
       {picks > 0 ? (
-        <span className="flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-on-primary-container/8 pr-1.5 pl-3 text-sm font-medium">
+        <span className="ml-auto flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-on-primary-container/8 pr-1.5 pl-3 text-sm font-medium">
           <Sparkle className="size-4.5 text-primary" aria-hidden />
           <span className="sr-only">, </span>
           {picks === 1 ? '1 pick' : `${picks} picks`}

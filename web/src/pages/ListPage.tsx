@@ -288,7 +288,8 @@ export function ListPage({ groupId }: { groupId: string }) {
               <GroupIcon name={group.icon} className="size-6" />
             </span>
             <div className="min-w-0 flex-1">
-              <h1 className="display truncate text-[1.625rem] leading-tight font-medium">{group.name}</h1>
+              {/* Big text wraps a long name onto a second line; a word too wide for one ends in an ellipsis. */}
+              <h1 className="display line-clamp-2 text-[1.625rem] leading-tight font-medium text-ellipsis">{group.name}</h1>
               <p className="flex items-center gap-1 text-sm text-on-surface-variant">
                 {group.privateTo && <Lock className="size-3.5" aria-label="Only you can see it" />}
                 {open.length ? `${open.length} on the list` : 'Nothing on the list'}
