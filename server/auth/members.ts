@@ -40,7 +40,8 @@ export function upsertMember(db: Db, config: Config, identity: Identity, now = D
     return db
       .update(members)
       .set({
-        role,
+        // The list makes admins, and so do codes, so being off the list doesn't take it away.
+        role: existing.role === 'admin' ? 'admin' : role,
         name: placeholder && identity.name?.trim() ? identity.name.trim() : existing.name,
         avatarUrl: identity.avatarUrl ?? existing.avatarUrl,
         lastLoginAt: new Date(now),
