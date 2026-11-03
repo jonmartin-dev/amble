@@ -14,8 +14,8 @@ const play = process.env.AMBLE_SHOTS === 'play';
 const out = play ? 'fastlane/metadata/android/en-US/images/phoneScreenshots' : 'docs/screenshots';
 // The listing leads with the day; the README with the morning's briefing.
 const PLAY_ORDER = ['today', 'quick-add', 'calendar', 'groceries', 'task', 'lists', 'briefing', 'appearance'];
-const light = { mode: 'light', seed: '#2e6a57', style: 'tonal', contrast: 0 };
-const dark = { mode: 'dark', seed: '#3a5ba9', style: 'vibrant', contrast: 0 };
+const light = { mode: 'light', palette: 'grove', seed: '#2e6a57', style: 'tonal', contrast: 0 };
+const dark = { mode: 'dark', palette: 'harbor', seed: '#3a5ba9', style: 'tonal', contrast: 0 };
 
 interface Shot {
   name: string;

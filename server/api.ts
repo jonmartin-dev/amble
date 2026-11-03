@@ -253,6 +253,11 @@ export function registerApi(
 
   const themeSchema = z.object({
     mode: z.enum(['system', 'light', 'dark']),
+    // One of the app's palettes (web/src/lib/palettes.ts); older versions go by seed and style.
+    palette: z
+      .string()
+      .regex(/^[a-z-]{1,40}$/)
+      .optional(),
     seed: z.string().regex(/^#[0-9a-f]{6}$/i),
     style: z.enum(['tonal', 'expressive', 'vibrant', 'fidelity', 'neutral']),
     contrast: z.union([z.literal(0), z.literal(0.5), z.literal(1)]),

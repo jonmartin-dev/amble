@@ -2,12 +2,12 @@ import { motion } from 'motion/react';
 import { useMemo, type ReactNode } from 'react';
 import AutoMode from '~icons/material-symbols/brightness-auto-outline-rounded';
 import Check from '~icons/material-symbols/check-rounded';
-import Colorize from '~icons/material-symbols/colorize-rounded';
 import DarkMode from '~icons/material-symbols/dark-mode-outline-rounded';
 import LightMode from '~icons/material-symbols/light-mode-outline-rounded';
 import { ButtonGroup, SubpageHeader } from '../components/ui.tsx';
 import { expressive } from '../lib/motion.ts';
-import { hasPhoneColors, seeds, styles, swatchColors, type ThemeContrast, type ThemeMode, type ThemePrefs } from '../lib/theme.ts';
+import { palettes, type Palette } from '../lib/palettes.ts';
+import { hasPhoneColors, paletteOf, previewColors, type ThemeContrast, type ThemeMode, type ThemePrefs } from '../lib/theme.ts';
 import { EDGES, setEdge, useEdge } from '../lib/top-edge.ts';
 import { useTheme } from '../lib/useTheme.ts';
 
@@ -20,38 +20,51 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-/** Android-style wallpaper swatch: primary on top, secondary and tertiary below. */
-function Swatch({ hex, selected, prefs, onPick, label }: { hex: string | 'phone'; selected: boolean; prefs: ThemePrefs; onPick: () => void; label: string }) {
+/**
+ * A palette in its own colors, whatever the app is in now: its load card, a chip of each accent,
+ * and its name, so it can be judged before it's picked.
+ */
+function PaletteCard({ palette, name, mood, selected, prefs, onPick }: { palette: Palette | 'phone'; name: string; mood: string; selected: boolean; prefs: ThemePrefs; onPick: () => void }) {
   const dark = document.documentElement.dataset.mode === 'dark' || (prefs.mode === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
-  const c = useMemo(() => swatchColors(hex, prefs.style, dark), [hex, prefs.style, dark]);
+  const c = useMemo(() => previewColors(palette, dark), [palette, dark]);
   return (
-    <motion.button
+    <button
       type="button"
       role="radio"
       aria-checked={selected}
-      aria-label={label}
+      aria-label={`${name}: ${mood}`}
       onClick={onPick}
-      // In percent, both ways: from 999px the change would only show at the very end.
-      animate={{ borderRadius: selected ? '28%' : '50%' }}
-      whileTap={{ scale: 0.9 }}
-      transition={expressive.fastSpatial}
-      className="relative grid aspect-square w-full place-items-center overflow-hidden bg-surface-high"
+      style={{ background: c.surface, color: c.onSurface }}
+      className={`press-soft relative flex flex-col gap-2 rounded-3xl p-2.5 text-left ${selected ? 'outline-2 outline-offset-2 outline-primary' : 'outline-1 outline-outline-variant'}`}
     >
-      <span
-        className="absolute inset-[14%] rounded-full"
-        style={{ background: `conic-gradient(from -90deg, ${c.primary} 0 50%, ${c.tertiary} 50% 75%, ${c.secondary} 75% 100%)` }}
-      />
+      <span className="flex h-12 flex-col justify-end rounded-2xl p-2.5" style={{ background: c.primaryContainer }}>
+        <span className="h-1.5 overflow-hidden rounded-full" style={{ background: `color-mix(in srgb, ${c.onPrimaryContainer} 15%, transparent)` }}>
+          <span className="block h-full w-3/5 rounded-full" style={{ background: c.primary }} />
+        </span>
+      </span>
+      <span className="flex items-center gap-1.5 px-0.5">
+        <span className="h-4 w-8 rounded-full" style={{ background: c.secondaryContainer }} />
+        <span className="h-4 w-5 rounded-full" style={{ background: c.tertiaryContainer }} />
+        <span className="ml-auto size-4 rounded-md" style={{ background: c.primary }} />
+      </span>
+      <span className="px-1 pb-0.5">
+        <span className="block font-medium">{name}</span>
+        <span className="block text-xs leading-snug" style={{ color: c.onSurfaceVariant }}>
+          {mood}
+        </span>
+      </span>
       {selected && (
         <motion.span
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
           transition={expressive.fastSpatial}
-          className="relative grid size-7 place-items-center rounded-full bg-surface-lowest text-on-surface"
+          className="absolute top-4 right-4 grid size-6 place-items-center rounded-full"
+          style={{ background: c.primary, color: c.surface }}
         >
-          <Check className="size-5" aria-hidden />
+          <Check className="size-4" aria-hidden />
         </motion.span>
       )}
-    </motion.button>
+    </button>
   );
 }
 
@@ -61,32 +74,34 @@ export function Appearance() {
   // The phone's own colors, on Android 12 and later; a browser has none to offer.
   const phone = hasPhoneColors();
   const fromPhone = phone && prefs.phone;
-  const custom = !fromPhone && !seeds.some((s) => s.hex === prefs.seed);
-  const seedName = seeds.find((s) => s.hex === prefs.seed)?.name;
+  const picked = paletteOf(prefs);
 
   return (
     <>
       <SubpageHeader title="Appearance" />
 
-      <div className="rounded-[2rem] bg-primary-container p-5 text-on-primary-container">
-        <div className="flex items-baseline justify-between text-sm">
-          <span>Today's load</span>
-          <span className="display text-2xl font-medium">Light</span>
+      <Section title="Palette">
+        <div role="radiogroup" aria-label="Palette" className="grid grid-cols-2 gap-3 medium:grid-cols-3">
+          {palettes.map((p) => (
+            <PaletteCard
+              key={p.id}
+              palette={p}
+              name={p.name}
+              mood={p.mood}
+              prefs={prefs}
+              selected={!fromPhone && picked.id === p.id}
+              // The seed too, so a device still on a version from before palettes shows something close.
+              onPick={() => update({ palette: p.id, seed: p.seed, style: 'tonal', phone: false })}
+            />
+          ))}
+          {phone && <PaletteCard palette="phone" name="Your phone's" mood="Follows your wallpaper" prefs={prefs} selected={fromPhone} onPick={() => update({ phone: true })} />}
         </div>
-        <div className="mt-3 h-3 overflow-hidden rounded-full bg-on-primary-container/15">
-          <div className="h-full w-[38%] rounded-full bg-primary" />
-        </div>
-        <div className="mt-4 flex items-center gap-3 rounded-2xl bg-surface-lowest p-3 text-on-surface">
-          <span className="size-5 shrink-0 rounded-md border-2 border-primary" />
-          <span className="flex-1 text-sm">Call the dentist</span>
-          <span className="rounded-full bg-primary px-3 py-1 text-xs font-medium text-on-primary">Add</span>
-        </div>
-        <div className="mt-2 rounded-2xl bg-warm-container p-3 text-sm text-on-warm-container">Saturday looks heavy</div>
-      </div>
+        {fromPhone && <p className="mt-2 px-1 text-sm text-on-surface-variant">Your phone's colors change with its wallpaper. Devices without them use {picked.name}.</p>}
+      </Section>
 
-      <Section title="Theme">
+      <Section title="Light or dark">
         <ButtonGroup<ThemeMode>
-          label="Theme"
+          label="Light or dark"
           value={prefs.mode}
           onChange={(mode) => update({ mode })}
           options={[
@@ -96,46 +111,6 @@ export function Appearance() {
           ]}
         />
       </Section>
-
-      <Section title="Color">
-        <div role="radiogroup" aria-label="Color" className="grid grid-cols-5 gap-3">
-          {phone && <Swatch hex="phone" label="Your phone's colors" prefs={prefs} selected={fromPhone} onPick={() => update({ phone: true })} />}
-          {seeds.map((s) => (
-            <Swatch
-              key={s.hex}
-              hex={s.hex}
-              label={s.name}
-              prefs={prefs}
-              selected={!fromPhone && prefs.seed === s.hex}
-              onPick={() => update({ seed: s.hex, phone: false })}
-            />
-          ))}
-          <label
-            className={`relative grid aspect-square cursor-pointer place-items-center overflow-hidden bg-surface-high text-on-surface-variant ${custom ? 'rounded-[20px] outline-2 outline-primary' : 'rounded-full'}`}
-            title="Pick any color"
-          >
-            <Colorize className="size-6" aria-hidden />
-            <span className="sr-only">Pick any color</span>
-            <input
-              type="color"
-              value={prefs.seed}
-              onChange={(e) => update({ seed: e.target.value, phone: false })}
-              className="absolute inset-0 cursor-pointer opacity-0"
-            />
-          </label>
-        </div>
-        <p className="mt-2 px-1 text-sm text-on-surface-variant">
-          {fromPhone
-            ? `Your phone's colors, which follow its wallpaper and style. Devices without them use ${seedName ?? 'your color'}.`
-            : (seedName ?? 'Your color')}
-        </p>
-      </Section>
-
-      {!fromPhone && (
-        <Section title="Style">
-          <Choices label="Style" value={prefs.style} options={styles} onPick={(style) => update({ style })} />
-        </Section>
-      )}
 
       <Section title="Contrast">
         <ButtonGroup<ThemeContrast>

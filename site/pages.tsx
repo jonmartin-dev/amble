@@ -31,7 +31,8 @@ import Terminal from '~icons/material-symbols/terminal-rounded';
 import Widgets from '~icons/material-symbols/widgets-outline-rounded';
 import { GroupIcon, tone } from '../web/src/components/icons.tsx';
 import { PROJECT_URL } from '../web/src/lib/project.ts';
-import { defaultTheme, seeds, swatchColors, themeVariables } from '../web/src/lib/theme.ts';
+import { palettes } from '../web/src/lib/palettes.ts';
+import { defaultTheme, previewColors, themeVariables } from '../web/src/lib/theme.ts';
 import { Markdown } from './markdown.tsx';
 
 type Icon = ComponentType<SVGProps<SVGSVGElement>>;
@@ -186,7 +187,7 @@ const shots = [
   { file: 'groceries', caption: 'Groceries sort themselves by aisle, here in dark mode.' },
   { file: 'lists', caption: 'Eleven list templates, from packing to a meal plan.' },
   { file: 'task', caption: 'A task with its group, notes and steps.' },
-  { file: 'appearance', caption: 'Any color, or your wallpaper’s own, in five styles.' },
+  { file: 'appearance', caption: 'Nine calm palettes, each with its own name, or your wallpaper’s colors.' },
 ];
 
 function Shot({ file, alt, className, style, lazy }: { file: string; alt: string; className?: string; style?: CSSProperties; lazy?: boolean }) {
@@ -471,20 +472,20 @@ function Home({ data }: { data: SiteData }) {
               A task grows out of the row you tapped and shrinks back into it when you pull it down, and sheets ride up with the keyboard. Today’s tasks can sit on
               your home screen in a widget, and on a foldable or tablet a task opens beside its list.
             </p>
-            <p className="text-on-surface-variant">Pick any color or your wallpaper’s own, and Amble builds a full palette from it, in five styles, light or dark.</p>
+            <p className="text-on-surface-variant">Pick one of nine calm palettes, each tuned by hand, or your wallpaper’s own colors, light or dark.</p>
           </div>
-          <ul className="grid grid-cols-4 gap-3" aria-label="Some of the colors to pick from">
-            {seeds.map((s) => {
-              const c = swatchColors(s.hex, 'tonal', false);
+          <ul className="grid grid-cols-3 gap-3" aria-label="The palettes to pick from">
+            {palettes.map((p) => {
+              const c = previewColors(p, false);
               return (
-                <li key={s.name} className="flex flex-col items-center gap-2">
+                <li key={p.id} className="flex flex-col items-center gap-2">
                   <span className="relative grid aspect-square w-full place-items-center overflow-hidden rounded-full bg-surface-high">
                     <span
                       className="absolute inset-[14%] rounded-full"
-                      style={{ background: `conic-gradient(from -90deg, ${c.primary} 0 50%, ${c.tertiary} 50% 75%, ${c.secondary} 75% 100%)` }}
+                      style={{ background: `conic-gradient(from -90deg, ${c.primary} 0 50%, ${c.tertiaryContainer} 50% 75%, ${c.secondaryContainer} 75% 100%)` }}
                     />
                   </span>
-                  <span className="text-sm text-on-surface-variant">{s.name}</span>
+                  <span className="text-sm text-on-surface-variant">{p.name}</span>
                 </li>
               );
             })}

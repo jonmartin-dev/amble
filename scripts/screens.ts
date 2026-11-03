@@ -28,10 +28,10 @@ const routes = [
 ];
 const only = process.argv[3]?.split(',');
 const allVariants = [
-  { name: 'light', mode: 'light', seed: '#2e6a57', style: 'tonal' },
-  { name: 'dark', mode: 'dark', seed: '#2e6a57', style: 'tonal' },
-  { name: 'rose-expressive', mode: 'light', seed: '#a8476b', style: 'expressive' },
-  { name: 'ocean-dark-vibrant', mode: 'dark', seed: '#3a5ba9', style: 'vibrant' },
+  { name: 'light', mode: 'light', palette: 'grove' },
+  { name: 'dark', mode: 'dark', palette: 'grove' },
+  { name: 'fig', mode: 'light', palette: 'fig' },
+  { name: 'harbor-dark', mode: 'dark', palette: 'harbor' },
 ];
 const variants = only ? allVariants.filter((v) => only.includes(v.name)) : allVariants;
 const [width, height] = (process.env.AMBLE_VIEWPORT ?? '390x844').split('x').map(Number);
@@ -59,7 +59,7 @@ for (const v of variants) {
   if (!session.member) throw new Error(`Signing in as ${email} didn't set up this device.`);
   if (originalTheme === undefined) originalTheme = session.member.theme;
   // Save the variant as this member's theme so the household's copy doesn't override it.
-  const theme = { mode: v.mode, seed: v.seed, style: v.style, contrast: 0 };
+  const theme = { mode: v.mode, palette: v.palette, seed: '#2e6a57', style: 'tonal', contrast: 0 };
   const res = await local(page).patch(`/me`, { data: { theme } });
   if (!res.ok()) throw new Error(`Saving theme failed: ${res.status()}`);
   await page.evaluate((t) => localStorage.setItem('almanac-theme', JSON.stringify(t)), theme);

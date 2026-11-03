@@ -1,19 +1,5 @@
-import {
-  argbFromHex,
-  Blend,
-  type DynamicColor,
-  DynamicScheme,
-  Hct,
-  hexFromArgb,
-  MaterialDynamicColors as C,
-  SchemeExpressive,
-  SchemeFidelity,
-  SchemeNeutral,
-  SchemeTonalSpot,
-  SchemeVibrant,
-  TonalPalette,
-  Variant,
-} from '@material/material-color-utilities';
+import { argbFromHex, Blend, type DynamicColor, DynamicScheme, Hct, hexFromArgb, MaterialDynamicColors as C, TonalPalette, Variant } from '@material/material-color-utilities';
+import { palettes, type Palette } from './palettes.ts';
 
 export type ThemeMode = 'system' | 'light' | 'dark';
 export type ThemeStyle = 'tonal' | 'expressive' | 'vibrant' | 'fidelity' | 'neutral';
@@ -21,19 +7,49 @@ export type ThemeContrast = 0 | 0.5 | 1;
 
 export interface ThemePrefs {
   mode: ThemeMode;
+  /** One of Amble's palettes (lib/palettes.ts), by id. */
+  palette: string;
+  /** The palette's nearest color as the themes before palettes knew it, with `style`, for a device still on an older version. */
   seed: string;
   style: ThemeStyle;
   contrast: ThemeContrast;
-  /** The phone's own colors, where it has them (Android 12 and later); `seed` everywhere else. */
+  /** The phone's own colors, where it has them (Android 12 and later); the palette everywhere else. */
   phone: boolean;
 }
 
-export const defaultTheme: ThemePrefs = { mode: 'system', seed: '#2e6a57', style: 'tonal', contrast: 0, phone: true };
+export const defaultTheme: ThemePrefs = { mode: 'system', palette: 'grove', seed: '#2e6a57', style: 'tonal', contrast: 0, phone: false };
 
-/** Saved prefs filled out; someone who picked a color before phone colors existed keeps it. */
+/** Saved prefs filled out. A color picked before palettes becomes the palette nearest it. */
 export function withDefaults(saved: Partial<ThemePrefs> | null | undefined): ThemePrefs {
-  return saved ? { ...defaultTheme, phone: false, ...saved } : defaultTheme;
+  if (!saved) return defaultTheme;
+  return { ...defaultTheme, phone: false, ...saved, palette: paletteOf(saved).id };
 }
+
+/** The palette prefs ask for: theirs, or for a color from before palettes, the one nearest it. */
+export function paletteOf(prefs: Partial<Pick<ThemePrefs, 'palette' | 'seed'>>): Palette {
+  const picked = palettes.find((p) => p.id === prefs.palette);
+  if (picked) return picked;
+  const seed = prefs.seed?.toLowerCase() ?? defaultTheme.seed;
+  const old = OLD_SEEDS[seed];
+  if (old) return palettes.find((p) => p.id === old)!;
+  // Any other color: a grey one is Slate, the rest the palette closest in hue.
+  const hct = Hct.fromInt(argbFromHex(seed));
+  if (hct.chroma < 12) return palettes.find((p) => p.id === 'slate')!;
+  const apart = (p: Palette) => Math.min(Math.abs(p.primary[0] - hct.hue), 360 - Math.abs(p.primary[0] - hct.hue));
+  return palettes.filter((p) => p.id !== 'slate').reduce((a, b) => (apart(b) < apart(a) ? b : a));
+}
+
+// The colors people could pick before palettes, and the palette each became.
+const OLD_SEEDS: Record<string, string> = {
+  '#2e6a57': 'grove',
+  '#0f6e78': 'tidepool',
+  '#3a5ba9': 'harbor',
+  '#6b55a8': 'dusk',
+  '#a8476b': 'fig',
+  '#b5562b': 'clay',
+  '#a87a12': 'chamomile',
+  '#56616b': 'slate',
+};
 
 /**
  * The palettes Android 12 and later make from the wallpaper (Material You), each a few tones of
@@ -77,13 +93,13 @@ export function setPhoneColors(colors: PhoneColors | null): boolean {
 }
 
 /** Android makes each palette from a hue and a chroma; the tone with the most chroma shows them best. */
-function paletteOf(tones: string[]) {
+function phonePalette(tones: string[]) {
   const key = tones.map((t) => Hct.fromInt(argbFromHex(t))).reduce((a, b) => (b.chroma > a.chroma ? b : a));
   return TonalPalette.fromHueAndChroma(key.hue, key.chroma);
 }
 
 function phoneScheme(colors: PhoneColors, dark: boolean, contrast: number): DynamicScheme {
-  const primary = paletteOf(colors.accent1);
+  const primary = phonePalette(colors.accent1);
   return new DynamicScheme({
     sourceColorHct: primary.keyColor,
     variant: Variant.TONAL_SPOT,
@@ -92,44 +108,34 @@ function phoneScheme(colors: PhoneColors, dark: boolean, contrast: number): Dyna
     specVersion: '2025',
     platform: 'phone',
     primaryPalette: primary,
-    secondaryPalette: paletteOf(colors.accent2),
-    tertiaryPalette: paletteOf(colors.accent3),
-    neutralPalette: paletteOf(colors.neutral1),
-    neutralVariantPalette: paletteOf(colors.neutral2),
+    secondaryPalette: phonePalette(colors.accent2),
+    tertiaryPalette: phonePalette(colors.accent3),
+    neutralPalette: phonePalette(colors.neutral1),
+    neutralVariantPalette: phonePalette(colors.neutral2),
   });
 }
 
-export const seeds = [
-  { name: 'Grove', hex: '#2e6a57' },
-  { name: 'Tide', hex: '#0f6e78' },
-  { name: 'Ocean', hex: '#3a5ba9' },
-  { name: 'Lavender', hex: '#6b55a8' },
-  { name: 'Rose', hex: '#a8476b' },
-  { name: 'Ember', hex: '#b5562b' },
-  { name: 'Marigold', hex: '#a87a12' },
-  { name: 'Slate', hex: '#56616b' },
-];
-
-export const styles: { id: ThemeStyle; name: string; hint: string }[] = [
-  { id: 'tonal', name: 'Calm', hint: 'Soft, low-key color. The Android default.' },
-  { id: 'expressive', name: 'Expressive', hint: 'Playful accents that drift from your color.' },
-  { id: 'vibrant', name: 'Vibrant', hint: 'Bold, saturated surfaces.' },
-  { id: 'fidelity', name: 'True to color', hint: 'Stays as close to your pick as possible.' },
-  { id: 'neutral', name: 'Muted', hint: 'Nearly gray, with a hint of your color.' },
-];
-
-const schemeClasses = {
-  tonal: SchemeTonalSpot,
-  expressive: SchemeExpressive,
-  vibrant: SchemeVibrant,
-  fidelity: SchemeFidelity,
-  neutral: SchemeNeutral,
-};
+/** A palette's scheme: each of its colors as the palette Material takes that role's tones from. */
+export function paletteScheme(p: Palette, dark: boolean, contrast: number): DynamicScheme {
+  const tones = ([hue, chroma]: readonly [number, number]) => TonalPalette.fromHueAndChroma(hue, chroma);
+  return new DynamicScheme({
+    sourceColorHct: Hct.from(p.primary[0], p.primary[1], 40),
+    variant: Variant.TONAL_SPOT,
+    contrastLevel: contrast,
+    isDark: dark,
+    specVersion: '2025',
+    platform: 'phone',
+    primaryPalette: tones(p.primary),
+    secondaryPalette: tones(p.secondary),
+    tertiaryPalette: tones(p.tertiary),
+    neutralPalette: tones(p.neutral),
+    neutralVariantPalette: tones(p.neutralVariant),
+  });
+}
 
 export function buildScheme(prefs: ThemePrefs, dark: boolean): DynamicScheme {
   if (prefs.phone && phoneColors) return phoneScheme(phoneColors, dark, prefs.contrast);
-  const Scheme = schemeClasses[prefs.style] ?? SchemeTonalSpot;
-  return new Scheme(Hct.fromInt(argbFromHex(prefs.seed)), dark, prefs.contrast, '2025', 'phone');
+  return paletteScheme(paletteOf(prefs), dark, prefs.contrast);
 }
 
 const roles: Record<string, DynamicColor> = {
@@ -245,12 +251,18 @@ export function applyTheme(prefs: ThemePrefs) {
   }
 }
 
-/** Primary, secondary and tertiary of a seed (or the phone's colors), for the Android-style swatch preview. */
-export function swatchColors(seed: string | 'phone', style: ThemeStyle, dark: boolean) {
-  const scheme = seed === 'phone' && phoneColors ? phoneScheme(phoneColors, dark, 0) : buildScheme({ ...defaultTheme, phone: false, seed, style }, dark);
+/** A palette's own colors (or the phone's), for a card that shows it before it's picked. */
+export function previewColors(palette: Palette | 'phone', dark: boolean) {
+  const scheme = palette === 'phone' ? (phoneColors ? phoneScheme(phoneColors, dark, 0) : paletteScheme(palettes[0]!, dark, 0)) : paletteScheme(palette, dark, 0);
+  const c = (role: DynamicColor) => hexFromArgb(scheme.getArgb(role));
   return {
-    primary: hexFromArgb(scheme.getArgb(C.primary)),
-    secondary: hexFromArgb(scheme.getArgb(C.secondaryContainer)),
-    tertiary: hexFromArgb(scheme.getArgb(C.tertiaryContainer)),
+    surface: c(C.surface),
+    onSurface: c(C.onSurface),
+    onSurfaceVariant: c(C.onSurfaceVariant),
+    primary: c(C.primary),
+    primaryContainer: c(C.primaryContainer),
+    onPrimaryContainer: c(C.onPrimaryContainer),
+    secondaryContainer: c(C.secondaryContainer),
+    tertiaryContainer: c(C.tertiaryContainer),
   };
 }
