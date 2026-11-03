@@ -72,16 +72,49 @@ export function codeGuesses() {
   };
 }
 
+type Person = { pk: string; id: string; role: Member['role']; email: string };
+const people = (db: Db) => db.$client.prepare(`SELECT json_array(id) AS pk, id, role, email FROM members`).all() as Person[];
+
 /**
- * Puts back who's an admin after a round from someone else's device: a role it changed goes back,
- * and someone new it brought in is a member. Changed here, so the server's is the later change and
- * wins on every device, the one that sent it included.
+ * Takes out of a round from someone else's device what it may not do to the household's people:
+ * remove someone the server has, fold them into someone else, or change their email, the address
+ * they sign in with. Returns who was here, and the fields to put right on that device afterwards.
  */
-function keepRoles(db: Db, before: Map<string, Member['role']>) {
-  for (const m of db.select({ id: members.id, role: members.role }).from(members).all()) {
-    const was = before.get(m.id) ?? 'member';
-    if (m.role !== was) db.update(members).set({ role: was }).where(eq(members.id, m.id)).run();
+function sparePeople(db: Db, remote: SyncState) {
+  const before = new Map(people(db).map((p) => [p.pk, p]));
+  const redo: [pk: string, col: string][] = [];
+  // Two rows that really are one person (the same email) still fold, from the rows themselves.
+  remote.aliases = remote.aliases?.filter(([tbl, from]) => tbl !== 'members' || !before.has(from));
+  const t = remote.tables.members;
+  if (!t) return { before, redo };
+  for (const [pk] of t.dead) if (before.has(pk)) redo.push([pk, 'id']);
+  t.dead = t.dead.filter(([pk]) => !before.has(pk));
+  const at = t.cols.indexOf('email');
+  for (const [pk, values] of t.rows) {
+    const was = before.get(pk);
+    if (!was || at < 0 || values[at] === was.email) continue;
+    values[at] = was.email;
+    redo.push([pk, 'email']);
   }
+  return { before, redo };
+}
+
+/**
+ * After that round: who's an admin goes back (someone new is a member, and someone folded into
+ * another row keeps their role there), and the fields sparePeople kept are timed again. Both are
+ * changes here, so the server's are the later ones and win on every device, the one that sent it
+ * included.
+ */
+function keepPeople(db: Db, { before, redo }: ReturnType<typeof sparePeople>) {
+  const folded = db.$client.prepare(`SELECT from_pk, to_pk FROM sync_aliases WHERE tbl = 'members'`).all() as { from_pk: string; to_pk: string }[];
+  const now = people(db);
+  for (const p of now) {
+    const role = before.get(p.pk)?.role ?? (folded.some((a) => a.to_pk === p.pk && before.get(a.from_pk)?.role === 'admin') ? 'admin' : 'member');
+    if (p.role !== role) db.update(members).set({ role }).where(eq(members.id, p.id)).run();
+  }
+  const here = new Set(now.map((p) => p.pk));
+  const retime = db.$client.prepare(`INSERT INTO sync_cells (tbl, pk, col, hlc) VALUES ('members', ?, ?, NULL) ON CONFLICT(tbl, pk, col) DO UPDATE SET hlc = NULL`);
+  for (const [pk, col] of redo) if (here.has(pk)) retime.run(pk, col);
 }
 
 export const WRONG_CODE = "That code doesn't work. Codes work once and last 10 minutes, so make a new one and try again.";
@@ -204,15 +237,16 @@ export function registerSyncHub(
     } catch {
       return c.json({ error: "That isn't Amble's sync data." }, 400);
     }
-    // Anyone in the household may change what it shares, but only an admin's device who's an admin.
-    const roles = member.role === 'admin' ? null : new Map(db.select({ id: members.id, role: members.role }).from(members).all().map((m) => [m.id, m.role]));
+    // Anyone in the household may change what it shares, but only an admin's device who's in it,
+    // who's an admin, and how each person signs in.
+    const spared = member.role === 'admin' ? null : sparePeople(db, remote);
     try {
       mergeState(db, service.clock, remote, schema);
     } catch (err) {
       if (err instanceof NewerSchema) return c.json({ error: 'Your server runs an older Amble than this device. Update the server to keep syncing.' }, 409);
       throw err;
     }
-    if (roles) keepRoles(db, roles);
+    if (spared) keepPeople(db, spared);
     // A model the household set while it was on Google Drive becomes the server's own.
     if (adoptHouseholdAi(ai)) service.stamp();
     const { state, etag } = current();
