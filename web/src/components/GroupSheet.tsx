@@ -110,7 +110,7 @@ export function GroupSheet({ open, onClose, group }: { open: boolean; onClose: (
             // In percent, both ways: from 999px the change would only show at the very end.
             animate={{ borderRadius: icon === i ? '35%' : '50%' }}
             transition={expressive.fastSpatial}
-            className={`grid size-10 place-items-center ${icon === i ? tone(color) : 'bg-surface-high text-on-surface-variant'}`}
+            className={`tap grid size-10 place-items-center ${icon === i ? tone(color) : 'bg-surface-high text-on-surface-variant'}`}
           >
             <GroupIcon name={i} className="size-5" />
           </motion.button>

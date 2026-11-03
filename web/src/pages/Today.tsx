@@ -3,13 +3,12 @@ import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useState } from 'react';
 import ChevronRight from '~icons/material-symbols/chevron-right-rounded';
 import Sparkle from '~icons/material-symbols/auto-awesome-outline-rounded';
-import ExpandMore from '~icons/material-symbols/expand-more-rounded';
 import Sun from '~icons/material-symbols/wb-sunny-outline-rounded';
 import { calendarLine, EventList } from '../components/Events.tsx';
 import { MoveSheet } from '../components/MoveSheet.tsx';
 import { PageHeader } from '../components/PageHeader.tsx';
 import { TaskRow } from '../components/TaskRow.tsx';
-import { Chip, DoneMark, LoadBar, loadWord, minutesLabel, ScrollRow, SectionTitle } from '../components/ui.tsx';
+import { Chip, DoneMark, LoadBar, loadWord, minutesLabel, ScrollRow, SectionTitle, SectionToggle, titleAction } from '../components/ui.tsx';
 import type { Task, TimeOfDay } from '../lib/api.ts';
 import { firstName, longDate, planningDate } from '../lib/dates.ts';
 import { expressive } from '../lib/motion.ts';
@@ -79,7 +78,7 @@ export function Today() {
       <PageHeader eyebrow={longDate(planningDate())} title={`Here's today, ${firstName(me?.name ?? '')}`} short="Today" />
 
       {others.length > 0 && (
-        <ScrollRow className="-mx-4 mb-4 flex gap-2 overflow-x-auto px-4" role="radiogroup" aria-label="Whose day">
+        <ScrollRow className="-mx-4 -mt-2 mb-2 flex gap-2 overflow-x-auto px-4 py-2" role="radiogroup" aria-label="Whose day">
           <Chip selected={who === 'me'} onClick={() => setWho('me')}>
             Mine
           </Chip>
@@ -113,7 +112,7 @@ export function Today() {
       )}
 
       {who === 'me' && briefing.data && briefing.data.suggestions.length > 0 && (
-        <Link to="/briefing" className="mt-2 flex items-center gap-3 rounded-3xl bg-surface-low py-3 pr-3 pl-4 transition-colors hover:bg-surface-container">
+        <Link to="/briefing" className="mt-2 flex min-h-12 items-center gap-3 rounded-3xl bg-surface-low py-3 pr-3 pl-4 transition-colors hover:bg-surface-container">
           <Sparkle className="size-5 text-primary" aria-hidden />
           <span className="flex-1 text-sm">
             {briefing.data.suggestions.length === 1 ? '1 thing' : `${briefing.data.suggestions.length} things`} worth doing today
@@ -133,11 +132,7 @@ export function Today() {
         <>
           <SectionTitle
             action={
-              <button
-                type="button"
-                onClick={() => actions.moveAll(data.carriedOver, today, today)}
-                className="rounded-full px-3 py-1 text-sm font-medium text-primary hover:bg-surface-high"
-              >
+              <button type="button" onClick={() => actions.moveAll(data.carriedOver, today, today)} className={titleAction}>
                 Bring to today
               </button>
             }
@@ -206,17 +201,9 @@ export function Today() {
 
       {data && data.done.length > 0 && (
         <>
-          <button
-            type="button"
-            onClick={() => setShowDone((v) => !v)}
-            aria-expanded={showDone}
-            className="mt-7 mb-2 flex w-full items-center justify-between px-1 text-sm font-medium text-primary"
-          >
+          <SectionToggle open={showDone} onToggle={() => setShowDone((v) => !v)}>
             Done today · {data.done.length}
-            <motion.span animate={{ rotate: showDone ? 180 : 0 }} transition={expressive.fastSpatial}>
-              <ExpandMore className="size-5" aria-hidden />
-            </motion.span>
-          </button>
+          </SectionToggle>
           <AnimatePresence initial={false}>
             {showDone && (
               <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} transition={expressive.defaultSpatial}>

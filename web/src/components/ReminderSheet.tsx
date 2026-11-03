@@ -184,7 +184,7 @@ export function ReminderField({ task, onMore }: { task: Task; onMore: () => void
           </button>
         </div>
       ) : (
-        <ScrollRow className="-mr-4 flex gap-2 overflow-x-auto pr-4 pb-1">
+        <ScrollRow className="-mr-4 -my-2 flex gap-2 overflow-x-auto pt-2 pr-4 pb-3">
           {reminderChoices(task)
             .slice(0, 2)
             .map((c) => (

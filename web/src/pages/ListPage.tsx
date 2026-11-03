@@ -6,7 +6,6 @@ import Add from '~icons/material-symbols/add-rounded';
 import ArrowUp from '~icons/material-symbols/arrow-upward-rounded';
 import Close from '~icons/material-symbols/close-rounded';
 import Event from '~icons/material-symbols/event-outline-rounded';
-import ExpandMore from '~icons/material-symbols/expand-more-rounded';
 import History from '~icons/material-symbols/history-rounded';
 import Lock from '~icons/material-symbols/lock-outline-rounded';
 import More from '~icons/material-symbols/more-vert';
@@ -19,7 +18,7 @@ import { GroupSheet } from '../components/GroupSheet.tsx';
 import { GroupIcon, tone } from '../components/icons.tsx';
 import { ItemSheet, ListMenu, SectionsSheet } from '../components/ListSheets.tsx';
 import { DaySheet } from '../components/MoveSheet.tsx';
-import { BackButton, Checkbox, Chip, ScrollRow, useBack } from '../components/ui.tsx';
+import { BackButton, Checkbox, Chip, ScrollRow, SectionToggle, useBack } from '../components/ui.tsx';
 import { ApiError, type ListItem } from '../lib/api.ts';
 import { dayLabel, todayIso } from '../lib/dates.ts';
 import { addListItem, checkListItem, editListItem, resetListItems } from '../lib/local.ts';
@@ -296,7 +295,7 @@ export function ListPage({ groupId }: { groupId: string }) {
       </header>
 
       {group && (title || template.actions?.reset || stores.length > 0) && (
-        <ScrollRow className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4" aria-label="List actions">
+        <ScrollRow className="-mx-4 mt-1 -mb-2 flex gap-2 overflow-x-auto px-4 py-2" aria-label="List actions">
           {title &&
             (trip ? (
               <Link
@@ -376,7 +375,7 @@ export function ListPage({ groupId }: { groupId: string }) {
       <AnimatePresence initial={false}>
         {suggestions.length > 0 && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
-            <ScrollRow className="-mx-4 flex gap-2 overflow-x-auto px-4 pt-2.5" aria-label="Had before">
+            <ScrollRow className="-mx-4 -my-2 flex gap-2 overflow-x-auto px-4 pt-[1.125rem] pb-2" aria-label="Had before">
               {suggestions.map((s) => (
                 <Chip key={s.name} onClick={() => addItem({ name: s.name, quantity: quantity.trim() || s.quantity })} icon={<History />}>
                   {s.name}
@@ -448,17 +447,9 @@ export function ListPage({ groupId }: { groupId: string }) {
 
       {checked.length > 0 && (
         <>
-          <button
-            type="button"
-            onClick={() => setShowChecked((v) => !v)}
-            aria-expanded={showChecked}
-            className="mt-6 mb-2 flex w-full items-center justify-between px-1 text-sm font-medium text-primary"
-          >
+          <SectionToggle open={showChecked} onToggle={() => setShowChecked((v) => !v)} className="mt-6">
             {template.checked} · tap to add again
-            <motion.span animate={{ rotate: showChecked ? 180 : 0 }} transition={expressive.fastSpatial}>
-              <ExpandMore className="size-5" aria-hidden />
-            </motion.span>
-          </button>
+          </SectionToggle>
           <AnimatePresence initial={false}>
             {showChecked && (
               <motion.div

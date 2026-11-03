@@ -165,7 +165,7 @@ export function ServerForm({
             comes from its setup script.
           </p>
           {found.signIn && (
-            <button type="button" onClick={() => void signInToServer(found.url, action)} disabled={busy} className="self-start rounded-full px-1 py-1 text-sm font-medium text-primary">
+            <button type="button" onClick={() => void signInToServer(found.url, action)} disabled={busy} className="-ml-2 h-10 self-start rounded-full px-3 text-sm font-medium text-primary">
               Sign in with {found.signIn} instead
             </button>
           )}

@@ -118,7 +118,7 @@ export function RepeatSheet({
             <Plus className="size-5" aria-hidden />
           </button>
         </div>
-        <ScrollRow className="-mr-5 flex gap-2 overflow-x-auto pr-5">
+        <ScrollRow className="-mr-5 -my-2 flex gap-2 overflow-x-auto py-2 pr-5">
           {UNITS.filter((u) => r.mode === 'schedule' || u.value !== 'year').map((u) => (
             <Chip
               key={u.value}

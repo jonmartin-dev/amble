@@ -22,7 +22,7 @@ export function Privacy() {
   const server = servedBy;
   return (
     <main className="mx-auto max-w-xl px-6 py-12 leading-relaxed">
-      <a href={appUrl('/')} className="text-sm font-medium text-primary">
+      <a href={appUrl('/')} className="tap -mx-3 inline-flex h-10 items-center rounded-full px-3 text-sm font-medium text-primary">
         Amble
       </a>
       <h1 className="display mt-4 text-4xl font-medium">Privacy</h1>

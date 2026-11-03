@@ -6,7 +6,7 @@ import Check from '~icons/material-symbols/check-rounded';
 import { calendarLine, EventList } from '../components/Events.tsx';
 import { MoveSheet } from '../components/MoveSheet.tsx';
 import { TaskRow } from '../components/TaskRow.tsx';
-import { ButtonGroup, LoadBar, loadWord, minutesLabel, SectionTitle } from '../components/ui.tsx';
+import { ButtonGroup, LoadBar, loadWord, minutesLabel, SectionTitle, titleAction } from '../components/ui.tsx';
 import type { Briefing as BriefingData, Outlook, Suggestion, Task } from '../lib/api.ts';
 import { addDays, dayLabel, longDate, planningDate } from '../lib/dates.ts';
 import { expressive } from '../lib/motion.ts';
@@ -241,7 +241,7 @@ export function Briefing() {
               <button
                 type="button"
                 onClick={() => actions.moveAll(data.carriedOver, today, today)}
-                className="rounded-full px-3 py-1 text-sm font-medium text-primary hover:bg-surface-high"
+                className={titleAction}
               >
                 Bring to today
               </button>

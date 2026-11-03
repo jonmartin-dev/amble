@@ -290,7 +290,7 @@ export function TaskFiles({ task }: { task: Task }) {
       <button
         type="button"
         onClick={() => picker.current?.click()}
-        className="flex items-center gap-3 rounded-2xl px-3 py-2.5 text-left text-on-surface-variant transition-colors hover:bg-surface-high disabled:opacity-50"
+        className="flex min-h-12 items-center gap-3 rounded-2xl px-3 py-2.5 text-left text-on-surface-variant transition-colors hover:bg-surface-high disabled:opacity-50"
       >
         <AttachFile className="size-5" aria-hidden />
         <span>Add a photo or file</span>

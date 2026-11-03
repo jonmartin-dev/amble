@@ -11,7 +11,7 @@ import { PlanWeekSheet } from '../components/PlanWeekSheet.tsx';
 import { MoveSheet } from '../components/MoveSheet.tsx';
 import { PageHeader } from '../components/PageHeader.tsx';
 import { TaskRow } from '../components/TaskRow.tsx';
-import { ButtonGroup, Chip, loadRatio, loadWord, minutesLabel, ScrollRow } from '../components/ui.tsx';
+import { ButtonGroup, Chip, loadRatio, loadWord, minutesLabel, ScrollRow, titleAction } from '../components/ui.tsx';
 import type { CalendarEvent, DayLoad, DayPick, Task } from '../lib/api.ts';
 import {
   addDays,
@@ -101,7 +101,7 @@ function Gaps({ gaps, today }: { gaps: DayPick[]; today: string }) {
       <div className="flex items-baseline justify-between gap-3 px-1">
         <h2 className="text-sm font-medium text-primary">Due soon, no day yet</h2>
         {gaps.length > 1 && (
-          <button type="button" onClick={() => actions.planAll(gaps.map((g) => ({ task: g.task, date: g.date })))} className="rounded-full px-3 py-1 text-sm font-medium text-primary hover:bg-surface-high">
+          <button type="button" onClick={() => actions.planAll(gaps.map((g) => ({ task: g.task, date: g.date })))} className={titleAction}>
             Plan all {gaps.length}
           </button>
         )}
@@ -180,7 +180,12 @@ function WeekList({
             : load && `${loadWord(load)}${load.tasks ? ` · ${minutesLabel(load.plannedMinutes)}` : ''}`;
         return (
           <section key={date} className="mt-6">
-            <button type="button" onClick={() => onOpen(date)} className="flex w-full items-baseline justify-between gap-3 px-1 text-left">
+            {/* A row as tall as a finger, its text where a 24px line would put it; pressed, it tints round. */}
+            <button
+              type="button"
+              onClick={() => onOpen(date)}
+              className="-mx-3 -my-3 flex h-12 w-[calc(100%+1.5rem)] items-baseline justify-between gap-3 rounded-3xl px-4 pt-3 text-left"
+            >
               <span>
                 <span className={`font-medium ${isToday ? 'text-primary' : ''}`}>{isToday ? 'Today' : weekdayName(isoWeekday(date), 'long')}</span>
                 <span className="text-on-surface-variant"> · {shortDate(date)}</span>
@@ -210,7 +215,7 @@ function WeekList({
               <button
                 type="button"
                 onClick={() => onOpen(date)}
-                className="mt-2 w-full rounded-3xl border border-dashed border-outline-variant px-4 py-3 text-left text-sm text-on-surface-variant"
+                className="mt-2 min-h-12 w-full rounded-3xl border border-dashed border-outline-variant px-4 py-3 text-left text-sm text-on-surface-variant"
               >
                 Nothing planned. Pull something in from the backlog
               </button>
@@ -355,7 +360,7 @@ export function Calendar() {
       <PageHeader eyebrow={title} title="Calendar" />
 
       {others.length > 0 && (
-        <ScrollRow className="-mx-4 mb-4 flex gap-2 overflow-x-auto px-4" aria-label="Whose calendar">
+        <ScrollRow className="-mx-4 -mt-2 mb-2 flex gap-2 overflow-x-auto px-4 py-2" aria-label="Whose calendar">
           <Chip selected={who === 'me'} onClick={() => setWho('me')}>
             Mine
           </Chip>

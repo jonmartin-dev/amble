@@ -12,7 +12,7 @@ export function ChipRow({ label, children, tight }: { label?: string; children: 
   return (
     <div className="mt-2.5">
       {label && <p className="mb-1.5 px-1 text-xs text-on-surface-variant">{label}</p>}
-      <ScrollRow className={`flex gap-2 overflow-x-auto pb-1 ${tight ? '-mx-3 px-3' : '-mx-5 px-5'}`}>{children}</ScrollRow>
+      <ScrollRow className={`-my-2 flex gap-2 overflow-x-auto pt-2 pb-3 ${tight ? '-mx-3 px-3' : '-mx-5 px-5'}`}>{children}</ScrollRow>
     </div>
   );
 }

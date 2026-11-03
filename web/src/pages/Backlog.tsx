@@ -107,7 +107,7 @@ export function Backlog() {
           className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-on-surface-variant"
         />
       </label>
-      <ScrollRow className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4">
+      <ScrollRow className="-mx-4 mt-1 -mb-2 flex gap-2 overflow-x-auto px-4 py-2">
         <Chip selected={mine} onClick={() => setMine((v) => !v)}>
           Just mine
         </Chip>

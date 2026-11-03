@@ -378,6 +378,26 @@ body::before {
   .chip:active:not(:disabled) {
     border-radius: 8px;
   }
+
+  /*
+   * A control drawn smaller than a fingertip still takes a 48px tap, Material's touch target: an
+   * area that can't be seen reaches out from its middle to 48px each way it falls short. A side
+   * percentage is of the control's own width or height, so a big enough side reaches out nothing.
+   * The pressed tint stays the control's own shape. Every round button has it (icon buttons, pill
+   * buttons, switches); anything else asks with `tap`. In this layer, so `absolute` still wins.
+   */
+  .tap,
+  .chip,
+  :where(button, a[href]).rounded-full {
+    position: relative;
+  }
+  .tap::after,
+  .chip::after,
+  :where(button, a[href]).rounded-full::after {
+    content: '';
+    position: absolute;
+    inset: min(0px, calc(50% - 1.5rem));
+  }
 }
 
 /*

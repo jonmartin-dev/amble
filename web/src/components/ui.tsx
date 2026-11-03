@@ -5,6 +5,7 @@ import ArrowBack from '~icons/material-symbols/arrow-back-rounded';
 import Check from '~icons/material-symbols/check-rounded';
 import ChevronRight from '~icons/material-symbols/chevron-right-rounded';
 import Close from '~icons/material-symbols/close-rounded';
+import ExpandMore from '~icons/material-symbols/expand-more-rounded';
 import OpenInNew from '~icons/material-symbols/open-in-new-rounded';
 import type { DayLoad } from '../lib/api.ts';
 import { EXPANDED, isDetail, useInPane, useMedia } from '../lib/layout.ts';
@@ -207,7 +208,7 @@ export function ButtonGroup<T extends string | number>({
             animate={corners(8)}
             transition={expressive.fastSpatial}
             whileTap={corners(4)}
-            className={`flex flex-1 items-center justify-center gap-2 text-sm font-medium transition-colors ${size === 'sm' ? 'h-10' : 'h-12'} ${
+            className={`flex flex-1 items-center justify-center gap-2 text-sm font-medium transition-colors ${size === 'sm' ? 'tap h-10' : 'h-12'} ${
               on ? 'bg-primary text-on-primary' : 'bg-surface-high text-on-surface'
             }`}
           >
@@ -511,7 +512,7 @@ export function Checkbox({ checked, onChange, label, size = 28 }: { checked: boo
         onChange();
       }}
       style={{ width: size, height: size, borderRadius: checked ? size * 0.32 : size / 2 }}
-      className={`check relative grid shrink-0 place-items-center border-2 ${
+      className={`check tap grid shrink-0 place-items-center border-2 ${
         checked ? 'border-primary bg-primary text-on-primary' : 'border-outline text-transparent'
       }`}
     >
@@ -633,6 +634,31 @@ export function SectionTitle({ children, action }: { children: ReactNode; action
     </div>
   );
 }
+
+/**
+ * A section title that opens and closes what's under it: a text button whose chevron turns. It sits
+ * where a title would, text in line with the others, and its pressed tint is a pill around it.
+ */
+export function SectionToggle({ open, onToggle, className = 'mt-7', children }: { open: boolean; onToggle: () => void; className?: string; children: ReactNode }) {
+  return (
+    <div className={`mb-2 flex px-1 ${className}`}>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className="tap -mx-3 -my-2.5 flex h-10 items-center gap-1 rounded-full pr-2 pl-3 text-sm font-medium text-primary"
+      >
+        {children}
+        <motion.span animate={{ rotate: open ? 180 : 0 }} transition={expressive.fastSpatial} className="grid">
+          <ExpandMore className="size-5" aria-hidden />
+        </motion.span>
+      </button>
+    </div>
+  );
+}
+
+/** A text button beside a section title: Material's 40px text button, taking no more room in the title's line than its text. */
+export const titleAction = 'tap -my-2.5 h-10 rounded-full px-3 text-sm font-medium text-primary hover:bg-surface-high';
 
 const loadWords: Record<DayLoad['level'], string> = { light: 'Light', moderate: 'Steady', full: 'Full', over: 'Too much' };
 

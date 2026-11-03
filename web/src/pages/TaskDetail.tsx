@@ -25,7 +25,7 @@ import { RepeatSheet } from '../components/RepeatSheet.tsx';
 import { TaskFiles } from '../components/TaskFiles.tsx';
 import { TripCard } from '../components/TripList.tsx';
 import { describeRepeat, repeatOn } from '../../../shared/repeat.ts';
-import { BackButton, Checkbox, Chip, minutesLabel, ScrollRow, SectionTitle } from '../components/ui.tsx';
+import { BackButton, Checkbox, Chip, minutesLabel, ScrollRow, SectionTitle, titleAction } from '../components/ui.tsx';
 import type { Task, TimeOfDay } from '../lib/api.ts';
 import { dayLabel, firstName, todayIso } from '../lib/dates.ts';
 import { unfold } from '../lib/morph.ts';
@@ -56,7 +56,7 @@ const ROW_MOTION = {
 } as const;
 
 function ChipRow({ children }: { children: ReactNode }) {
-  return <ScrollRow className="-mr-4 flex gap-2 overflow-x-auto pr-4 pb-1">{children}</ScrollRow>;
+  return <ScrollRow className="-mr-4 -my-2 flex gap-2 overflow-x-auto pt-2 pr-4 pb-3">{children}</ScrollRow>;
 }
 
 /** Saves free text when the field loses focus, so typing never waits on the network. */
@@ -466,12 +466,13 @@ function Detail({ task }: { task: Task }) {
           <ul className="flex flex-col gap-1 rounded-[1.75rem] bg-surface-low p-2">
             <AnimatePresence initial={false}>
               {task.links.map((l) => (
-                <motion.li key={l.id} {...ROW_MOTION} layoutDependency={task.links.length} className="flex items-center gap-3 rounded-2xl px-2 py-1">
-                  <LinkIcon className="size-5 shrink-0 text-on-surface-variant" aria-hidden />
-                  <a href={l.url} target="_blank" rel="noreferrer noopener" className="min-w-0 flex-1 truncate py-2 text-primary">
-                    {l.title ?? l.url.replace(/^https?:\/\/(www\.)?/, '')}
+                <motion.li key={l.id} {...ROW_MOTION} layoutDependency={task.links.length} className="flex items-center gap-1 rounded-2xl">
+                  {/* The icon and title are one link, a row tall enough to tap, tinting round when pressed. */}
+                  <a href={l.url} target="_blank" rel="noreferrer noopener" className="flex min-h-12 min-w-0 flex-1 items-center gap-3 rounded-2xl px-2 text-primary">
+                    <LinkIcon className="size-5 shrink-0 text-on-surface-variant" aria-hidden />
+                    <span className="truncate">{l.title ?? l.url.replace(/^https?:\/\/(www\.)?/, '')}</span>
                   </a>
-                  <a href={l.url} target="_blank" rel="noreferrer noopener" aria-label="Open" className="grid size-9 place-items-center rounded-full text-on-surface-variant hover:bg-surface-high">
+                  <a href={l.url} target="_blank" rel="noreferrer noopener" aria-label="Open" className="tap grid size-9 place-items-center rounded-full text-on-surface-variant hover:bg-surface-high">
                     <OpenInNew className="size-5" aria-hidden />
                   </a>
                   <button type="button" onClick={() => patch({ removeLinks: [l.id] })} aria-label="Remove link" className="grid size-9 place-items-center rounded-full text-on-surface-variant hover:bg-surface-high">
@@ -552,7 +553,7 @@ function History({ task }: { task: Task }) {
       <SectionTitle
         action={
           entries.length > HISTORY_PREVIEW && (
-            <button type="button" onClick={() => unfold(() => flushSync(() => setAll((v) => !v)))} className="rounded-full px-3 py-1 text-sm font-medium text-primary hover:bg-surface-high">
+            <button type="button" onClick={() => unfold(() => flushSync(() => setAll((v) => !v)))} className={titleAction}>
               {all ? 'Show less' : `Show all ${entries.length}`}
             </button>
           )

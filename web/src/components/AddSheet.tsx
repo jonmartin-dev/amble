@@ -475,7 +475,7 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
 
   // The row under the text: the options, or one option's choices in their place.
   const chips = (
-    <ScrollRow className="flex gap-1.5 overflow-x-auto pr-6">
+    <ScrollRow className="-my-2 flex gap-1.5 overflow-x-auto py-2 pr-6">
       <OptionChip on={shown.plannedDate !== null} icon={<TodayIcon className={icon} aria-hidden />} onClick={toggle('when')}>
         {shown.plannedDate ? dayLabel(shown.plannedDate, today) : 'Someday'}
       </OptionChip>
@@ -503,7 +503,7 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
     </ScrollRow>
   );
   const choices = picker && (
-    <ScrollRow className="flex gap-1.5 overflow-x-auto pr-6">
+    <ScrollRow className="-my-2 flex gap-1.5 overflow-x-auto py-2 pr-6">
       <button
         type="button"
         onClick={() => setPicker(null)}
@@ -595,7 +595,8 @@ export function AddSheet({ open, onClose, plannedByDefault }: { open: boolean; o
         </div>
       )}
       <div className="mt-3 flex items-center gap-2">
-        <div className="relative min-w-0 flex-1 overflow-hidden" onPointerDown={keepKeyboard}>
+        {/* Clips the rows as they swap, with room above and below for the chips' touch areas. */}
+        <div className="relative -my-2 min-w-0 flex-1 overflow-hidden py-2" onPointerDown={keepKeyboard}>
           <AnimatePresence mode="popLayout" initial={false}>
             {thinking ? (
               <motion.div key="thinking" {...rowMotion(true)} className="flex h-9 items-center gap-3">
