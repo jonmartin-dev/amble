@@ -267,14 +267,14 @@ function WhyAmble() {
   return (
     <section className="mx-auto max-w-6xl px-4 py-6 medium:px-6">
       <div className="grid gap-10 rounded-[2.5rem] bg-surface-container px-6 py-10 medium:px-10 expanded:grid-cols-[1fr_1.5fr] expanded:py-12">
-        <figure className="flex flex-col">
-          <figcaption className="px-0.5 text-sm font-medium text-primary">From one tired dad to all of you</figcaption>
-          <blockquote className="display mt-4 text-[1.75rem] leading-snug medium:text-[2rem]">
-            “I got really tired of paying for planners and of figuring out which flaky app connectors would actually work. So I made my own, and I made it free
-            for everyone.”
-          </blockquote>
+        <div className="flex flex-col">
+          <p className="px-0.5 text-sm font-medium text-primary">From one tired dad to all of you</p>
+          <p className="display mt-4 text-[1.75rem] leading-snug medium:text-[2rem]">
+            I got really tired of paying for planners and of figuring out which flaky app connectors would actually work. So I made my own, and I made it free for
+            everyone.
+          </p>
           <p className="mt-5 text-on-surface-variant">Jon</p>
-        </figure>
+        </div>
         <ul data-cascade className="grid gap-x-6 gap-y-8 medium:grid-cols-2">
           {promises.map((p) => (
             <li key={p.title} className="flex flex-col gap-3">
