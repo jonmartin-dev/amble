@@ -134,7 +134,14 @@ export function createFakeDrive() {
       if (!f.writers.has(me)) return fail(403, 'The user does not have sufficient permissions for this file.');
       // To the upload address, new contents; to the file's own, new details.
       if (url.pathname.startsWith('/upload/')) await save(f, body);
-      else Object.assign(f.properties, (JSON.parse(new TextDecoder().decode(body)) as { properties?: Record<string, string> }).properties);
+      else {
+        // Like Drive, a property set to null goes away.
+        const set = (JSON.parse(new TextDecoder().decode(body)) as { properties?: Record<string, string | null> }).properties ?? {};
+        for (const [k, v] of Object.entries(set)) {
+          if (v == null) delete f.properties[k];
+          else f.properties[k] = v;
+        }
+      }
       return json(view(f, me));
     }
     return fail(405, 'Not allowed.');
@@ -153,7 +160,7 @@ export function createFakeDrive() {
     pick(email: string, fileId: string) {
       files.get(fileId)?.opened.add(email);
     },
-    files: () => [...files.values()].map((f) => ({ id: f.id, name: f.name, owner: f.owner, appData: f.appData, size: f.bytes.length })),
+    files: () => [...files.values()].map((f) => ({ id: f.id, name: f.name, owner: f.owner, appData: f.appData, size: f.bytes.length, properties: { ...f.properties } })),
     /** Someone renaming the file in Drive. */
     rename(fileId: string, name: string) {
       const f = files.get(fileId);

@@ -15,7 +15,7 @@ import type { FileStore } from './domain/files.ts';
 import type { Env } from './env.ts';
 import type { Push } from './notify/devices.ts';
 import { queuedWrites } from './requests.ts';
-import { adoptMember, foldDuplicateGroups, serverAddress, ServerAuthError, SyncSetupError, type Adopt, type SyncService } from './sync/service.ts';
+import { adoptMember, foldDuplicateGroups, NeedsNameError, serverAddress, ServerAuthError, SyncSetupError, type Adopt, type SyncService } from './sync/service.ts';
 
 /** Members made on a device have no email until they sign in with one; this stands in for it. */
 export const DEVICE_EMAIL_DOMAIN = 'device.invalid';
@@ -178,13 +178,16 @@ function registerCopies(app: Hono<Env>, { config, files, sync, engine, newestMig
 
 const token = z.object({ token: z.string().min(10).max(4000) });
 
-/** Whether an Amble server answers at an address. */
-async function isAmble(url: string, fetchImpl: typeof fetch) {
+/** The Amble server at an address, if one answers: whether it takes codes, and its sign-in provider if it has one. */
+async function hello(url: string, fetchImpl: typeof fetch): Promise<{ pairing: boolean; signIn: string | null } | null> {
   try {
     const res = await fetchImpl(`${url}/sync/hello`, { signal: AbortSignal.timeout(8000) });
-    return res.ok && ((await res.json()) as { amble?: number }).amble === 1;
+    const body = res.ok ? ((await res.json()) as { amble?: number; pairing?: boolean; signIn?: string | null }) : null;
+    if (body?.amble !== 1) return null;
+    // A server from before codes only had sign-in, with Google unless it said otherwise.
+    return body.pairing ? { pairing: true, signIn: body.signIn ?? null } : { pairing: false, signIn: 'your account' };
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -241,7 +244,10 @@ function registerSync(app: Hono<Env>, sync: SyncService, db: Db, fetchImpl: type
       const { address } = await parse(c, z.object({ address: z.string().trim().min(1).max(500) }));
       const url = serverAddress(address);
       const tries = /^https?:\/\//i.test(address) ? [url] : [url, url.replace(/^https:/, 'http:')];
-      for (const t of tries) if (await isAmble(t, fetchImpl)) return c.json({ url: t });
+      for (const t of tries) {
+        const found = await hello(t, fetchImpl);
+        if (found) return c.json({ url: t, ...found });
+      }
       throw new SyncSetupError(`No Amble server answered at ${new URL(url).host}. Check the address, and that this device can reach it.`);
     }),
   );
@@ -255,10 +261,33 @@ function registerSync(app: Hono<Env>, sync: SyncService, db: Db, fetchImpl: type
     }),
   );
 
+  // With a code from a device that's already in, for a server that takes codes. Allowed before
+  // the device is set up: a new phone's person comes from the server, or from the name it gives.
+  app.post('/api/sync/server/pair', async (c) => {
+    try {
+      const how = await parse(c, z.object({ url: z.string().max(500), code: z.string().trim().min(1).max(40), name: z.string().trim().max(80).optional(), device: z.string().max(60).optional() }));
+      const mine = deviceMember(db);
+      return c.json(await sync.pairServer({ ...how, person: mine && { id: mine.id, name: mine.name, email: mine.email } }));
+    } catch (err) {
+      if (err instanceof NeedsNameError) return c.json({ error: err.message, needName: true }, 400);
+      if (err instanceof SyncSetupError) return c.json({ error: err.message }, 400);
+      throw err;
+    }
+  });
+
   app.use('/api/sync/*', async (c, next) => {
     if (!deviceMember(db)) return c.json({ error: 'Set up Amble on this device first.' }, 401);
     await next();
   });
+
+  // Done keeping the Drive file in step for those who haven't moved; with a token, its invite comes off it.
+  app.delete(
+    '/api/sync/bridge',
+    answer(async (c) => {
+      await sync.endBridge((await parse(c, z.object({ token: z.string().min(10).max(4000).optional() }))).token);
+      return c.json(sync.status());
+    }),
+  );
 
   // Where the Android app's background check reads the household from (ReminderCheck.java), as this person.
   app.get('/api/sync/background', (c) => {
@@ -330,6 +359,7 @@ export function deviceConfig(origin: string, basePath: string, timezone: string)
     privacyContact: '',
     adminEmails: [],
     allowedEmails: [],
+    secret: '',
     oidc: { issuer: '', providerName: '', clientId: '', clientSecret: '' },
     google: { clientId: '', clientSecret: '' },
     appOrigins: [],

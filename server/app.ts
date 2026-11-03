@@ -13,6 +13,7 @@ import { secureHeaders } from 'hono/secure-headers';
 import { aiProviderFor, createAi, type Ai } from './ai/client.ts';
 import { googleToken } from './google-token.ts';
 import { isAllowed, upsertMember } from './auth/members.ts';
+import { NeedsName, redeemCode } from './auth/pairing.ts';
 import { describeError, type Oidc, SignInError } from './auth/oidc.ts';
 import { createSession, deleteSession, resolveSession, SESSION_COOKIE, SESSION_TTL_MS } from './auth/sessions.ts';
 import type { Config } from './config.ts';
@@ -20,10 +21,11 @@ import { registerConnector } from './connector.ts';
 import { SCHEMA } from './db/index.ts';
 import type { FileStore } from './domain/files.ts';
 import { createFileStore } from './lib/disk-files.ts';
+import { html, page } from './pages.ts';
 import { createGoogle } from './lib/google.ts';
 import { registerSite, safeReturnTo } from './site.ts';
 import { registerServerSettings } from './settings.ts';
-import { registerSyncHub } from './sync/hub.ts';
+import { codeGuesses, registerSyncHub, requestFrom } from './sync/hub.ts';
 import { createServerSync, type ServerSync } from './sync/server.ts';
 import { SyncSetupError } from './sync/service.ts';
 import type { Db } from './db/index.ts';
@@ -133,7 +135,8 @@ self.addEventListener('activate', (e) => e.waitUntil((async () => {
     const returnTo = safeReturnTo(c.req.query('return'));
     // With dev sign-in on, the sign-in page offers it beside the real one, which links back here.
     if (config.devLogin && !c.req.query('direct')) return c.redirect(appUrl(`/auth/signin?return=${encodeURIComponent(returnTo)}`));
-    if (!oidc.enabled) return c.text('Sign-in is not configured. Set OIDC_CLIENT_ID and OIDC_CLIENT_SECRET.', 503);
+    // Without a sign-in provider, a code from a device that's already in is the way.
+    if (!oidc.enabled) return c.redirect(appUrl(`/auth/signin?return=${encodeURIComponent(returnTo)}`));
     let started;
     try {
       started = await oidc.begin(returnTo);
@@ -202,6 +205,45 @@ self.addEventListener('activate', (e) => e.waitUntil((async () => {
     const member = upsertMember(db, config, { email });
     startSession(c, member.id);
     return c.redirect(appUrl(safeReturnTo(c.req.query('return'))));
+  });
+
+  // A browser getting in with a code from a device that's already in, for this server's own pages
+  // (an assistant's consent among them). An invite for someone new asks their name first.
+  const guesses = codeGuesses();
+  app.post('/auth/code', async (c) => {
+    const form = await c.req.parseBody();
+    const code = String(form.code ?? '');
+    const name = String(form.name ?? '').trim();
+    const returnTo = safeReturnTo(String(form.return ?? ''));
+    const back = (error: string) => c.redirect(appUrl(`/auth/signin?error=${error}&return=${encodeURIComponent(returnTo)}`));
+    const from = requestFrom(c);
+    if (guesses.blocked(from)) return back('too-many');
+    let member;
+    try {
+      member = redeemCode(db, config, code, { name: name || undefined });
+    } catch (err) {
+      if (!(err instanceof NeedsName)) throw err;
+      return c.html(
+        page(
+          'Sign in',
+          html`<h1>What should Amble call you?</h1>
+<p class="muted">You're new to this household, so Amble needs a name for you.</p>
+<form method="post" action="${appUrl('/auth/code')}">
+<input type="hidden" name="code" value="${code}">
+<input type="hidden" name="return" value="${returnTo}">
+<input name="name" autocomplete="given-name" required maxlength="80" placeholder="Your first name" aria-label="Your name" autofocus>
+<div class="actions"><button class="primary">Continue</button></div>
+</form>`,
+          { base },
+        ),
+      );
+    }
+    if (!member) {
+      guesses.missed(from);
+      return back('code');
+    }
+    startSession(c, member.id);
+    return c.redirect(appUrl(returnTo));
   });
 
   app.post('/auth/logout', (c) => {

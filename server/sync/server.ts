@@ -10,6 +10,7 @@ import type { Db } from '../db/open.ts';
 import { serverSettings } from '../db/schema.ts';
 import type { GoogleGrant } from '../auth/oidc.ts';
 import { seal, unseal } from '../lib/seal.ts';
+import { serverSecret } from '../lib/secret.ts';
 import { DRIVE_SCOPES } from './drive.ts';
 import { createSyncService, foldDuplicateGroups, SyncSetupError } from './service.ts';
 
@@ -41,7 +42,8 @@ export function createServerSync({
   ai?: Ai;
   fetchImpl?: typeof fetch;
 }) {
-  const secret = config.oidc.clientSecret;
+  // Read when the grant is kept or opened, so a server that never connects Drive never needs it.
+  const secret = () => serverSecret(config);
   // Joining a household the server's own groups might already be in by name: they fold into it.
   // Devices can sync with the server directly too (server/sync/hub.ts), so it always records changes.
   const service = createSyncService({
@@ -60,7 +62,7 @@ export function createServerSync({
   async function token(): Promise<string> {
     if (access && access.expiresAt - MARGIN_MS > Date.now()) return access.token;
     const grant = stored();
-    const refresh = grant && unseal(secret, PURPOSE, grant.refreshToken);
+    const refresh = grant && unseal(secret(), PURPOSE, grant.refreshToken);
     if (!refresh) throw new SyncSetupError('Connect Google Drive again from Settings, Sync.');
     const fresh = await google.refresh(refresh);
     access = { token: fresh.accessToken, expiresAt: fresh.expiresAt };
@@ -82,7 +84,7 @@ export function createServerSync({
       const scopes = grant.scope.split(/\s+/);
       if (!DRIVE_SCOPES.every((s) => scopes.includes(s))) throw new SyncSetupError("Google didn't share Drive access. Try again and leave it ticked.");
       if (!grant.refreshToken) throw new SyncSetupError("Google didn't give lasting access. Try connecting again.");
-      const value: Stored = { email: grant.email.toLowerCase(), memberId: grant.memberId, refreshToken: seal(secret, PURPOSE, grant.refreshToken) };
+      const value: Stored = { email: grant.email.toLowerCase(), memberId: grant.memberId, refreshToken: seal(secret(), PURPOSE, grant.refreshToken) };
       db.insert(serverSettings).values({ key: KEY, value }).onConflictDoUpdate({ target: serverSettings.key, set: { value } }).run();
       access = grant.expiresIn ? { token: grant.accessToken, expiresAt: Date.now() + grant.expiresIn * 1000 } : null;
     },

@@ -105,8 +105,8 @@ export function createDrive(token: string, fetchImpl: typeof fetch = fetch) {
       });
     },
 
-    /** Sets some of a file's properties, leaving its contents alone. */
-    setProperties: (id: string, properties: Record<string, string>) =>
+    /** Sets some of a file's properties, leaving its contents alone. Null takes one away. */
+    setProperties: (id: string, properties: Record<string, string | null>) =>
       json<DriveFile>(`${API}/files/${encodeURIComponent(id)}?fields=${FILE_FIELDS}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },

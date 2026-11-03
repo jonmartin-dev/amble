@@ -16,7 +16,7 @@ import type { FileStore, StoredFile } from '../domain/files.ts';
 import { latestReading, startCapture, stamp, stopCapture } from './capture.ts';
 import { createDrive, DriveAuthError, DriveError, HOUSEHOLD_MIME, pack, unpack, type Drive, type DriveFile } from './drive.ts';
 import { Clock, newSite } from './hlc.ts';
-import { exportState, mergeState, missingMine, NewerSchema, type SyncState } from './state.ts';
+import { exportState, mergeState, missingAny, missingMine, NewerSchema, type SyncState } from './state.ts';
 
 export const PERSONAL_FILE = 'almanac.state';
 export const HOUSEHOLD_PROPERTY = { key: 'almanac', value: 'household' };
@@ -26,6 +26,14 @@ export const HOUSEHOLD_PROPERTY = { key: 'almanac', value: 'household' };
  * a server and a phone built with different Google clients both see it.
  */
 export const SERVER_PROPERTY = 'ambleServer';
+/**
+ * While a household moves from Drive to its own server: an invite (server/auth/pairing.ts) the first
+ * phone to move puts on the household file, so everyone else moves with a tap and no code. Only
+ * people the file is shared with can read it, and it runs out.
+ */
+export const JOIN_PROPERTY = 'ambleJoin';
+/** How long a phone that moved keeps the household's Drive file in step, for anyone who hasn't moved yet. */
+const BRIDGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 export interface SyncTarget {
   kind: 'personal' | 'household' | 'server';
@@ -56,6 +64,34 @@ interface Settings {
   filesSent?: string[];
   /** The household's own server, as the household file says, for a device syncing through Drive. */
   householdServer?: string | null;
+  /** The invite to that server the household file carries, for moving there without a code. */
+  householdJoin?: string | null;
+  /**
+   * A device that moved from Drive to the household's server keeps the Drive file in step with it a
+   * while, so whoever is still on Drive sees the same things until they move too. The file's own
+   * checksum and sites, apart from the server's.
+   */
+  bridge?: Bridge | null;
+}
+
+/** What the household's server answers when it lets a device in. */
+interface Joined {
+  token: string;
+  member: { id?: string; email: string; name: string };
+  name?: string;
+  error?: string;
+}
+
+interface Bridge {
+  target: SyncTarget;
+  account: Settings['account'];
+  md5: string | null;
+  sites: Record<string, string>;
+  /** The household's invite to the server, put on the file for the others; null when this person can't make one. */
+  code: string | null;
+  until: number;
+  syncedAt: number | null;
+  error: string | null;
 }
 
 export interface SyncStatus {
@@ -68,9 +104,16 @@ export interface SyncStatus {
   waiting: boolean;
   /** The household's own server, when this device syncs through Drive and the household also has one. */
   householdServer: string | null;
+  /** The invite to it the household file carries, so moving there needs no code. */
+  householdJoin: string | null;
+  /** The Drive file this device keeps in step with the server, for whoever hasn't moved yet. */
+  bridge: { name: string; account: string | null; syncedAt: string | null; error: string | null } | null;
 }
 
 export class SyncSetupError extends Error {}
+
+/** The household's server needs a name for someone new before it lets this device in. */
+export class NeedsNameError extends SyncSetupError {}
 
 /** The household's server turned this device's sign-in down (it signed out there, or was removed). */
 export class ServerAuthError extends Error {}
@@ -201,12 +244,27 @@ export function createSyncService({
     return { merged, remote };
   }
 
+  /** Joins the household's server once it let this device in: what it has comes in first, then this copy's own. */
+  async function joinServer(url: string, body: Joined) {
+    const account = { email: body.member.email.toLowerCase(), name: body.member.name };
+    const localGroups = new Set(db.select({ id: groups.id }).from(groups).all().map((g) => g.id));
+    startCapture(db);
+    save({ md5: null, sites: {} });
+    const { remote } = await takeFromServer(url, body.token);
+    adopt?.(account, localGroups, remote);
+    const target: SyncTarget = { kind: 'server', fileId: '', name: body.name || new URL(url).host, owner: null, url };
+    save({ target, account, serverToken: body.token, error: null, householdServer: null, householdJoin: null });
+    await serverRound(target);
+  }
+
   async function serverRound(target: SyncTarget) {
     const token = settings?.serverToken;
     if (!target.url || !token) throw new ServerAuthError('No sign-in.');
     let { merged } = await takeFromServer(target.url, token);
     let uploaded = false;
-    if (missingMine(db, clock, { v: 1, schema, sites: settings?.sites ?? {}, tables: {} })) {
+    // Carrying changes from a Drive file too, it sends what it took in from there as well as its own.
+    const missing = settings?.bridge ? missingAny : missingMine;
+    if (missing(db, clock, { v: 1, schema, sites: settings?.sites ?? {}, tables: {} })) {
       merged += await sendToServer(target.url, token);
       uploaded = true;
     }
@@ -269,7 +327,8 @@ export function createSyncService({
         await drive.setProperties(target.fileId, { [SERVER_PROPERTY]: serverUrl }).catch((err: unknown) => console.warn("Couldn't note this server on the household file:", err));
       } else if (!hub) {
         const noted = file.properties?.[SERVER_PROPERTY] ?? null;
-        if (noted !== (settings?.householdServer ?? null)) save({ householdServer: noted });
+        const join = file.properties?.[JOIN_PROPERTY] ?? null;
+        if (noted !== (settings?.householdServer ?? null) || join !== (settings?.householdJoin ?? null)) save({ householdServer: noted, householdJoin: join });
       }
     }
     let merged = 0;
@@ -287,6 +346,45 @@ export function createSyncService({
     }
     save({ syncedAt: Date.now(), error: null });
     return { merged, uploaded };
+  }
+
+  /**
+   * For a device that moved to the server from Drive: one round with the Drive file it came from.
+   * What's new there comes in (and goes on to the server next round); what the file lacks goes out.
+   * The file says where the household went, and carries the invite for the others to follow.
+   */
+  async function bridgeRound(drive: Drive, url: string) {
+    const b = settings?.bridge;
+    if (!b) return 0;
+    if (b.until < Date.now()) {
+      save({ bridge: null });
+      return 0;
+    }
+    const file = await drive.meta(b.target.fileId);
+    if (file.trashed) {
+      save({ bridge: null });
+      return 0;
+    }
+    const wanted = { [SERVER_PROPERTY]: url, [JOIN_PROPERTY]: b.code };
+    if (file.properties?.[SERVER_PROPERTY] !== url || (file.properties?.[JOIN_PROPERTY] ?? null) !== b.code) {
+      await drive.setProperties(b.target.fileId, wanted).catch((err: unknown) => console.warn("Couldn't note the server on the household file:", err));
+    }
+    let merged = 0;
+    let { md5, sites } = b;
+    if (file.md5Checksum !== b.md5) {
+      const remote = await fetchState(drive, file);
+      merged = mergeState(db, clock, remote, schema).changed;
+      md5 = file.md5Checksum ?? null;
+      sites = remote.sites;
+    }
+    // What came from the server goes on to the file, not just this device's own.
+    if (missingAny(db, clock, { v: 1, schema, sites, tables: {} })) {
+      const state = exportState(db, clock, schema);
+      md5 = (await drive.update(b.target.fileId, await pack(state))).md5Checksum ?? null;
+      sites = state.sites;
+    }
+    save({ bridge: { ...b, md5, sites, syncedAt: Date.now(), error: null } });
+    return merged;
   }
 
   const failed = (err: unknown) => {
@@ -323,6 +421,16 @@ export function createSyncService({
         error: settings?.error ?? null,
         waiting: on && missingMine(db, clock, { v: 1, schema, sites: settings?.sites ?? {}, tables: {} }),
         householdServer: settings?.target?.kind === 'household' ? (settings.householdServer ?? null) : null,
+        householdJoin: settings?.target?.kind === 'household' ? (settings.householdJoin ?? null) : null,
+        bridge:
+          settings?.target?.kind === 'server' && settings.bridge
+            ? {
+                name: settings.bridge.target.name,
+                account: settings.bridge.account?.email ?? null,
+                syncedAt: settings.bridge.syncedAt ? new Date(settings.bridge.syncedAt).toISOString() : null,
+                error: settings.bridge.error,
+              }
+            : null,
       };
     },
 
@@ -406,22 +514,66 @@ export function createSyncService({
         } catch {
           throw new SyncSetupError(`Couldn't reach ${new URL(url).host}. Check the address, and that this device can reach it.`);
         }
-        const body = (await res.json().catch(() => null)) as { token?: string; member?: { email: string; name: string }; name?: string; error?: string } | null;
+        const body = (await res.json().catch(() => null)) as Joined | null;
         if (!res.ok || !body?.token || !body.member) throw new SyncSetupError(body?.error ?? "Your server didn't let this device in. Try again.");
-        const account = { email: body.member.email.toLowerCase(), name: body.member.name };
-
-        const localGroups = new Set(db.select({ id: groups.id }).from(groups).all().map((g) => g.id));
-        startCapture(db);
-        save({ md5: null, sites: {} });
-        const { remote } = await takeFromServer(url, body.token);
-        adopt?.(account, localGroups, remote);
-        const target: SyncTarget = { kind: 'server', fileId: '', name: body.name || new URL(url).host, owner: null, url };
-        save({ target, account, serverToken: body.token, error: null });
-        await serverRound(target);
+        await joinServer(url, body);
         return service.status();
       }).catch((err) => {
         if (err instanceof SyncSetupError) throw err;
         throw new SyncSetupError(failed(err));
+      });
+    },
+
+    /**
+     * Starts syncing with the household's own server with a code from a device that's already in
+     * (server/auth/pairing.ts), as `person`, this device's own if it has one. A device coming from
+     * Google Drive keeps the Drive file in step too, for whoever hasn't moved yet.
+     */
+    pairServer(how: { url: string; code: string; person: { id: string; name: string; email: string } | null; name?: string; device?: string }) {
+      return serial(async () => {
+        const url = serverAddress(how.url);
+        let res: Response;
+        try {
+          res = await fetchImpl(`${url}/sync/pair`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ code: how.code, person: how.person, name: how.name, device: how.device }),
+            signal: AbortSignal.timeout(30_000),
+          });
+        } catch {
+          throw new SyncSetupError(`Couldn't reach ${new URL(url).host}. Check the address, and that this device can reach it.`);
+        }
+        const body = (await res.json().catch(() => null)) as (Joined & { needName?: boolean }) | null;
+        if (body?.needName) throw new NeedsNameError(body.error ?? 'Say what Amble should call you.');
+        if (!res.ok || !body?.token || !body.member) throw new SyncSetupError(body?.error ?? "Your server didn't let this device in. Try again.");
+        // Where this device synced before, to keep in step for the others a while.
+        const from = settings?.target && settings.target.kind !== 'server' ? { target: settings.target, account: settings.account, md5: settings.md5, sites: settings.sites } : null;
+        await joinServer(url, body);
+        if (from) {
+          // An invite for the rest of the household, if this person can make one; without it they each need a code.
+          const code = await serverCall(url, body.token, '/sync/server/codes', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ for: 'household' }) })
+            .then(async (r) => ((await r.json()) as { code: string }).code)
+            .catch(() => null);
+          save({ bridge: { ...from, code, until: Date.now() + BRIDGE_MS, syncedAt: null, error: null } });
+        }
+        return service.status();
+      }).catch((err) => {
+        if (err instanceof SyncSetupError) throw err;
+        throw new SyncSetupError(failed(err));
+      });
+    },
+
+    /** Stops keeping the Drive file in step. With a Google token, the invite comes off the file too. */
+    endBridge(token?: string) {
+      return serial(async () => {
+        const b = settings?.bridge;
+        if (!b) return;
+        if (token) await createDrive(token, fetchImpl).setProperties(b.target.fileId, { [JOIN_PROPERTY]: null }).catch(() => {});
+        const target = settings?.target;
+        if (target?.kind === 'server' && target.url && settings?.serverToken) {
+          await serverCall(target.url, settings.serverToken, '/sync/server/codes/household', { method: 'DELETE' }).catch(() => {});
+        }
+        save({ bridge: null });
       });
     },
 
@@ -431,7 +583,20 @@ export function createSyncService({
         const target = settings?.target;
         if (!target) return { merged: 0, uploaded: false, error: null as string | null };
         try {
-          if (target.kind === 'server') return { ...(await serverRound(target)), error: null };
+          if (target.kind === 'server') {
+            const result = await serverRound(target);
+            // Moved from Drive: the file comes along while there's a token for it, and anything new
+            // from it goes straight on to the server. Its problems are its own; the server's round stands.
+            if (settings?.bridge && token && target.url) {
+              try {
+                if ((await bridgeRound(createDrive(token, fetchImpl), target.url)) > 0) result.merged += (await serverRound(target)).merged;
+              } catch (err) {
+                const b = settings?.bridge;
+                if (b) save({ bridge: { ...b, error: err instanceof DriveAuthError ? 'Google needs you to sign in again.' : err instanceof Error ? err.message : String(err) } });
+              }
+            }
+            return { ...result, error: null };
+          }
           if (!token) throw new DriveAuthError(401, 'No token.');
           return { ...(await round(createDrive(token, fetchImpl), target)), error: null };
         } catch (err) {
@@ -514,7 +679,7 @@ export function createSyncService({
           await fetchImpl(`${target.url}/sync/token`, { method: 'DELETE', headers: { authorization: `Bearer ${settings.serverToken}` }, signal: AbortSignal.timeout(10_000) }).catch(() => {});
         }
         if (!hub) stopCapture(db);
-        save({ target: null, account: null, md5: null, sites: {}, syncedAt: null, error: null, serverToken: null, serverAi: null, filesSent: [], householdServer: null });
+        save({ target: null, account: null, md5: null, sites: {}, syncedAt: null, error: null, serverToken: null, serverAi: null, filesSent: [], householdServer: null, householdJoin: null, bridge: null });
       });
     },
   };

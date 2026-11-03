@@ -1,10 +1,20 @@
 // Joining a household's server by scanning a code instead of typing its address. The code holds
 // a link to the app at that server, so a phone's camera opens Amble in the browser ready to join,
-// and the Android app's scanner reads the server's address out of it.
+// and the Android app's scanner reads the server's address out of it, with the code that lets the
+// device in (server/auth/pairing.ts) when there is one.
 import { encode } from 'uqr';
 
-/** What a code to join a server holds: the app it serves, opened at joining. */
-export const joinLink = (serverUrl: string) => `${serverUrl.replace(/\/+$/, '')}/?join`;
+/** What a code to join a server holds: the app it serves, opened at joining, with the code to get in. */
+export const joinLink = (serverUrl: string, code?: string) => `${serverUrl.replace(/\/+$/, '')}/?join${code ? `=${code}` : ''}`;
+
+/** The code to get in from a scanned join link, if it has one. */
+export function joinCodeFrom(text: string): string | null {
+  try {
+    return new URL(text.trim()).searchParams.get('join') || null;
+  } catch {
+    return null;
+  }
+}
 
 /** The server's address from a scanned code: a join link, or an address on its own. */
 export function serverFromCode(text: string) {

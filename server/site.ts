@@ -1,18 +1,21 @@
 // The server's own pages, beside the app it serves: signing in (for the connector, devices
-// syncing here, and this page), and one page for what only the server has: a code for phones to
-// join by, Claude and ChatGPT, bringing a household over from Google Drive, and its AI model.
+// syncing here, and this page), with a code from a device that's already in or a sign-in provider,
+// and one page for what only the server has: codes for phones and computers to join by, Claude and
+// ChatGPT, bringing a household over from Google Drive, and its AI model.
 import type { Context, Hono } from 'hono';
 import { aiProvider } from '../shared/ai.ts';
 import { joinLink, qrPath } from '../shared/qr.ts';
 import { modelName, monthSpendUsd, type Ai } from './ai/client.ts';
 import type { Oidc } from './auth/oidc.ts';
 import { allowedEmails } from './auth/members.ts';
+import { makeCode } from './auth/pairing.ts';
 import type { Config } from './config.ts';
 import type { Connector } from './connector.ts';
 import type { Db } from './db/index.ts';
 import type { Member } from './db/schema.ts';
 import type { Env } from './env.ts';
 import { html, Html, page } from './pages.ts';
+import { TOO_MANY_CODES, WRONG_CODE } from './sync/hub.ts';
 import type { ServerSync } from './sync/server.ts';
 import { SyncSetupError } from './sync/service.ts';
 
@@ -25,6 +28,8 @@ const SIGN_IN_ERRORS: Record<string, string> = {
   'no-email': "Your sign-in provider didn't share an email address. Whoever runs Amble needs to let it share one.",
   declined: 'Nothing changed: Google said no, or the window was closed.',
   off: 'Only an admin can connect Google Drive, and the server needs a Google sign-in client.',
+  code: WRONG_CODE,
+  'too-many': TOO_MANY_CODES,
 };
 
 /** Only same-app relative paths as places to come back to. */
@@ -39,11 +44,13 @@ export function registerSite(app: Hono<Env>, { db, config, oidc, sync, ai, conne
   const base = config.basePath;
   const url = (p: string) => `${base}${p}`;
   const show = (c: Context<Env>, title: string, body: Html, status: 200 | 400 | 404 = 200) => c.html(page(title, body, { base }), status);
-  // The code phones scan to join (shared/qr.ts), dark on white whatever the theme, as scanners want.
-  const code = qrPath(joinLink(config.publicUrl));
-  const joinCode = new Html(
-    `<svg viewBox="0 0 ${code.size} ${code.size}" shape-rendering="crispEdges" role="img" aria-label="Code to join this server" style="width:13rem;height:13rem;background:#fff;border-radius:1rem;display:block;margin:1rem auto"><path d="${code.d}" fill="#000"/></svg>`,
-  );
+  // A code phones scan to join (shared/qr.ts), dark on white whatever the theme, as scanners want.
+  const qr = (link: string) => {
+    const { d, size } = qrPath(link);
+    return new Html(
+      `<svg viewBox="0 0 ${size} ${size}" shape-rendering="crispEdges" role="img" aria-label="Code to join this server" style="width:13rem;height:13rem;background:#fff;border-radius:1rem;display:block;margin:1rem auto"><path d="${d}" fill="#000"/></svg>`,
+    );
+  };
 
   // The old address of the sign-in page, in the server's app.
   app.get('/signin', (c) => c.redirect(url(`/auth/signin${new URL(c.req.url).search}`)));
@@ -59,11 +66,14 @@ export function registerSite(app: Hono<Env>, { db, config, oidc, sync, ai, conne
       html`<h1>Sign in to this server</h1>
 <p class="muted">It keeps your household in step for your devices, and lets Claude or ChatGPT help.</p>
 ${error && SIGN_IN_ERRORS[error] ? html`<p class="warn" role="alert">${SIGN_IN_ERRORS[error]}</p>` : ''}
-<div class="actions">
-${oidc.enabled ? html`<a class="button primary" href="${url(`/auth/login?${back}&direct=1`)}">Continue with ${config.oidc.providerName}</a>` : ''}
-${dev.map((email) => html`<a class="button quiet" href="${url(`/auth/dev?email=${encodeURIComponent(email)}&${back}`)}">Dev sign-in as ${email}</a>`)}
-</div>
-${!oidc.enabled && dev.length === 0 ? html`<p class="muted">Sign-in isn't set up yet. The admin needs to add OIDC settings.</p>` : ''}`,
+${oidc.enabled ? html`<div class="actions"><a class="button primary" href="${url(`/auth/login?${back}&direct=1`)}">Continue with ${config.oidc.providerName}</a></div><h2>Or with a code</h2>` : ''}
+<form method="post" action="${url('/auth/code')}">
+<input name="code" required autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" placeholder="ABCD-EFGH" aria-label="Code">
+<input type="hidden" name="return" value="${returnTo}">
+<p class="muted">On a phone or computer that's already in, open Amble's Settings, Your server, and choose Add a phone or computer. The very first code comes from the server's setup script.</p>
+<div class="actions"><button class="${oidc.enabled ? 'quiet' : 'primary'}">Continue</button></div>
+</form>
+${dev.length ? html`<div class="actions">${dev.map((email) => html`<a class="button quiet" href="${url(`/auth/dev?email=${encodeURIComponent(email)}&${back}`)}">Dev sign-in as ${email}</a>`)}</div>` : ''}`,
     );
   });
 
@@ -72,9 +82,8 @@ ${!oidc.enabled && dev.length === 0 ? html`<p class="muted">Sign-in isn't set up
   /** Back to the server's page, saying how it went. */
   const done = (c: Context<Env>, message: string, error = false) => c.redirect(url(`/server?${error ? 'error' : 'done'}=${encodeURIComponent(message)}`));
 
-  app.get('/server', async (c) => {
-    const me = signedIn(c);
-    if (!me) return c.redirect(url(`/auth/signin?return=${encodeURIComponent('/server')}`));
+  /** The server's page, with a code just made for another phone or computer if there is one. */
+  async function serverPage(c: Context<Env>, me: Member, made?: { code: string; forMe: boolean }) {
     const admin = me.role === 'admin';
     const notice = c.req.query('done');
     const problem = c.req.query('error');
@@ -130,10 +139,19 @@ ${problem ? html`<p class="warn" role="alert">${SIGN_IN_ERRORS[problem] ?? probl
 <p>Amble runs on each phone and computer, and keeps in step with this server, photos and files on tasks included.</p>
 <div class="actions"><a class="button primary" href="${url('/')}">Open Amble</a></div>
 
-<h2>Add a phone</h2>
-<p>In the Amble app, choose <em>Use my own server</em>, then <em>Scan the code</em>. Or scan it with the phone's camera to use Amble in the browser.</p>
-${joinCode}
-<p class="muted">Or type the address: <code>${config.publicUrl}</code>. Everyone signs in with their own account.</p>
+<h2 id="add">Add a phone or computer</h2>
+${
+  made
+    ? html`<p>In the Amble app, choose <em>Use my own server</em>, then <em>Scan the code</em>. A phone's camera opens Amble in the browser from it too.</p>
+${qr(joinLink(config.publicUrl, made.code))}
+<p class="code">${made.code}</p>
+<p class="muted">Or type the address, <code>${config.publicUrl}</code>, and this code. It ${made.forMe ? `signs in as ${me.name}` : 'brings in someone new'}, works once, and lasts 10 minutes.</p>`
+    : html`<p>Make a code here, then scan it or type it in the Amble app on the new phone or computer.</p>`
+}
+<div class="actions">
+<form method="post" action="${url('/server/code')}"><input type="hidden" name="for" value="me"><button class="${made ? 'quiet' : 'primary'}">A code for me</button></form>
+${admin ? html`<form method="post" action="${url('/server/code')}"><input type="hidden" name="for" value="someone"><button class="quiet">A code for someone new</button></form>` : ''}
+</div>
 
 <h2>Claude and ChatGPT</h2>
 <p>Add Amble as a custom connector in Claude or ChatGPT with this address, then sign in here when it asks:</p>
@@ -159,6 +177,21 @@ ${
 
 <p class="muted" style="margin-top:2.5rem"><a href="${url('/privacy')}">Privacy</a></p>`,
     );
+  }
+
+  app.get('/server', async (c) => {
+    const me = signedIn(c);
+    if (!me) return c.redirect(url(`/auth/signin?return=${encodeURIComponent('/server')}`));
+    return serverPage(c, me);
+  });
+
+  app.post('/server/code', async (c) => {
+    const me = signedIn(c);
+    if (!me) return c.redirect(url('/auth/signin'));
+    const forMe = (await c.req.parseBody()).for !== 'someone';
+    if (!forMe && me.role !== 'admin') return done(c, 'Only an admin can add someone new.', true);
+    const { code } = makeCode(db, forMe ? { kind: 'person', memberId: me.id } : { kind: 'invite', role: 'member', by: me.id });
+    return serverPage(c, me, { code, forMe });
   });
 
   app.post('/server/connections/:id/remove', (c) => {

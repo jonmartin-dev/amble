@@ -17,6 +17,10 @@ export interface DriveSyncStatus {
   waiting: boolean;
   /** The household's own server, when this device syncs through Drive and the household has one. */
   householdServer: string | null;
+  /** The invite to it the household file carries, so moving there takes a tap. */
+  householdJoin: string | null;
+  /** Moved here from Drive: the Drive file this device keeps in step for whoever hasn't moved yet. */
+  bridge: { name: string; account: string | null; syncedAt: string | null; error: string | null } | null;
 }
 
 export interface DriveSyncState {
@@ -83,10 +87,12 @@ export function syncNow({ tap = false } = {}): Promise<void> {
     try {
       const status = state.status ?? (await refreshStatus());
       if (!status.on) return;
-      // A server needs no Google token: the device keeps its own sign-in there.
+      // A server needs no Google token: the device keeps its own sign-in there. One that moved from
+      // Drive brings the Drive file along for the others while a token comes without asking.
       if (status.target?.kind === 'server') {
         set({ syncing: true, needsGoogle: false });
-        const result = await api<{ merged: number }>('/sync/run', { method: 'POST', body: '{}' });
+        const token = status.bridge ? await syncToken(false, status.bridge.account ?? undefined).catch(() => null) : null;
+        const result = await api<{ merged: number }>('/sync/run', { method: 'POST', body: JSON.stringify(token ? { token } : {}) });
         if (result.merged > 0) onMerged?.();
         await refreshStatus();
         return;

@@ -45,8 +45,11 @@ function Frame({ children }: { children: React.ReactNode }) {
 
 type Step = 'intro' | 'you' | 'days' | 'ai';
 
-// Opened from the code on a server's page (shared/qr.ts): straight to joining it.
-const joining = servedBy != null && new URLSearchParams(location.search).has('join');
+// Opened from a code to join a server (shared/qr.ts): straight to joining it, with the code that
+// lets this device in when the link has one.
+const joinParams = new URLSearchParams(location.search);
+const joining = servedBy != null && joinParams.has('join');
+const joinCode = joining ? joinParams.get('join') || null : null;
 if (joining) history.replaceState(null, '', location.pathname);
 
 /** One plain point on the first screen. */
@@ -200,9 +203,9 @@ export function Welcome() {
 
         {step === 'you' && joinFirst && here && (
           <StepIn step="you">
-            <p className="mt-3 text-lg">Join your household on {here}. You sign in there with your own account.</p>
+            <p className="mt-3 text-lg">Join your household on {here}.</p>
             <div className="mt-6">
-              <ServerForm action="welcome-server" />
+              <ServerForm action="welcome-server" code={joinCode} joined={() => void joined()} />
             </div>
             <button type="button" onClick={() => setJoinFirst(false)} className={`mt-4 ${quiet}`}>
               Start on this device instead
@@ -263,7 +266,7 @@ export function Welcome() {
             </div>
             {server && (
               <div className="mt-3">
-                <ServerForm action="welcome-server" onCancel={() => setServer(false)} />
+                <ServerForm action="welcome-server" onCancel={() => setServer(false)} joined={() => void joined()} />
               </div>
             )}
             <button type="button" onClick={() => setStep('intro')} className="mt-6 inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-medium text-on-surface-variant">

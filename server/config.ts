@@ -53,7 +53,8 @@ if (production && !process.env.AMBLE_PUBLIC_URL) {
 
 const adminEmails = list(process.env.AMBLE_ADMIN_EMAILS);
 const oidcIssuer = process.env.OIDC_ISSUER ?? 'https://accounts.google.com';
-const oidcClientSecret = secret('OIDC_CLIENT_SECRET');
+// Optional: a server without a sign-in provider lets people in with codes instead.
+const oidcClientSecret = secret('OIDC_CLIENT_SECRET', { optional: true });
 // Signing in with Google means the same OAuth client can reach Google Drive too.
 const signInIsGoogle = new URL(oidcIssuer).hostname === 'accounts.google.com';
 
@@ -75,6 +76,11 @@ export const config = {
   privacyContact: process.env.AMBLE_PRIVACY_CONTACT ?? '',
   adminEmails,
   allowedEmails: [...new Set([...adminEmails, ...list(process.env.AMBLE_ALLOWED_EMAILS)])],
+  // What the server seals what it keeps under (an AI key, Google Drive's access); optional, see
+  // server/lib/secret.ts for what it uses without.
+  secret: secret('AMBLE_SECRET', { optional: true }),
+  // A sign-in provider is optional: without one, phones and browsers get in with codes from a
+  // device that's already in (server/auth/pairing.ts).
   oidc: {
     issuer: oidcIssuer,
     providerName: process.env.OIDC_PROVIDER_NAME ?? 'Google',

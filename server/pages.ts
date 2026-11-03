@@ -46,6 +46,9 @@ button,.button{font:inherit;font-weight:500;border:0;border-radius:999px;padding
 .quiet{background:transparent;color:var(--primary);padding:.6rem 1rem}
 .quiet:hover{background:var(--surface)}
 form{margin:0}
+input{font:inherit;width:100%;border:0;border-radius:1rem;padding:.85rem 1.1rem;margin:.75rem 0 0;background:var(--surface);color:var(--text)}
+input:focus{outline:2px solid var(--primary)}
+.code{font-size:2.25rem;font-weight:500;letter-spacing:.12em;text-align:center;margin:.5rem 0}
 ul{list-style:none;padding:0;margin:0}
 code{background:var(--surface);border-radius:.5rem;padding:.1rem .4rem;word-break:break-all}
 `;

@@ -1,7 +1,8 @@
 // Devices syncing straight with this server: the third way to start, for a household that runs
 // Amble at home (on the home network, or through Tailscale) instead of keeping it in Google Drive.
-// A device signs in once through the server's own sign-in, which sends it back with a code, and
-// swaps that for a lasting token. Then each round is two calls: what the server has (if it
+// A device gets in once, with a code from a device that's already in (server/auth/pairing.ts) or
+// through the server's sign-in provider, which sends it back with a code, and swaps that for a
+// lasting token. Then each round is two calls: what the server has (if it
 // changed), and what the device has, which the server merges into its own copy and answers with
 // the whole household. Files on tasks come and go here too, since Drive can't share them.
 // Everything is a bearer token, never a cookie, so any address the app is served from may call it.
@@ -13,6 +14,7 @@ import type { Context, Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { cors } from 'hono/cors';
 import { z } from 'zod';
+import { guessLimit, NeedsName, redeemCode } from '../auth/pairing.ts';
 import { createSession, deleteSession, resolveSession } from '../auth/sessions.ts';
 import type { Config } from '../config.ts';
 import type { Db } from '../db/index.ts';
@@ -39,6 +41,25 @@ interface Pending {
 }
 
 const s256 = (verifier: string) => createHash('sha256').update(verifier).digest('base64url');
+
+/** Where a request came from, as the proxy in front says, for turning away a run of wrong codes. */
+export const requestFrom = (c: Context<Env>) => c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || c.req.header('x-real-ip') || 'direct';
+
+/** Wrong codes from one place, and from everywhere together, before they're turned away for a while. */
+export function codeGuesses() {
+  const one = guessLimit({ max: 10 });
+  const all = guessLimit({ max: 200 });
+  return {
+    blocked: (from: string) => one.blocked(from) || all.blocked('*'),
+    missed(from: string) {
+      one.missed(from);
+      all.missed('*');
+    },
+  };
+}
+
+export const WRONG_CODE = "That code doesn't work. Codes work once and last 10 minutes, so make a new one and try again.";
+export const TOO_MANY_CODES = 'Too many codes that didn’t work. Wait a few minutes and try again.';
 const bearer = (c: Context<Env>) => /^Bearer (.+)$/i.exec(c.req.header('authorization') ?? '')?.[1] ?? null;
 
 export function registerSyncHub(
@@ -101,8 +122,42 @@ export function registerSyncHub(
     }),
   );
 
-  // For a device checking that an address is an Amble server before it sends someone to sign in.
-  app.get('/sync/hello', (c) => c.json({ amble: 1, url: config.publicUrl, schema }));
+  // For a device checking that an address is an Amble server before it lets someone in: whether it
+  // takes codes, and the sign-in provider it has, if any.
+  app.get('/sync/hello', (c) =>
+    c.json({ amble: 1, url: config.publicUrl, schema, pairing: true, signIn: config.oidc.clientId && config.oidc.clientSecret ? config.oidc.providerName : null }),
+  );
+
+  // A device getting in with a code: as the person it's for, or for an invite, as the device's own
+  // person (the household's row for them if it has one) or someone new by the name they gave.
+  const guesses = codeGuesses();
+  app.post('/sync/pair', async (c) => {
+    const from = requestFrom(c);
+    if (guesses.blocked(from)) return c.json({ error: TOO_MANY_CODES }, 429);
+    const parsed = z
+      .object({
+        code: z.string().max(40),
+        person: z.object({ id: z.string().max(100), name: z.string().max(80), email: z.string().max(320) }).nullable().optional(),
+        name: z.string().trim().max(80).optional(),
+        device: z.string().trim().max(60).optional(),
+      })
+      .safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: "That request doesn't look right." }, 400);
+    const { code, person, name, device } = parsed.data;
+    let member: Member | null;
+    try {
+      member = redeemCode(db, config, code, { ...person, name: person?.name || name });
+    } catch (err) {
+      if (err instanceof NeedsName) return c.json({ error: err.message, needName: true }, 400);
+      throw err;
+    }
+    if (!member) {
+      guesses.missed(from);
+      return c.json({ error: WRONG_CODE }, 400);
+    }
+    const token = createSession(db, member.id, `Amble app (${device || 'by code'})`);
+    return c.json({ token, member: { id: member.id, email: member.email, name: member.name }, name: new URL(config.publicUrl).host });
+  });
 
   app.get('/sync/state', async (c) => {
     if (!deviceMember(c)) return c.json({ error: 'Sign in again.' }, 401);

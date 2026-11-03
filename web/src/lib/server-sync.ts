@@ -1,10 +1,11 @@
-// Syncing with the household's own server: finding it from an address someone typed, sending them
-// to sign in there, and finishing when the server sends them back with a code (to the app's
-// /server-return page in a browser, or dev.jonmartin.amble://signed-in on Android). The worker
-// swaps the code for this device's sign-in and does the syncing (server/sync/service.ts).
+// Syncing with the household's own server: finding it from an address someone typed, then getting
+// in with a code from a device that's already in (server/auth/pairing.ts), or by signing in there
+// and finishing when the server sends them back with a code (to the app's /server-return page in a
+// browser, or dev.jonmartin.amble://signed-in on Android). The worker swaps either code for this
+// device's sign-in and does the syncing (server/sync/service.ts).
 import { Capacitor } from '@capacitor/core';
 import { useEffect } from 'react';
-import { api, basePath } from './api.ts';
+import { api, basePath, send } from './api.ts';
 
 const native = Capacitor.isNativePlatform();
 
@@ -50,9 +51,35 @@ async function challengeOf(verifier: string) {
   return btoa(String.fromCharCode(...digest)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
+/** An Amble server: whether it takes codes, and the sign-in provider it has, if any. */
+export interface FoundServer {
+  url: string;
+  pairing: boolean;
+  signIn: string | null;
+}
+
 /** The server at an address someone typed, or an error saying why there's none. */
-export async function findServer(address: string) {
-  return (await api<{ url: string }>('/sync/server/find', { method: 'POST', body: JSON.stringify({ address }) })).url;
+export function findServer(address: string) {
+  return api<FoundServer>('/sync/server/find', { method: 'POST', body: JSON.stringify({ address }) });
+}
+
+/** What this device is, for the server's list of who's signed in. */
+function deviceName() {
+  if (native) return 'Android';
+  const ua = navigator.userAgent;
+  return /iPhone|iPad/.test(ua) ? 'iPhone' : /Android/.test(ua) ? 'Android browser' : /Mac/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows' : 'browser';
+}
+
+/**
+ * Gets this device into the server with a code, and it starts syncing there. Resolves to 'name' when
+ * the code brings in someone new and the server needs to know what to call them first.
+ */
+export async function pairWithServer(url: string, code: string, name?: string): Promise<'joined' | 'name'> {
+  const res = await send('/sync/server/pair', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url, code, name: name || undefined, device: deviceName() }) });
+  const body = (await res.json().catch(() => null)) as { needName?: boolean; error?: string } | null;
+  if (res.ok) return 'joined';
+  if (body?.needName) return 'name';
+  throw new Error(body?.error ?? "That didn't work. Try again.");
 }
 
 /** Sends the person to sign in on the server. `action` says what to carry on with when they're back. */

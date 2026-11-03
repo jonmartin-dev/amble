@@ -1,5 +1,5 @@
 // Settings → Your server, on a device that syncs with the household's own server: what its page
-// has (server/settings.ts), here in the app. Adding a phone, Claude and ChatGPT, the household's AI
+// has (server/settings.ts), here in the app. Codes to add a phone or computer, Claude and ChatGPT, the household's AI
 // model, and bringing a household over from Google Drive. Connecting Drive needs Google in a
 // browser, so that one step opens the server's page.
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -84,13 +84,13 @@ function Loaded({ data }: { data: Settings }) {
         </p>
       </section>
 
-      <SectionTitle>Add a phone</SectionTitle>
+      <SectionTitle>Add a phone or computer</SectionTitle>
       <p className="px-1 text-on-surface-variant">
-        In Amble on the phone, choose “Use my own server” and scan this, or scan it with the phone's camera to use Amble in the browser. Everyone signs
-        in with their own account; add new people in People first.
+        Make a code here and use it on the new one: your own other phone or computer, or someone new to the household. A code signs into a browser too,
+        like the page Claude or ChatGPT opens when you connect it.
       </p>
       <div className="mt-3">
-        <JoinCode url={data.url} />
+        <JoinCode url={data.url} admin={data.me.role === 'admin'} />
       </div>
 
       <SectionTitle>Claude and ChatGPT</SectionTitle>

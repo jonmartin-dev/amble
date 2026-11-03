@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { joinLink, qrPath, serverFromCode } from './qr.ts';
+import { joinCodeFrom, joinLink, qrPath, serverFromCode } from './qr.ts';
 
 describe('codes to join a server', () => {
   it('links to the app at the server, and reads the address back out', () => {
@@ -7,6 +7,12 @@ describe('codes to join a server', () => {
     expect(joinLink('http://192.168.1.20:18085/')).toBe('http://192.168.1.20:18085/?join');
     expect(serverFromCode('https://home.example/amble/?join')).toBe('https://home.example/amble');
     expect(serverFromCode('http://192.168.1.20:18085/?join')).toBe('http://192.168.1.20:18085');
+    // With the code that lets a device in.
+    expect(joinLink('https://home.example/amble', 'ABCD-EFGH')).toBe('https://home.example/amble/?join=ABCD-EFGH');
+    expect(serverFromCode('https://home.example/amble/?join=ABCD-EFGH')).toBe('https://home.example/amble');
+    expect(joinCodeFrom('https://home.example/amble/?join=ABCD-EFGH')).toBe('ABCD-EFGH');
+    expect(joinCodeFrom('https://home.example/amble/?join')).toBeNull();
+    expect(joinCodeFrom('amble.example.com')).toBeNull();
     // Someone's own code with just the address works too.
     expect(serverFromCode(' amble.example.com ')).toBe('amble.example.com');
   });

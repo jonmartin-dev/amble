@@ -1,7 +1,8 @@
 // Settings → Sync and backup, on a device: keeping a copy in the person's Google Drive, making that
 // a household others can join, and joining one someone shared; or syncing with the household's
 // own server instead. Once a household has a server, that's the way: opened from one, Drive isn't
-// offered, and a device still on Drive is offered a move to it.
+// offered, and a device still on Drive is offered a move to it, with a tap when the household file
+// carries the invite. The first phone to move keeps the Drive file in step for the others meanwhile.
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import CloudSync from '~icons/material-symbols/cloud-sync-outline-rounded';
@@ -12,10 +13,10 @@ import { CopySection } from '../components/CopySection.tsx';
 import { ListGroup, SectionTitle, SubpageHeader } from '../components/ui.tsx';
 import { api, ApiError, servedBy } from '../lib/api.ts';
 import { refreshStatus, syncNow, useDriveSync, type DriveSyncStatus } from '../lib/drive-sync.ts';
-import { forgetRefreshToken, forgetToken, googleConfigured, pickHouseholdFile, resumeAfterGoogle, tokenFromTap } from '../lib/google.ts';
+import { forgetRefreshToken, forgetToken, googleConfigured, pickHouseholdFile, resumeAfterGoogle, syncToken, tokenFromTap } from '../lib/google.ts';
 import { refreshViews } from '../lib/mutations.ts';
 import { useMe } from '../lib/queries.ts';
-import { signInToServer, useServerReturn } from '../lib/server-sync.ts';
+import { pairWithServer, useServerReturn } from '../lib/server-sync.ts';
 import { useSnackbar } from '../lib/snackbar.tsx';
 import { JoinCode } from '../components/JoinCode.tsx';
 import { ServerForm } from '../components/ServerForm.tsx';
@@ -61,20 +62,31 @@ export function SyncSettings() {
   const [people, setPeople] = useState<Person[] | null>(null);
   const [adding, setAdding] = useState<{ email: string; name: string } | null>(null);
   const [server, setServer] = useState(false);
+  // On a server that turned this device's sign-in down: getting back in.
+  const [again, setAgain] = useState(false);
 
   useEffect(() => {
     void refreshStatus().catch(() => {});
   }, []);
 
-  // Back from signing in on the household's server. A device that was on Drive needs Google no more.
-  useServerReturn('sync-server', (outcome) => {
-    if (outcome.ok) {
+  // In on the household's server. A device that was on Drive needs Google no more, unless it keeps
+  // the Drive file in step for the others for now.
+  const moved = async () => {
+    setServer(false);
+    setAgain(false);
+    const now = await refreshStatus().catch(() => null);
+    if (!now?.bridge) {
       forgetToken();
       forgetRefreshToken();
-      snack({ message: 'Syncing with your server.' });
-      void qc.invalidateQueries();
-      void refreshStatus().catch(() => {});
-    } else snack({ message: outcome.error });
+    }
+    snack({ message: 'Syncing with your server.' });
+    void qc.invalidateQueries();
+  };
+
+  // Back from signing in on the household's server.
+  useServerReturn('sync-server', (outcome) => {
+    if (outcome.ok) void moved();
+    else snack({ message: outcome.error });
   });
 
   const run = async (label: string, work: () => Promise<unknown>) => {
@@ -152,6 +164,24 @@ export function SyncSettings() {
   const offeredHost = offered ? new URL(offered).host : null;
   const serverWay = onServer || (!status?.on && offered != null);
 
+  // Moving with the invite the household file carries, or a code from someone already there.
+  const move = (to: string) => {
+    if (!status?.householdJoin) return setServer(true);
+    void run('Moving', async () => {
+      if ((await pairWithServer(to, status.householdJoin!)) === 'joined') await moved();
+      else setServer(true);
+    });
+  };
+
+  const stopBridge = () =>
+    run('Stopping', async () => {
+      // Without asking: the invite only comes off the file if a token is at hand.
+      const token = await syncToken(false, status?.bridge?.account ?? undefined).catch(() => null);
+      await api('/sync/bridge', { method: 'DELETE', body: JSON.stringify(token ? { token } : {}) });
+      forgetToken();
+      forgetRefreshToken();
+    });
+
   return (
     <>
       <SubpageHeader title="Sync and backup" />
@@ -170,10 +200,20 @@ export function SyncSettings() {
 
       {!status?.on && offered ? (
         <div className="mt-6 flex flex-col items-start gap-3">
-          <button type="button" disabled={busy} onClick={() => void signInToServer(offered, 'sync-server')} className={button}>
-            Sync with {offeredHost}
-          </button>
-          <p className="px-1 text-sm text-on-surface-variant">You sign in there once, with your own account. What’s on this device comes along.</p>
+          {server ? (
+            <div className="w-full">
+              <ServerForm action="sync-server" address={offered} onCancel={() => setServer(false)} joined={() => void moved()} />
+            </div>
+          ) : (
+            <>
+              <button type="button" disabled={busy} onClick={() => setServer(true)} className={button}>
+                Sync with {offeredHost}
+              </button>
+              <p className="px-1 text-sm text-on-surface-variant">
+                With a code from a phone or computer that’s already in step with it. What’s on this device comes along.
+              </p>
+            </>
+          )}
         </div>
       ) : !status?.on ? (
         <div className="mt-6 flex flex-col items-start gap-3">
@@ -196,7 +236,7 @@ export function SyncSettings() {
           <SectionTitle>Or your own server</SectionTitle>
           {server ? (
             <div className="w-full">
-              <ServerForm action="sync-server" onCancel={() => setServer(false)} />
+              <ServerForm action="sync-server" onCancel={() => setServer(false)} joined={() => void moved()} />
             </div>
           ) : (
             <button type="button" disabled={busy} onClick={() => setServer(true)} className={quiet}>
@@ -223,20 +263,42 @@ export function SyncSettings() {
             ]}
           />
           <p className="mt-2 px-1 text-sm text-on-surface-variant">It syncs when Amble opens, every minute while it’s open, and soon after each change.</p>
-          {status.error === 'Your server needs you to sign in again.' && status.target?.url && (
-            <button type="button" disabled={busy} onClick={() => void signInToServer(status.target!.url!, 'sync-server')} className={`mt-3 ${button}`}>
-              Sign in again
-            </button>
+          {status.error === 'Your server needs you to sign in again.' &&
+            status.target?.url &&
+            (again ? (
+              <div className="mt-3">
+                <ServerForm action="sync-server" address={status.target.url} onCancel={() => setAgain(false)} joined={() => void moved()} />
+              </div>
+            ) : (
+              <button type="button" disabled={busy} onClick={() => setAgain(true)} className={`mt-3 ${button}`}>
+                Get back in
+              </button>
+            ))}
+
+          {status.bridge && (
+            <section className="mt-6 flex flex-col items-start gap-3 rounded-3xl bg-surface-low p-5">
+              <h3 className="font-medium">Also keeping “{status.bridge.name}” in step</h3>
+              <p className="text-on-surface-variant">
+                This device brought your household here from Google Drive, and keeps the Drive file in step for anyone who hasn’t moved yet. They’re
+                offered the move in Settings, Sync and backup, with a tap. Once everyone’s here, stop.
+              </p>
+              <p className="text-sm text-on-surface-variant">
+                {status.bridge.error ?? (status.bridge.syncedAt ? `Last kept in step ${new Date(status.bridge.syncedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}` : 'Not kept in step yet')}
+              </p>
+              <button type="button" disabled={busy} onClick={() => void stopBridge()} className={quiet}>
+                Stop keeping Google Drive in step
+              </button>
+            </section>
           )}
-          <SectionTitle>Household</SectionTitle>
+
+          <SectionTitle>Add a phone or computer</SectionTitle>
           <p className="px-1 text-on-surface-variant">
-            Everyone in the household signs in to {status.target?.name} with their own account, and photos and files on tasks are shared
-            through it. To add someone, add them in People with the email they sign in with. Then, in Amble on their phone, they choose
-            “Use my own server” and scan this code, or scan it with the phone’s camera to use Amble in the browser.
+            Photos and files on tasks are shared through {status.target?.name} too. Make a code here and use it on the new one: your own other phone or
+            computer, or someone new to the household.
           </p>
           {status.target?.url && (
             <div className="mt-3">
-              <JoinCode url={status.target.url} />
+              <JoinCode url={status.target.url} admin={me?.role === 'admin'} />
             </div>
           )}
           <SectionTitle>Stop</SectionTitle>
@@ -269,12 +331,18 @@ export function SyncSettings() {
             <section className="mt-6 flex flex-col items-start gap-3 rounded-3xl bg-surface-low p-5">
               <h3 className="font-medium">Your household has its own server</h3>
               <p className="text-on-surface-variant">
-                {offeredHost} keeps everyone in step, and shares photos and files on tasks, which Google Drive can’t. Move this device to it:
-                you sign in there once, and this device stops using Drive.
+                {offeredHost} keeps everyone in step, and shares photos and files on tasks, which Google Drive can’t. Move this device to it
+                {status.householdJoin ? '' : ' with a code from someone who’s already there'}, and this device stops using Drive.
               </p>
-              <button type="button" disabled={busy} onClick={() => void signInToServer(offered, 'sync-server')} className={button}>
-                Move to {offeredHost}
-              </button>
+              {server ? (
+                <div className="w-full">
+                  <ServerForm action="sync-server" address={offered} onCancel={() => setServer(false)} joined={() => void moved()} />
+                </div>
+              ) : (
+                <button type="button" disabled={busy} onClick={() => move(offered)} className={button}>
+                  Move to {offeredHost}
+                </button>
+              )}
             </section>
           )}
 

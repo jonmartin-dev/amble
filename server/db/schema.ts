@@ -52,6 +52,24 @@ export const sessions = sqliteTable(
   (t) => [index('sessions_member_idx').on(t.memberId)],
 );
 
+// Codes that let a phone, a computer or a browser into a server without a sign-in provider: shown on
+// a device that's already in, or by the setup script for the first admin. A code for someone signs
+// in as them; an invite brings in someone new (or anyone the household already has, on a household
+// moving from Google Drive). Kept as hashes, like sessions.
+export const pairCodes = sqliteTable('pair_codes', {
+  id: id(),
+  codeHash: text('code_hash').notNull().unique(),
+  kind: text('kind', { enum: ['person', 'invite'] }).notNull(),
+  // For a person code, who it signs in as; for an invite, who made it (none from the setup script).
+  memberId: text('member_id').references(() => members.id, { onDelete: 'cascade' }),
+  // What an invite makes someone new.
+  role: text('role', { enum: ['admin', 'member'] }).notNull().default('member'),
+  // How many more times it works; null for as often as it's used until it runs out.
+  usesLeft: integer('uses_left'),
+  expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+  createdAt: createdAt(),
+});
+
 export const groups = sqliteTable('groups', {
   id: id(),
   name: text('name').notNull(),

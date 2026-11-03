@@ -95,7 +95,7 @@ describe('syncing with the household’s own server', () => {
     await sams.call('POST', '/tasks', { title: 'Call the plumber' });
 
     // Typed without https://, it's found at https.
-    expect((await sams.call('POST', '/sync/server/find', { address: 'home.example/' })).json).toEqual({ url: HOME });
+    expect((await sams.call('POST', '/sync/server/find', { address: 'home.example/' })).json).toEqual({ url: HOME, pairing: true, signIn: null });
     expect((await sams.call('POST', '/sync/server/find', { address: 'nowhere.example' })).status).toBe(400);
 
     const connected = await sams.call('POST', '/sync/server/connect', { url: HOME, ...(await signIn(home, home.sam.id)) });

@@ -18,7 +18,7 @@ seedStarterGroups(db);
 
 const ai = createAi(config, db);
 const google = createGoogle(config);
-const sync = createServerSync({ db, config, google, schema: SCHEMA });
+const sync = createServerSync({ db, config, google, schema: SCHEMA, ai });
 // Bytes of files on tasks, which devices syncing here send so everyone has them; assistants read them too.
 const files = createFileStore(config.dataDir);
 const app = createApp({ db, config, oidc: createOidc(config), ai, sync, files });

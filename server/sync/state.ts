@@ -4,7 +4,7 @@
 // whatever order they arrive. A row is gone if its removal is later than every change to it.
 import type { Db } from '../db/open.ts';
 import { pkExpr, quote, setRecording, stamp, syncedColumns } from './capture.ts';
-import { siteOf, type Clock } from './hlc.ts';
+import { SITE_LENGTH, siteOf, type Clock } from './hlc.ts';
 import { SYNCED, type SyncedTable } from './tables.ts';
 
 type Client = Db['$client'];
@@ -100,6 +100,22 @@ export function missingMine(db: Db, clock: Clock, remote: SyncState | null): boo
     .get(clock.site, clock.site) as { h: string | null };
   if (!mine.h) return remote == null;
   return (remote?.sites[clock.site] ?? '') < mine.h;
+}
+
+/**
+ * Whether this copy has any change another copy lacks, its own or one it took in from elsewhere: for
+ * a device carrying changes between two places (the household's server, and the Drive file the
+ * household is moving from), where missingMine would only see its own.
+ */
+export function missingAny(db: Db, clock: Clock, remote: SyncState | null): boolean {
+  stamp(db, clock);
+  const latest = db.$client
+    .prepare(
+      `SELECT site, max(h) AS h FROM (SELECT substr(hlc, -${SITE_LENGTH}) AS site, hlc AS h FROM sync_cells UNION ALL SELECT substr(hlc, -${SITE_LENGTH}), hlc FROM sync_tombstones) GROUP BY site`,
+    )
+    .all() as { site: string; h: string }[];
+  if (!latest.length) return remote == null;
+  return latest.some((l) => (remote?.sites[l.site] ?? '') < l.h);
 }
 
 const where = (t: SyncedTable) => t.pk.map((c) => `${quote(c)} = ?`).join(' AND ');

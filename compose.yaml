@@ -1,7 +1,9 @@
-# Run Amble with Docker Compose:
-#   1. cp .env.example .env and fill it in (AMBLE_PUBLIC_URL, emails, OIDC_CLIENT_ID).
-#   2. mkdir -p data secrets && put the OIDC client secret in secrets/oidc_client_secret
+# Run Amble with Docker Compose. deploy/setup.sh does all of this; by hand:
+#   1. cp .env.example .env and fill it in (AMBLE_PUBLIC_URL, AMBLE_TIMEZONE).
+#   2. mkdir -p data secrets, and put a long random string in secrets/amble_secret. With a sign-in
+#      provider, set OIDC_CLIENT_ID in .env and put its secret in secrets/oidc_client_secret.
 #   3. docker compose up -d --build
+#   4. docker compose exec amble node server/pair.ts admin, for the first admin's code.
 services:
   amble:
     build: .
@@ -20,6 +22,9 @@ services:
       NODE_ENV: production
       PORT: "8080"
       AMBLE_DATA_DIR: /data
+      # What the server seals what it keeps under. Optional; without it the server makes one in data/.
+      AMBLE_SECRET_FILE: /run/secrets/amble_secret
+      # Optional: a sign-in provider's client secret. Without one, people get in with codes.
       OIDC_CLIENT_SECRET_FILE: /run/secrets/oidc_client_secret
       # Optional: the AI provider's key (or an Anthropic key in the older file). Leave both out to run
       # without AI, or set the model up in the app instead.

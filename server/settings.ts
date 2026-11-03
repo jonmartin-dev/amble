@@ -1,11 +1,12 @@
-// The server's own settings, for Settings, Your server in the app on a device that syncs here: who's
-// connected through Claude or ChatGPT, the household's AI model, and bringing a household over from
-// Google Drive. Asked with the device's sign-in to this server (server/sync/hub.ts), so nobody has
+// The server's own settings, for Settings, Your server in the app on a device that syncs here: codes
+// to add a phone or computer, who's connected through Claude or ChatGPT, the household's AI model,
+// and bringing a household over from Google Drive. Asked with the device's sign-in to this server (server/sync/hub.ts), so nobody has
 // to find the server's page. What needs Google in a browser (connecting Drive) stays on that page.
 import type { Context, Hono } from 'hono';
 import { z } from 'zod';
 import { aiSettingsInput, aiView, saveAiSettings } from './ai/settings.ts';
 import type { Ai } from './ai/client.ts';
+import { endHouseholdCodes, makeCode } from './auth/pairing.ts';
 import { resolveSession } from './auth/sessions.ts';
 import type { Config } from './config.ts';
 import type { Connector } from './connector.ts';
@@ -14,6 +15,7 @@ import type { Member } from './db/schema.ts';
 import { DomainError } from './domain/household.ts';
 import type { Env } from './env.ts';
 import type { ServerSync } from './sync/server.ts';
+import { joinLink } from '../shared/qr.ts';
 
 export function registerServerSettings(app: Hono<Env>, { db, config, ai, sync, connector }: { db: Db; config: Config; ai: Ai; sync: ServerSync; connector: Connector }) {
   /** Who's asking: the device's sign-in here. */
@@ -43,6 +45,31 @@ export function registerServerSettings(app: Hono<Env>, { db, config, ai, sync, c
       ai: aiView(ai, db, config, me),
       drive: admin ? drive() : null,
     });
+  });
+
+  // A code for another phone or computer: this person's own, someone new (an admin's to make), or the
+  // whole household moving over from Google Drive, which a phone puts on the household file.
+  app.post('/sync/server/codes', async (c) => {
+    const me = who(c);
+    if (!me) return signedOut(c);
+    const parsed = z.object({ for: z.enum(['me', 'someone', 'household']) }).safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: "That request doesn't look right." }, 400);
+    const whom = parsed.data.for;
+    if (whom !== 'me' && me.role !== 'admin') return c.json({ error: 'Only an admin can add someone new.' }, 403);
+    const { code, expiresAt } = makeCode(
+      db,
+      whom === 'me' ? { kind: 'person', memberId: me.id } : { kind: 'invite', role: 'member', by: me.id, household: whom === 'household' },
+    );
+    return c.json({ code, link: joinLink(config.publicUrl, code), expiresAt });
+  });
+
+  // The household's invite runs out early once everyone has moved from Drive.
+  app.delete('/sync/server/codes/household', (c) => {
+    const me = who(c);
+    if (!me) return signedOut(c);
+    if (me.role !== 'admin') return adminsOnly(c);
+    endHouseholdCodes(db);
+    return c.body(null, 204);
   });
 
   app.delete('/sync/server/connections/:id', (c) => {

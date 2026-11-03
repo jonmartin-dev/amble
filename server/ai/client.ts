@@ -15,6 +15,7 @@ import type { Config } from '../config.ts';
 import type { Db } from '../db/index.ts';
 import { aiUsage, householdAiSpend, householdSettings, serverSettings } from '../db/schema.ts';
 import { seal, unseal } from '../lib/seal.ts';
+import { serverSecret } from '../lib/secret.ts';
 
 export type Effort = 'low' | 'medium' | 'high';
 
@@ -105,11 +106,14 @@ export interface KeyBox {
   open(sealed: string): string | undefined;
 }
 
-/** Sealed under the server's OAuth client secret, like calendar tokens (server/lib/seal.ts). */
-export const sealedKeys = (secret: string): KeyBox => ({
-  seal: (key) => seal(secret, KEY_PURPOSE, key),
-  open: (sealed) => unseal(secret, KEY_PURPOSE, sealed),
-});
+/** Sealed under the server's secret (server/lib/secret.ts), read only when a key is kept or opened. */
+export const sealedKeys = (secret: string | (() => string)): KeyBox => {
+  const get = () => (typeof secret === 'function' ? secret() : secret);
+  return {
+    seal: (key) => seal(get(), KEY_PURPOSE, key),
+    open: (sealed) => unseal(get(), KEY_PURPOSE, sealed),
+  };
+};
 
 /** What the admin sets in Settings, AI. */
 export interface AiSettings {
@@ -156,7 +160,7 @@ export function createAi(
   config: Config,
   db?: Db,
   fetchImpl: typeof fetch = fetch,
-  keys: KeyBox = sealedKeys(config.oidc.clientSecret),
+  keys: KeyBox = sealedKeys(() => serverSecret(config)),
   /** The household's server's model, when this is a device syncing with one. */
   remote?: () => RemoteAi | null,
 ): Ai {
@@ -251,7 +255,7 @@ export function adoptHouseholdAi(ai: Ai) {
 }
 
 /** Whether a saved setup still has a key the server can open (for Settings to say so). */
-export function savedKeyState(db: Db, config: Config, keys: KeyBox = sealedKeys(config.oidc.clientSecret)): 'none' | 'saved' | 'unreadable' {
+export function savedKeyState(db: Db, config: Config, keys: KeyBox = sealedKeys(() => serverSecret(config))): 'none' | 'saved' | 'unreadable' {
   const saved = db.select().from(serverSettings).where(eq(serverSettings.key, 'ai')).get()?.value as Stored | undefined;
   if (!saved?.key) return 'none';
   return keys.open(saved.key) === undefined ? 'unreadable' : 'saved';
