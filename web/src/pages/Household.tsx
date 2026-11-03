@@ -19,7 +19,7 @@ export function Household() {
   const [adding, setAdding] = useState<{ email: string; name: string } | null>(null);
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
   const admin = me?.role === 'admin';
-  // With the household's own server, people sign in there: adding them here lets them in.
+  // With the household's own server, people get in with a code; adding them here first lets them be handed tasks.
   const onServer = useDriveSync().status?.target?.kind === 'server';
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ['members'] });
@@ -133,6 +133,13 @@ export function Household() {
       ) : admin && (
         <>
           <SectionTitle>Add someone</SectionTitle>
+          <p className="mb-3 px-1 text-on-surface-variant">
+            Make them a code in{' '}
+            <Link to="/settings/server" className="font-medium text-primary">
+              Your server
+            </Link>
+            , Add a phone or computer, and they join with it. Or add them here first, by name and email, to hand them tasks before they join.
+          </p>
           {data?.pending.map((email) => (
             <button
               key={email}
@@ -186,7 +193,7 @@ export function Household() {
                   type="email"
                   className="rounded-2xl bg-surface-high px-4 py-3 outline-none placeholder:text-on-surface-variant"
                 />
-                <p className="px-1 text-sm text-on-surface-variant">They can sign in with that account right away, and you can hand them tasks before they do.</p>
+                <p className="px-1 text-sm text-on-surface-variant">You can hand them tasks right away. With a sign-in provider on the server, they can sign in with that email too.</p>
                 <div className="flex justify-end gap-2">
                   <button type="button" onClick={() => setAdding(null)} className="rounded-full px-4 py-2 text-sm font-medium">
                     Cancel

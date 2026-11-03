@@ -90,7 +90,7 @@ export function Settings() {
           { icon: <CloudSync className="size-6" />, title: 'Sync and backup', subtitle: syncSummary, to: '/settings/sync' },
           // With the household's own server: what its page has, here.
           ...(drive?.target?.kind === 'server'
-            ? [{ icon: <Dns className="size-6" />, title: 'Your server', subtitle: 'Add a phone, assistants, the household’s AI', to: '/settings/server' }]
+            ? [{ icon: <Dns className="size-6" />, title: 'Your server', subtitle: 'Add a phone or computer, assistants, the household’s AI', to: '/settings/server' }]
             : []),
           ...(native
             ? [{ icon: <Widgets className="size-6" />, title: 'Today on your home screen', subtitle: "A widget with today's tasks", onClick: () => void pinTodayWidget() }]

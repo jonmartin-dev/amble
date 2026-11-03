@@ -10,7 +10,7 @@ declare global {
     /** Written into the page by an Amble server that serves the app (server/app.ts). */
     __AMBLE__?: {
       basePath: string;
-      server?: { url: string; signIn: string; privacyContact: string; ai: { provider: string; name: string } | null };
+      server?: { url: string; signIn: string | null; privacyContact: string; ai: { provider: string; name: string } | null };
       google?: { clientId: string; apiKey: string; appId: string; tokenUrl: string } | null;
       /** Set by a server with dev sign-in on, for scripts that drive the app (scripts/lib/household.ts); `pnpm dev` has it too. */
       test?: boolean;

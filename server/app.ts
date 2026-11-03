@@ -280,7 +280,8 @@ self.addEventListener('activate', (e) => e.waitUntil((async () => {
       : null;
     const settings = {
       basePath: base,
-      server: { url: config.publicUrl, signIn: config.oidc.providerName, privacyContact: config.privacyContact, ai: aiProviderFor(ai) },
+      // Its sign-in provider, if it has one; without, people get in with codes.
+      server: { url: config.publicUrl, signIn: oidc.enabled ? config.oidc.providerName : null, privacyContact: config.privacyContact, ai: aiProviderFor(ai) },
       google,
       // Lets scripts that drive the app ask it directly (scripts/lib/household.ts).
       ...(config.devLogin ? { test: true } : {}),

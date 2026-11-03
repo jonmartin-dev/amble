@@ -14,6 +14,7 @@ import type { Connector } from './connector.ts';
 import type { Db } from './db/index.ts';
 import type { Member } from './db/schema.ts';
 import type { Env } from './env.ts';
+import { isDeviceEmail } from './local.ts';
 import { html, Html, page } from './pages.ts';
 import { TOO_MANY_CODES, WRONG_CODE } from './sync/hub.ts';
 import type { ServerSync } from './sync/server.ts';
@@ -130,7 +131,7 @@ ${households.length === 0 ? html`<p class="muted">No household files ${google.em
       c,
       'This server',
       html`<h1>This Amble server</h1>
-<div class="row"><p class="muted">Signed in as ${me.name} (${me.email})</p>
+<div class="row"><p class="muted">Signed in as ${me.name}${isDeviceEmail(me.email) ? '' : ` (${me.email})`}</p>
 <form method="post" action="${url('/auth/logout')}"><button class="quiet">Sign out</button></form></div>
 ${notice ? html`<p class="card" role="status">${notice}</p>` : ''}
 ${problem ? html`<p class="warn" role="alert">${SIGN_IN_ERRORS[problem] ?? problem}</p>` : ''}
@@ -154,7 +155,7 @@ ${admin ? html`<form method="post" action="${url('/server/code')}"><input type="
 </div>
 
 <h2>Claude and ChatGPT</h2>
-<p>Add Amble as a custom connector in Claude or ChatGPT with this address, then sign in here when it asks:</p>
+<p>Add Amble as a custom connector in Claude or ChatGPT with this address. When it asks you to sign in here, use a code for you from Add a phone or computer.</p>
 <p><code>${connector.mcpUrl}</code></p>
 ${
   connections.length

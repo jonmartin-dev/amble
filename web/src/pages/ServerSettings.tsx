@@ -79,7 +79,8 @@ function Loaded({ data }: { data: Settings }) {
           <h2 className="display text-xl font-medium break-all">{host}</h2>
         </div>
         <p className="mt-2">
-          Keeps everyone's devices in step, photos and files on tasks included. You're signed in there as {data.me.name} ({data.me.email})
+          Keeps everyone's devices in step, photos and files on tasks included. You're signed in there as {data.me.name}
+          {data.me.email.endsWith('@device.invalid') ? '' : ` (${data.me.email})`}
           {data.me.role === 'admin' ? ', an admin' : ''}.
         </p>
       </section>

@@ -97,8 +97,8 @@ export function Privacy() {
         <h2>Your household's own server</h2>
         <p>
           If your household runs an Amble server and you sync with it, it keeps a copy of the household's tasks and lists on that
-          computer, as a household file in Google Drive would, and the photos and files added to tasks, so everyone's devices have them. You sign in to it {server ? `with ${server.signIn}` : 'the way it lets you'}, and it keeps your
-          name, email address and when you last signed in. It's a computer someone in your household keeps, not Amble's: Amble has no
+          computer, as a household file in Google Drive would, and the photos and files added to tasks, so everyone's devices have them. You get in {server?.signIn ? `with ${server.signIn} or ` : ''}with a code from a device that's already in, and it keeps your
+          name, your email address if it has one, and when you last got in. It's a computer someone in your household keeps, not Amble's: Amble has no
           servers of its own.
           {server?.ai
             ? ` It has an AI model from ${server.ai.name}, which your device uses if it has none of its own. Then what you type for smart add and planning goes through the server to ${server.ai.name}.`
