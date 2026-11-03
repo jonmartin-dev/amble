@@ -2,7 +2,7 @@
 
 Amble runs on the device: in a browser or the Android app, its API runs in a worker on SQLite kept on that device. There's no account, and on its own nothing leaves the device.
 
-Google Drive keeps a household's copies in step with nobody hosting anything. Each person's Amble keeps a full copy, and one file in Drive holds the household's state: a device takes in what changed there, merges it field by field (the later change to each field wins), and writes back what the file lacks. A household can also skip Drive and sync through its own server instead: everyone chooses Use my own server on first open, and the server shares photos and files on tasks too. A household that started in Drive moves onto a server through the same file ([below](#a-server-in-the-household)). Once a household has a server, the app offers the server rather than Drive.
+Google Drive keeps a household's copies in step with nobody hosting anything. Each person's Amble keeps a full copy, and one file in Drive holds the household's state: a device takes in what changed there, merges it field by field (the later change to each field wins), and writes back what the file lacks. A household can also skip Drive and sync through its own server instead: everyone chooses Use my own server on first open, and the server shares photos and files on tasks too. A household that started in Drive moves onto a server from a phone, which keeps the file in step for the others until they've moved too ([below](#a-server-in-the-household)). Once a household has a server, the app offers the server rather than Drive.
 
 ## How it fits together
 
@@ -11,7 +11,7 @@ Google Drive keeps a household's copies in step with nobody hosting anything. Ea
 | Where the copy lives | Amble's hidden folder in your Drive (`drive.appdata`), which only Amble can open | A file named like "Sam's Amble household" in the Drive of whoever made the household, shared with the others |
 | Your other devices | Choose "I already use Amble" on first open and sign in with the same Google account | The same |
 | Adding someone | | Make the household and add them in Sync and backup. Google emails them a link; in Amble they choose "Join a household" and pick the file once in Google's picker |
-| A server | | An admin connects it on the server's page and joins the household file; then each device moves to the server ([below](#a-server-in-the-household)) |
+| A server | | The first phone to join it brings the household; the others move with a tap ([below](#a-server-in-the-household)) |
 
 Amble asks Google only for `drive.appdata` and `drive.file`: its hidden folder, and files it made or that someone picked for it. Google counts both as non-sensitive, so the consent screen needs no verification for them. The cost of that narrow access is why joining a household takes the picker: with `drive.file`, Amble can't open a file someone shared until they pick it.
 
@@ -64,15 +64,21 @@ For a static build, `VITE_GOOGLE_CLIENT_ID` is the client id, `VITE_GOOGLE_API_K
 
 ## A server in the household
 
-The server uses its sign-in client for Drive too, so with Google sign-in there's nothing more to set: turn on the Drive API (step 1) and add the scopes (step 3). With another sign-in provider, set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` to a Google "Web application" client with the redirect URI `<AMBLE_PUBLIC_URL>/auth/callback`.
+A household on Drive moves to its own server from a phone, with nothing to set up on the server for Google:
 
-Then an admin opens the server's page (`<AMBLE_PUBLIC_URL>/server`) and chooses Connect Google Drive. Google asks once; the server keeps a refresh token, sealed under the client secret. It lists the household files that Google account can open: join the household's. The server syncs every minute and a few seconds after each change, from devices syncing with it, from Claude or ChatGPT through the connector, or from its background jobs. It notes its address on the file (a public Drive property, `ambleServer`), and each device still syncing through Drive offers a move to the server in Settings, Sync and backup: one sign-in there, and the device syncs with the server from then on, with what it had.
+1. Someone runs the server ([self-hosting.md](self-hosting.md)) and gets in from their phone with the setup script's code, or a code from someone already there. That phone brings the whole household with it.
+2. From then on that phone keeps the household's file in step with the server too, for everyone still on Drive. It notes the server on the file (public Drive properties: `ambleServer`, the address, and `ambleJoin`, an invite to it that lasts 30 days), so each device still on Drive offers a move in Settings, Sync and backup. One tap, with no code: the device joins the server as its person, with what it had.
+3. Once everyone has moved, that phone's Sync and backup has Stop keeping Google Drive in step. The invite comes off the file and stops working, and the file stays in Drive.
 
-Once every device has moved, stop the server's Drive sync on its page; the file stays in Drive. A device that started on its own folds its starter groups into the household's when it joins, and takes over the household's row for its person.
+Only people the household file is shared with can read its properties, the same people who can read the household in it. An admin's phone puts the invite there; a phone that isn't an admin's keeps the file in step without one, and the others each need a code instead.
+
+A server with Google as its sign-in provider can keep the file in step itself, instead of a phone. Its sign-in client works for Drive too: turn on the Drive API (step 1) and add the scopes (step 3). With another sign-in provider, set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` to a Google "Web application" client with the redirect URI `<AMBLE_PUBLIC_URL>/auth/callback`. Then an admin opens the server's page (`<AMBLE_PUBLIC_URL>/server`) and chooses Connect Google Drive. Google asks once; the server keeps a refresh token, sealed. It lists the household files that Google account can open: join the household's. The server syncs every minute and a few seconds after each change, notes its address on the file, and devices still on Drive are offered the move. Once every device has moved, stop the server's Drive sync on its page.
+
+A device that started on its own folds its starter groups into the household's when it joins, and takes over the household's row for its person.
 
 ## When something goes wrong
 
 - **"redirect_uri_mismatch" from Google:** the redirect URI in step 2 doesn't match the app's address exactly, including `http` or `https`, the port and the `/google-return` path. Changes in the console can take a few minutes to apply.
 - **The picker doesn't list the household file:** it shows files of the household's type, or gzipped files with "household" in the name. Check it was shared with the account you're picking with, and look under "Shared with me".
 - **"Google needs you to sign in again":** the token ran out or someone took Amble's access away at myaccount.google.com/connections. Tap Continue or Sync now.
-- **The server's sync says to connect again:** the refresh token was revoked, or the server's client secret changed (which makes sealed tokens unreadable). Connect Google Drive again.
+- **The server's sync says to connect again:** the refresh token was revoked, or the server's secret changed (which makes sealed tokens unreadable). Connect Google Drive again.

@@ -251,7 +251,7 @@ const promises: { icon: Icon; title: string; body: string }[] = [
   {
     icon: Terminal,
     title: 'Easy to set up',
-    body: 'On Android you install it and start. A household server is one Docker container, and there’s a setup script for Linux and Mac and one for Windows.',
+    body: 'On Android you install it and start. A household server is one Docker container, and a setup script does the rest, Tailscale included. Phones join it with a code.',
   },
   {
     icon: Checklist,
@@ -336,47 +336,35 @@ const everything: { icon: Icon; text: string }[] = [
   { icon: Widgets, text: 'Today’s tasks on your home screen, and a task beside its list on a foldable or tablet.' },
 ];
 
-/** How Amble grows with a household, one optional step at a time: what each adds and what it takes. */
+/** How Amble grows with a household: the app, then a server only for what needs one. What each adds and takes. */
 const layers: { title: string; note?: string; body: string; adds: string[]; takes: string; link: string; href: string; primary?: boolean }[] = [
   {
-    title: 'The app and your Google account',
+    title: 'The app',
     note: 'Where most people stop',
     body: 'Install it on Android and start. There’s no account to make, and everything stays on your phone and works offline.',
     adds: [
       'Days planned around your calendar, with lists, reminders and the morning check-in',
-      'Sync for your other devices and your household through one file in your own Google Drive',
+      'Sync for your devices and your household through one file in your own Google Drive',
+      'One AI model for the household, set up once, for smart add, Plan my week and Tidy up',
     ],
-    takes: 'An Android phone, and a Google account if you want to sync.',
+    takes: 'An Android phone. A Google account to sync, and an AI key if you want one: Gemini and GLM have free tiers, or use a model on your own computer.',
     link: 'Join the Android test',
     href: JOIN_TEST,
     primary: true,
   },
   {
-    title: 'Your own AI key',
-    body: 'Amble works fully without AI. Add a key and it takes on the fiddly parts.',
-    adds: ['Smart add, which turns a sentence into tasks and grocery items', 'Plan my week and Tidy up', 'A guess for tasks you didn’t size'],
-    takes:
-      'A key from Claude, OpenAI, Gemini, GLM or OpenRouter, or a model on your own computer. Gemini and GLM have free tiers. The key stays on your phone, so each person adds their own.',
-    link: 'More about the AI features',
-    href: '#ai',
-  },
-  {
     title: 'A household server',
-    body: 'One Docker container on a computer that stays on, like a home server, a NAS or a mini PC.',
-    adds: ['One AI model and one monthly cap for everyone', 'Photos and files on tasks, shared between phones', 'The web app for iPhones and computers', 'Syncing without Google'],
+    body: 'One Docker container on a computer that stays on, for what only a server can do.',
+    adds: [
+      'Claude and ChatGPT, adding and planning your tasks from a chat',
+      'Photos and files on tasks, shared between phones',
+      'The web app for iPhones and computers',
+      'Syncing without Google, with the AI key locked on the server',
+    ],
     takes:
-      'A computer that stays on, an address your devices can reach (Tailscale is free for a household) and a sign-in client from Google Cloud. A script sets it up on Linux, a Mac or Windows.',
+      'A computer that stays on, and Tailscale, which is free for a household. A script sets it all up on Linux, a Mac or Windows, and phones join with a code, so there’s nothing to set up with Google.',
     link: 'How to run one',
     href: `${PROJECT_URL}/blob/main/docs/self-hosting.md`,
-  },
-  {
-    title: 'Claude and ChatGPT',
-    body: 'Plan from a chat. The assistant acts as you, and Activity shows which one changed what.',
-    adds: ['Adding, planning, finishing and handing off tasks', 'Your shopping lists, how full each day is and reminders you ask for'],
-    takes:
-      'Your server, reachable from the internet over HTTPS, and its address pasted into Claude’s connectors. ChatGPT connects the same way in its Developer mode, though nobody has tried it with a real account yet.',
-    link: 'How to connect one',
-    href: `${PROJECT_URL}/blob/main/docs/assistants.md`,
   },
 ];
 
@@ -470,7 +458,7 @@ function Home({ data }: { data: SiteData }) {
             </p>
             <p className="text-on-surface-variant">
               Bring your own key for Claude, OpenAI, Gemini, GLM or anything on OpenRouter (Gemini and GLM have free tiers), or run a model on your own computer
-              through Ollama or LM Studio. You set a monthly cap, and the key stays on your device.
+              through Ollama or LM Studio. One person sets it up for the whole household, with a monthly cap.
             </p>
           </div>
         </div>
@@ -538,10 +526,8 @@ function Home({ data }: { data: SiteData }) {
         </ul>
       </Section>
 
-      <Section id="get" eyebrow="Get it" title="Start with the app. Add the rest only if you want it.">
-        <p className="mt-5 max-w-2xl text-lg text-on-surface-variant">
-          Most households only need the first step. Each one after it builds on the one before, and Amble is free at every step.
-        </p>
+      <Section id="get" eyebrow="Get it" title="Start with the app. Add a server only if you want one.">
+        <p className="mt-5 max-w-2xl text-lg text-on-surface-variant">Most households only ever need the app. A server adds the rest, and Amble is free either way.</p>
         <ol data-cascade className="mt-10 flex flex-col">
           {layers.map((l, i) => (
             <li key={l.title} className={`grid medium:grid-cols-[3rem_1fr] medium:gap-x-6 ${i < layers.length - 1 ? 'pb-3' : ''}`}>
@@ -596,7 +582,7 @@ function Home({ data }: { data: SiteData }) {
           ))}
         </ol>
         <p className="mt-6 max-w-2xl text-on-surface-variant">
-          On an iPhone or a computer, Amble is the web app from a household server, step 3. A native iPhone app is wanted,{' '}
+          On an iPhone or a computer, Amble is the web app from a household server. A native iPhone app is wanted,{' '}
           <a href={`${PROJECT_URL}/blob/main/CONTRIBUTING.md#help-wanted`} className="font-medium text-primary">
             if you’d like to build it
           </a>

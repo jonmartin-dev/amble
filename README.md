@@ -45,7 +45,7 @@ Amble works fully without AI. Add a model and it takes on the fiddly parts:
 - **Plan my week** listens to what you tell it ("keep Saturday free"), and **Tidy up** suggests merging duplicates and splitting tasks that are really several.
 - Tasks you didn't size get a guess, so the day's meter stays honest.
 
-Bring your own key for Claude, OpenAI, Gemini, GLM or anything on OpenRouter (Gemini and GLM have free tiers), or run a model on your own computer through Ollama or LM Studio. You set a monthly cap, and the key stays on your device. A household with its own server can share one model, and connect Claude or ChatGPT to add, plan and finish tasks from a chat ([docs/assistants.md](docs/assistants.md)).
+Bring your own key for Claude, OpenAI, Gemini, GLM or anything on OpenRouter (Gemini and GLM have free tiers), or run a model on your own computer through Ollama or LM Studio, and set a monthly cap. One person sets it up for the whole household with one cap: through the household's Google Drive file, or on the household's own server, which keeps the key locked there. A server also lets Claude or ChatGPT add, plan and finish tasks from a chat ([docs/assistants.md](docs/assistants.md)).
 
 ## Made to feel good
 
@@ -63,12 +63,10 @@ Amble is built on Google's Material 3 Expressive, springs and all. A task grows 
 
 ## Get it
 
-Start with the app and add the rest only if you want it. Most households only need the first step, and each one after it builds on the one before.
+Start with the app. Most households never need more.
 
-1. **The app and your Google account.** Install it on Android and start, with no account to make. Sign in with Google to sync your other devices and your household through one file in your own Drive. Android is coming to Google Play; until then you can [build it yourself](docs/android.md).
-2. **Your own AI key.** Smart add, Plan my week, Tidy up and a guess for tasks you didn't size, with a key from Claude, OpenAI, Gemini, GLM or OpenRouter or a model on your own computer. The key stays on your phone, so each person adds their own.
-3. **A household server.** One Docker container on a computer that stays on, and a script sets it up on Linux, a Mac or Windows. It adds one AI model for everyone, photos and files shared between phones, the web app for iPhones and computers, and syncing without Google. [docs/self-hosting.md](docs/self-hosting.md) walks through it, and it's written so an AI assistant can take you through it.
-4. **Claude and ChatGPT.** With your server reachable from the internet, Claude can add, plan and finish tasks from a chat ([docs/assistants.md](docs/assistants.md)). ChatGPT connects the same way, though nobody has tried it with a real account yet.
+1. **The app.** Install it on Android and start, with no account to make. Sign in with Google to sync your other devices and your household through one file in your own Drive. One person can add an AI model for everyone: a key from Claude, OpenAI, Gemini, GLM or OpenRouter, or a model on their own computer, for smart add, Plan my week, Tidy up and a guess for tasks you didn't size. Android is coming to Google Play; until then you can [build it yourself](docs/android.md).
+2. **A household server**, for what only a server can do: Claude and ChatGPT, photos and files shared between phones, the web app for iPhones and computers, and syncing without Google. It's one Docker container on a computer that stays on, and a script sets it up on Linux, a Mac or Windows, Tailscale included. Phones and computers join with a short code from one that's already in, so there's nothing to set up with Google. [docs/self-hosting.md](docs/self-hosting.md) walks through it, and it's written so an AI assistant can take you through it.
 
 A native iPhone app is [wanted](CONTRIBUTING.md#help-wanted). Until then an iPhone uses the web app from a household server.
 
@@ -87,7 +85,7 @@ Amble is made in the open, and help of any size is welcome.
 ## Docs
 
 - [Running your own server](docs/self-hosting.md)
-- [Sign-in providers](docs/sign-in.md)
+- [Getting in, and sign-in providers](docs/sign-in.md)
 - [Google Drive sync](docs/google-drive.md)
 - [The Android app](docs/android.md)
 - [Claude and ChatGPT](docs/assistants.md)

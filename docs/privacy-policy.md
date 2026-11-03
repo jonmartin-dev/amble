@@ -12,7 +12,7 @@ Amble asks Google only for its own files: the hidden folder, and files it made o
 
 ## Your household's own server
 
-If your household runs an Amble server and you sync with it, the server keeps a copy of the household's tasks and lists, and the photos and files added to tasks, so everyone's devices have them. You sign in to it the way it lets you, and it keeps your name and email address and when you last signed in. It's a computer someone in your household keeps, not Amble's.
+If your household runs an Amble server and you sync with it, the server keeps a copy of the household's tasks and lists, and the photos and files added to tasks, so everyone's devices have them. You get in with a code from a device that's already in, or with the sign-in its owner set up, and it keeps your name, your email address if it has one, and when you last got in. It's a computer someone in your household keeps, not Amble's.
 
 ## Calendars
 
