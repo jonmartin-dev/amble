@@ -17,6 +17,7 @@ import { expressive } from '../lib/motion.ts';
 import { refreshViews, useSend } from '../lib/mutations.ts';
 import { useSnackbar } from '../lib/snackbar.tsx';
 import { useBackToClose } from '../lib/viewport.ts';
+import { useDialogFocus } from './ui.tsx';
 
 // Photos get a smaller copy this many pixels across, for the task page and for Claude.
 const PREVIEW_PX = 1600;
@@ -141,43 +142,53 @@ function Thumb({ file }: { file: TaskFile }) {
 /** A photo filling the screen, with a way to open the original. */
 function Viewer({ file, onClose }: { file: TaskFile | null; onClose: () => void }) {
   useBackToClose(file != null, onClose);
-  const full = useFileSrc(file ? filePath(file) : null);
-  const preview = useFileSrc(file?.preview ? previewPath(file) : null);
+  return <AnimatePresence>{file && <ViewerDialog file={file} onClose={onClose} />}</AnimatePresence>;
+}
+
+function ViewerDialog({ file, onClose }: { file: TaskFile; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useDialogFocus(ref);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  const full = useFileSrc(filePath(file));
+  const preview = useFileSrc(file.preview ? previewPath(file) : null);
   return (
-    <AnimatePresence>
-      {file && (
-        <motion.div
-          role="dialog"
-          aria-label={file.name}
-          className="fixed inset-0 z-40 flex flex-col bg-black text-white"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0, pointerEvents: 'none' }}
-          onClick={onClose}
-        >
-          <div className="flex shrink-0 items-center gap-2 px-2 pt-2" style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }} onClick={(e) => e.stopPropagation()}>
-            <button type="button" onClick={onClose} aria-label="Close" className="grid size-12 place-items-center rounded-full hover:bg-white/10">
-              <Close className="size-6" aria-hidden />
-            </button>
-            <p className="min-w-0 flex-1 truncate text-sm">{file.name}</p>
-            <a {...fileLink(file, true)} aria-label="Download the original" className="grid size-12 place-items-center rounded-full hover:bg-white/10">
-              <Download className="size-6" aria-hidden />
-            </a>
-          </div>
-          <motion.img
-            src={full ?? preview ?? undefined}
-            alt={file.name}
-            className="min-h-0 flex-1 object-contain p-3"
-            initial={{ scale: 0.94 }}
-            animate={{ scale: 1 }}
-            exit={{ scale: 0.96 }}
-            transition={expressive.defaultSpatial}
-            // A photo can be the preview first and sharpen when the full one arrives.
-            style={preview ? { backgroundImage: `url(${preview})`, backgroundSize: 'contain', backgroundPosition: 'center', backgroundRepeat: 'no-repeat', backgroundOrigin: 'content-box' } : undefined}
-          />
-        </motion.div>
-      )}
-    </AnimatePresence>
+    <motion.div
+      ref={ref}
+      role="dialog"
+      aria-modal="true"
+      aria-label={file.name}
+      tabIndex={-1}
+      className="fixed inset-0 z-40 flex flex-col bg-black text-white outline-none"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0, pointerEvents: 'none' }}
+      onClick={onClose}
+    >
+      <div className="flex shrink-0 items-center gap-2 px-2 pt-2" style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }} onClick={(e) => e.stopPropagation()}>
+        <button type="button" onClick={onClose} aria-label="Close" className="grid size-12 place-items-center rounded-full hover:bg-white/10">
+          <Close className="size-6" aria-hidden />
+        </button>
+        <p className="min-w-0 flex-1 truncate text-sm">{file.name}</p>
+        <a {...fileLink(file, true)} aria-label="Download the original" className="grid size-12 place-items-center rounded-full hover:bg-white/10">
+          <Download className="size-6" aria-hidden />
+        </a>
+      </div>
+      <motion.img
+        src={full ?? preview ?? undefined}
+        alt={file.name}
+        className="min-h-0 flex-1 object-contain p-3"
+        initial={{ scale: 0.94 }}
+        animate={{ scale: 1 }}
+        exit={{ scale: 0.96 }}
+        transition={expressive.defaultSpatial}
+        // A photo can be the preview first and sharpen when the full one arrives.
+        style={preview ? { backgroundImage: `url(${preview})`, backgroundSize: 'contain', backgroundPosition: 'center', backgroundRepeat: 'no-repeat', backgroundOrigin: 'content-box' } : undefined}
+      />
+    </motion.div>
   );
 }
 

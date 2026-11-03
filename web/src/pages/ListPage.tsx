@@ -72,10 +72,9 @@ function ItemRow({ item, template, showStore, onCheck, onOpen }: { item: ListIte
       exit={{ opacity: 0, x: 48, transition: { duration: 0.18 } }}
       transition={expressive.defaultSpatial}
     >
+      {/* A tap anywhere checks it off and a hold opens it. For a keyboard or a screen reader, the
+          checkbox and Change do the same. */}
       <div
-        role="button"
-        tabIndex={0}
-        aria-label={`${item.name}${item.quantity ? `, ${item.quantity}` : ''}. Tap to check off, hold to change`}
         onPointerDown={(e) => {
           press.current = { held: false, x: e.clientX, y: e.clientY, timer: setTimeout(open, HOLD_MS) };
         }}
@@ -85,12 +84,6 @@ function ItemRow({ item, template, showStore, onCheck, onOpen }: { item: ListIte
         onPointerUp={() => clearTimeout(press.current.timer)}
         onPointerCancel={() => clearTimeout(press.current.timer)}
         onClick={() => !press.current.held && tick()}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            tick();
-          }
-        }}
         onContextMenu={(e) => {
           e.preventDefault();
           if (!press.current.held) open();
@@ -103,6 +96,20 @@ function ItemRow({ item, template, showStore, onCheck, onOpen }: { item: ListIte
           {details.length > 0 && <span className="block truncate text-sm text-on-surface-variant">{details.join(' · ')}</span>}
         </span>
         {item.quantity && <span className="shrink-0 rounded-full bg-surface-high px-3 py-1 text-sm">{item.quantity}</span>}
+        {/* Out of sight, and out of a finger's way, until a keyboard reaches it; a screen reader
+            finds it all along. Relative once it shows, so its 48px tap stays its own and doesn't
+            spread over the row. */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpen();
+          }}
+          aria-label={`Change ${item.name}`}
+          className="pointer-events-none absolute shrink-0 rounded-full px-3 py-2 text-sm font-medium text-primary opacity-0 focus-visible:pointer-events-auto focus-visible:relative focus-visible:opacity-100"
+        >
+          Change
+        </button>
         {item.url && (
           <a
             href={item.url}

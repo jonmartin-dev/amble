@@ -450,12 +450,16 @@ function SheetPanel({
     out.finished.then(() => remove.current?.(), () => {});
   }, [isPresent]);
 
+  useDialogFocus(ref);
+
   return (
     <motion.div
       ref={ref}
       role="dialog"
+      aria-modal="true"
       aria-label={label}
-      className={`${grow ? '' : 'sheet-in'} pointer-events-auto flex flex-col overflow-hidden rounded-t-[2rem] bg-surface-low shadow-2xl`}
+      tabIndex={-1}
+      className={`${grow ? '' : 'sheet-in'} pointer-events-auto flex flex-col overflow-hidden rounded-t-[2rem] bg-surface-low shadow-2xl outline-none`}
       animate={height ? { height } : undefined}
       transition={expressive.defaultSpatial}
       style={{ maxHeight }}
@@ -469,6 +473,39 @@ function SheetPanel({
       {children}
     </motion.div>
   );
+}
+
+/**
+ * Keyboard focus in a sheet or another dialog: it moves in as it opens (unless something in it took
+ * it, like a box to type in), Tab goes round inside the topmost one, and it goes back to the button
+ * that opened it once it's gone. Only when that button had a keyboard's focus ring, so a tap on a
+ * phone doesn't leave one on it.
+ */
+export function useDialogFocus(ref: React.RefObject<HTMLDivElement | null>) {
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const opener = document.activeElement instanceof HTMLElement && document.activeElement.matches(':focus-visible') ? document.activeElement : null;
+    if (!el.contains(document.activeElement)) el.focus({ preventScroll: true });
+    const onKey = (e: KeyboardEvent) => {
+      const sheets = document.querySelectorAll('[role="dialog"][aria-modal="true"]');
+      if (e.key !== 'Tab' || sheets[sheets.length - 1] !== el) return;
+      const stops = [...el.querySelectorAll<HTMLElement>('a[href], button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])')];
+      const at = document.activeElement;
+      const first = stops[0];
+      const last = stops.at(-1);
+      if (!first || !last) return e.preventDefault();
+      if (!el.contains(at) || (e.shiftKey ? at === first || at === el : at === last)) {
+        e.preventDefault();
+        (e.shiftKey ? last : first).focus();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      if (opener?.isConnected && (!document.activeElement || document.activeElement === document.body)) opener.focus({ preventScroll: true });
+    };
+  }, [ref]);
 }
 
 /** Measures how tall a sheet's parts want to be, so the sheet can animate to fit them. */

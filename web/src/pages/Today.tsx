@@ -61,12 +61,15 @@ function LoadCard({ load, whose, done, picks }: { load: DayLoad; whose: string; 
         ? `${minutesLabel(load.plannedMinutes)} of ${minutesLabel(load.capacityMinutes)}`
         : `${minutesLabel(load.plannedMinutes)} planned`;
   const card = 'flex min-h-16 items-center gap-3 rounded-3xl bg-primary-container py-2.5 pr-2.5 pl-3 text-on-primary-container';
+  // Read aloud as it shows, with who it's for first: "Your day: Light, 2 h of 5 h, 3 picks".
   const body = (
     <>
       <LoadRing load={load} />
       <span className="flex min-w-0 flex-1 flex-col">
+        <span className="sr-only">{whose} day: </span>
         <span className="display text-lg leading-tight font-medium">{word}</span>
-        <span className="truncate text-sm text-on-primary-container/80">{hours}</span>
+        <span className="sr-only">, </span>
+        <span className="truncate text-sm">{hours}</span>
       </span>
     </>
   );
@@ -77,16 +80,20 @@ function LoadCard({ load, whose, done, picks }: { load: DayLoad; whose: string; 
       </section>
     );
   return (
-    <Link to="/briefing" aria-label={`${whose} day: ${word}, ${hours}. ${picks ? `${picks === 1 ? '1 thing' : `${picks} things`} worth doing today` : 'Open the briefing'}`} className={card}>
+    <Link to="/briefing" className={card}>
       {body}
       {picks > 0 ? (
         <span className="flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-on-primary-container/8 pr-1.5 pl-3 text-sm font-medium">
           <Sparkle className="size-4.5 text-primary" aria-hidden />
+          <span className="sr-only">, </span>
           {picks === 1 ? '1 pick' : `${picks} picks`}
           <ChevronRight className="size-5" aria-hidden />
         </span>
       ) : (
-        <ChevronRight className="mr-1 size-5 text-on-primary-container/70" aria-hidden />
+        <>
+          <span className="sr-only">, the briefing</span>
+          <ChevronRight className="mr-1 size-5 text-on-primary-container/70" aria-hidden />
+        </>
       )}
     </Link>
   );

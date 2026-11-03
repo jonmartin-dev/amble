@@ -81,6 +81,7 @@ export function TaskRow({ task, today, meId, onMove, showDay = false, showGroup 
     }, 520);
   };
   const cancelPress = () => clearTimeout(press.current.timer);
+  const openTask = () => void navigate({ to: '/task/$taskId', params: { taskId: task.id }, replace: swapsDetail(router.state.location.pathname) });
 
   // The row slides by half the finger's travel; what's behind it shows as it goes.
   const paint = () => {
@@ -190,10 +191,7 @@ export function TaskRow({ task, today, meId, onMove, showDay = false, showGroup 
         onPointerMove={onPointerMove}
         onPointerUp={onPointerEnd}
         onPointerCancel={onPointerEnd}
-        onClick={() => {
-          if (press.current.handled) return;
-          void navigate({ to: '/task/$taskId', params: { taskId: task.id }, replace: swapsDetail(router.state.location.pathname) });
-        }}
+        onClick={() => !press.current.handled && openTask()}
         onContextMenu={(e) => e.preventDefault()}
         aria-current={open || undefined}
         className={`state-layer relative isolate flex cursor-pointer touch-pan-y items-start gap-3 px-4 py-3.5 select-none ${open ? `${surface} expanded:bg-secondary-container` : surface}`}
@@ -204,9 +202,23 @@ export function TaskRow({ task, today, meId, onMove, showDay = false, showGroup 
           <Checkbox checked={checked} onChange={toggle} label={checked ? `Mark ${task.title} not done` : `Complete ${task.title}`} />
         </div>
         <div className="min-w-0 flex-1">
-          <p className={`leading-snug transition-colors ${checked ? 'text-on-surface-variant' : ''} ${checked && !(motion.finish && tapped?.done) ? 'line-through' : ''}`}>
-            {/* Just finished: the line draws itself through the title. */}
-            {checked && motion.finish && tapped?.done ? <span className="strike-draw">{task.title}</span> : task.title}
+          <p className={`leading-snug transition-colors ${checked ? 'text-on-surface-variant' : ''}`}>
+            {/* The title is what a keyboard or a screen reader opens the task with. A tap goes on to
+                the row, which tells it from a swipe or a long press; a key or a screen reader's
+                double tap (no pointer, so detail 0) opens it here. The line through a done one is
+                on the button, since a paragraph's doesn't reach into it. */}
+            <button
+              type="button"
+              onClick={(e) => {
+                if (e.detail) return;
+                e.stopPropagation();
+                openTask();
+              }}
+              className={`cursor-[inherit] bg-none text-left ${checked && !(motion.finish && tapped?.done) ? 'line-through' : ''}`}
+            >
+              {/* Just finished: the line draws itself through the title. */}
+              {checked && motion.finish && tapped?.done ? <span className="strike-draw">{task.title}</span> : task.title}
+            </button>
           </p>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.8125rem] text-on-surface-variant empty:hidden">
             {task.mustDo && (

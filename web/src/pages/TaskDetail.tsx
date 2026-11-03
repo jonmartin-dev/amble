@@ -150,6 +150,8 @@ function Detail({ task }: { task: Task }) {
         </button>
       </header>
 
+      {/* The title is a field to edit, so the page's heading is for screen readers. */}
+      <h1 className="sr-only">{task.title}</h1>
       <div className="flex items-start gap-3">
         <div className="pt-2">
           <Checkbox checked={done} onChange={() => actions.complete(task)} label={done ? 'Mark not done' : 'Complete'} size={32} />
