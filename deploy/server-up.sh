@@ -3,7 +3,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 [ -f .env ] || { echo "Missing .env (copy .env.example and fill it in)" >&2; exit 1; }
-[ -f secrets/oidc_client_secret ] || { echo "Missing secrets/oidc_client_secret" >&2; exit 1; }
+# A sign-in provider's secret is optional: without one, people get in with codes.
 mkdir -p data
 
 docker compose build -q
