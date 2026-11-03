@@ -63,16 +63,18 @@ Amble is built on Google's Material 3 Expressive, springs and all. A task grows 
 
 ## Get it
 
-- **Android:** coming to Google Play. Until then you can [build it yourself](docs/android.md).
-- **iPhone and computers:** the web app, served by your household's own server ([docs/self-hosting.md](docs/self-hosting.md)). A native iPhone app is [wanted](CONTRIBUTING.md#help-wanted).
+Start with the app and add the rest only if you want it. Most households only need the first step, and each one after it builds on the one before.
+
+1. **The app and your Google account.** Install it on Android and start, with no account to make. Sign in with Google to sync your other devices and your household through one file in your own Drive. Android is coming to Google Play; until then you can [build it yourself](docs/android.md).
+2. **Your own AI key.** Smart add, Plan my week, Tidy up and a guess for tasks you didn't size, with a key from Claude, OpenAI, Gemini, GLM or OpenRouter or a model on your own computer. The key stays on your phone, so each person adds their own.
+3. **A household server.** One Docker container on a computer that stays on, and a script sets it up on Linux, a Mac or Windows. It adds one AI model for everyone, photos and files shared between phones, the web app for iPhones and computers, and syncing without Google. [docs/self-hosting.md](docs/self-hosting.md) walks through it, and it's written so an AI assistant can take you through it.
+4. **Claude and ChatGPT.** With your server reachable from the internet, Claude can add, plan and finish tasks from a chat ([docs/assistants.md](docs/assistants.md)). ChatGPT connects the same way, though nobody has tried it with a real account yet.
+
+A native iPhone app is [wanted](CONTRIBUTING.md#help-wanted). Until then an iPhone uses the web app from a household server.
 
 ## Your data stays yours
 
 Amble has no account and no servers of its own, so its developer never receives your data. Sync goes only to your own Google Drive or a server your household runs, and AI features talk only to the provider you set up. The [privacy policy](docs/privacy-policy.md) has the details.
-
-## Your own server, if you want one
-
-Most households never need one. A server adds one AI model for everyone, photos and files shared between phones, Claude and ChatGPT, the web app at your own address, and syncing without Google. It's one Docker container on a computer you keep, and a script sets it up on Linux, a Mac or Windows. [docs/self-hosting.md](docs/self-hosting.md) walks through it, and it's written so an AI assistant can take you through it.
 
 ## Help make it better
 

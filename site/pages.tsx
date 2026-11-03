@@ -8,19 +8,17 @@ import Attach from '~icons/material-symbols/attach-file-rounded';
 import Spark from '~icons/material-symbols/auto-awesome-outline-rounded';
 import Bug from '~icons/material-symbols/bug-report-outline-rounded';
 import Call from '~icons/material-symbols/call-outline-rounded';
+import Check from '~icons/material-symbols/check-rounded';
 import Checklist from '~icons/material-symbols/checklist-rounded';
 import Offline from '~icons/material-symbols/cloud-off-outline-rounded';
 import Code from '~icons/material-symbols/code-rounded';
-import Computer from '~icons/material-symbols/computer-outline-rounded';
 import CalendarMonth from '~icons/material-symbols/date-range-outline-rounded';
-import Server from '~icons/material-symbols/dns-outline-rounded';
 import EventAvailable from '~icons/material-symbols/event-available-outline-rounded';
 import Favorite from '~icons/material-symbols/favorite-outline-rounded';
 import Group from '~icons/material-symbols/group-outline-rounded';
 import Hub from '~icons/material-symbols/hub-outline-rounded';
 import Lightbulb from '~icons/material-symbols/lightbulb-outline-rounded';
 import Lock from '~icons/material-symbols/lock-outline-rounded';
-import Mail from '~icons/material-symbols/mail-outline-rounded';
 import Bell from '~icons/material-symbols/notifications-outline-rounded';
 import Palette from '~icons/material-symbols/palette-outline-rounded';
 import Repeat from '~icons/material-symbols/repeat-rounded';
@@ -338,6 +336,50 @@ const everything: { icon: Icon; text: string }[] = [
   { icon: Widgets, text: 'Today’s tasks on your home screen, and a task beside its list on a foldable or tablet.' },
 ];
 
+/** How Amble grows with a household, one optional step at a time: what each adds and what it takes. */
+const layers: { title: string; note?: string; body: string; adds: string[]; takes: string; link: string; href: string; primary?: boolean }[] = [
+  {
+    title: 'The app and your Google account',
+    note: 'Where most people stop',
+    body: 'Install it on Android and start. There’s no account to make, and everything stays on your phone and works offline.',
+    adds: [
+      'Days planned around your calendar, with lists, reminders and the morning check-in',
+      'Sync for your other devices and your household through one file in your own Google Drive',
+    ],
+    takes: 'An Android phone, and a Google account if you want to sync.',
+    link: 'Join the Android test',
+    href: JOIN_TEST,
+    primary: true,
+  },
+  {
+    title: 'Your own AI key',
+    body: 'Amble works fully without AI. Add a key and it takes on the fiddly parts.',
+    adds: ['Smart add, which turns a sentence into tasks and grocery items', 'Plan my week and Tidy up', 'A guess for tasks you didn’t size'],
+    takes:
+      'A key from Claude, OpenAI, Gemini, GLM or OpenRouter, or a model on your own computer. Gemini and GLM have free tiers. The key stays on your phone, so each person adds their own.',
+    link: 'More about the AI features',
+    href: '#ai',
+  },
+  {
+    title: 'A household server',
+    body: 'One Docker container on a computer that stays on, like a home server, a NAS or a mini PC.',
+    adds: ['One AI model and one monthly cap for everyone', 'Photos and files on tasks, shared between phones', 'The web app for iPhones and computers', 'Syncing without Google'],
+    takes:
+      'A computer that stays on, an address your devices can reach (Tailscale is free for a household) and a sign-in client from Google Cloud. A script sets it up on Linux, a Mac or Windows.',
+    link: 'How to run one',
+    href: `${PROJECT_URL}/blob/main/docs/self-hosting.md`,
+  },
+  {
+    title: 'Claude and ChatGPT',
+    body: 'Plan from a chat. The assistant acts as you, and Activity shows which one changed what.',
+    adds: ['Adding, planning, finishing and handing off tasks', 'Your shopping lists, how full each day is and reminders you ask for'],
+    takes:
+      'Your server, reachable from the internet over HTTPS, and its address pasted into Claude’s connectors. ChatGPT connects the same way in its Developer mode, though nobody has tried it with a real account yet.',
+    link: 'How to connect one',
+    href: `${PROJECT_URL}/blob/main/docs/assistants.md`,
+  },
+];
+
 function Home({ data }: { data: SiteData }) {
   return (
     <main>
@@ -400,7 +442,7 @@ function Home({ data }: { data: SiteData }) {
         </div>
       </Section>
 
-      <Section eyebrow="AI when you want it" title="Works fully without AI. Add a model and it takes on the fiddly parts.">
+      <Section id="ai" eyebrow="AI when you want it" title="Works fully without AI. Add a model and it takes on the fiddly parts.">
         <div className="mt-10 grid items-start gap-10 expanded:grid-cols-2">
           <div className="rounded-[2rem] bg-surface-container p-5 medium:p-6">
             <p className="flex items-center gap-2 text-sm font-medium text-primary">
@@ -496,37 +538,70 @@ function Home({ data }: { data: SiteData }) {
         </ul>
       </Section>
 
-      <Section id="get" eyebrow="Get it" title="On your phone, or on a server your household runs">
-        <ul data-cascade className="mt-10 grid gap-3 expanded:grid-cols-3">
-          <li className="flex flex-col gap-4 rounded-[1.75rem] bg-surface-container p-6">
-            <Badge icon={Android} className="bg-primary text-on-primary" />
-            <h3 className="text-xl font-medium">Android</h3>
-            <p className="text-on-surface-variant">Coming to Google Play. It’s in testing now, and anyone can join.</p>
-            <a href={JOIN_TEST} className="press mt-auto flex h-12 w-fit items-center gap-2 rounded-full bg-primary px-6 font-medium text-on-primary">
-              <Mail className="size-5" aria-hidden />
-              Join the test
-            </a>
-          </li>
-          <li className="flex flex-col gap-4 rounded-[1.75rem] bg-surface-container p-6">
-            <Badge icon={Computer} />
-            <h3 className="text-xl font-medium">iPhone and computers</h3>
-            <p className="text-on-surface-variant">The web app, served by your household’s own server. A native iPhone app is wanted, if you’d like to build it.</p>
-            <a href={`${PROJECT_URL}/blob/main/CONTRIBUTING.md#help-wanted`} className="mt-auto w-fit rounded-full py-2 font-medium text-primary">
-              Help build it
-            </a>
-          </li>
-          <li className="flex flex-col gap-4 rounded-[1.75rem] bg-surface-container p-6">
-            <Badge icon={Server} />
-            <h3 className="text-xl font-medium">Your own server</h3>
-            <p className="text-on-surface-variant">
-              Most households never need one. It adds one AI model for everyone, shared photos and files, Claude and ChatGPT, and syncing without Google. One
-              Docker container, and a script sets it up.
-            </p>
-            <a href={`${PROJECT_URL}/blob/main/docs/self-hosting.md`} className="mt-auto w-fit rounded-full py-2 font-medium text-primary">
-              How to run one
-            </a>
-          </li>
-        </ul>
+      <Section id="get" eyebrow="Get it" title="Start with the app. Add the rest only if you want it.">
+        <p className="mt-5 max-w-2xl text-lg text-on-surface-variant">
+          Most households only need the first step. Each one after it builds on the one before, and Amble is free at every step.
+        </p>
+        <ol data-cascade className="mt-10 flex flex-col">
+          {layers.map((l, i) => (
+            <li key={l.title} className={`grid medium:grid-cols-[3rem_1fr] medium:gap-x-6 ${i < layers.length - 1 ? 'pb-3' : ''}`}>
+              <div className="hidden flex-col items-center medium:flex" aria-hidden>
+                <span className="display grid size-12 place-items-center rounded-full bg-primary text-xl font-medium text-on-primary">{i + 1}</span>
+                {i < layers.length - 1 && <span className="mt-3 w-0.5 flex-1 rounded-full bg-outline-variant" />}
+              </div>
+              {/* On a phone the link comes last; on a wide screen it sits under the step's description. */}
+              <div className="grid gap-6 rounded-[1.75rem] bg-surface-container p-6 medium:p-7 expanded:grid-cols-2 expanded:grid-rows-[auto_1fr] expanded:gap-x-10">
+                <div className="flex flex-col items-start gap-3">
+                  <div className="flex items-center gap-3">
+                    <span className="display grid size-9 shrink-0 place-items-center rounded-full bg-primary font-medium text-on-primary medium:hidden" aria-hidden>
+                      {i + 1}
+                    </span>
+                    <h3 className="text-xl font-medium">{l.title}</h3>
+                  </div>
+                  {l.note && <span className="chip chip-on">{l.note}</span>}
+                  <p className="text-on-surface-variant">{l.body}</p>
+                </div>
+                <div className="flex flex-col gap-5 expanded:col-start-2 expanded:row-span-2 expanded:row-start-1">
+                  <div>
+                    <h4 className="text-sm font-medium text-primary">What it adds</h4>
+                    <ul className="mt-2 flex flex-col gap-1.5">
+                      {l.adds.map((a) => (
+                        <li key={a} className="flex gap-2.5">
+                          <Check className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden />
+                          {a}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-medium text-primary">What it takes</h4>
+                    <p className="mt-2 text-on-surface-variant">{l.takes}</p>
+                  </div>
+                </div>
+                {l.primary ? (
+                  <a
+                    href={l.href}
+                    className="press flex h-12 w-fit items-center gap-2 rounded-full bg-primary px-6 font-medium text-on-primary expanded:col-start-1 expanded:row-start-2 expanded:self-end"
+                  >
+                    <Android className="size-5" aria-hidden />
+                    {l.link}
+                  </a>
+                ) : (
+                  <a href={l.href} className="w-fit rounded-full py-2 font-medium text-primary expanded:col-start-1 expanded:row-start-2 expanded:self-end">
+                    {l.link}
+                  </a>
+                )}
+              </div>
+            </li>
+          ))}
+        </ol>
+        <p className="mt-6 max-w-2xl text-on-surface-variant">
+          On an iPhone or a computer, Amble is the web app from a household server, step 3. A native iPhone app is wanted,{' '}
+          <a href={`${PROJECT_URL}/blob/main/CONTRIBUTING.md#help-wanted`} className="font-medium text-primary">
+            if you’d like to build it
+          </a>
+          .
+        </p>
       </Section>
 
       <Section eyebrow="Help make it better" title="Made in the open, and help of any size is welcome">
