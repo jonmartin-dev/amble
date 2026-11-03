@@ -6,7 +6,7 @@ import ExpandMore from '~icons/material-symbols/expand-more-rounded';
 import OpenInNew from '~icons/material-symbols/open-in-new-rounded';
 import { AI_PROVIDERS, aiModel, aiProvider, type AiEffort, type AiModel, type AiProviderId } from '../../../shared/ai.ts';
 import { ButtonGroup, SectionTitle, segment, SubpageHeader } from '../components/ui.tsx';
-import { api, ApiError, type AiStatus } from '../lib/api.ts';
+import { api, ApiError, type AiEditable } from '../lib/api.ts';
 import { syncNow, useDriveSync } from '../lib/drive-sync.ts';
 import { expressive } from '../lib/motion.ts';
 import { useAi, useMe, useServerSettings } from '../lib/queries.ts';
@@ -43,17 +43,36 @@ const blank = (provider: AiProviderId): Draft => {
 };
 
 /**
- * Picking a model and its key: for this device alone (`path` /ai), or, on a device that syncs with
- * the household's server, the server's, which everyone's devices use (/sync/server/settings/ai).
+ * Picking a model and its key: for this device alone (`path` /ai), for the household through its
+ * file in Google Drive (/ai/household), or on the household's server (/sync/server/settings/ai).
+ * Everyone's devices use the household's, either way. `keyNote` says where the key is kept, and
+ * runs on into "only ever sent to …".
  */
-function AiForm({ view, path, onServer, changed }: { view: AiStatus | undefined; path: string; onServer: boolean; changed: () => void }) {
+function AiForm({
+  settings,
+  path,
+  onServer = false,
+  keyNote,
+  capNote,
+  removeLabel,
+  changed,
+}: {
+  settings: AiEditable | null | undefined;
+  path: string;
+  onServer?: boolean;
+  keyNote: string;
+  capNote?: string;
+  /** What taking it away does, when there's one to take away. */
+  removeLabel: string | null;
+  changed: () => void;
+}) {
   const [draft, setDraft] = useState<Draft>(() => blank('anthropic'));
   // What trying it said. `tried` is false when it was refused before asking the model.
   const [result, setResult] = useState<{ ok: true; ms: number | null } | { ok: false; error: string; tried: boolean } | null>(null);
 
   // Start from what's set up, once it loads.
   useEffect(() => {
-    const s = view?.settings;
+    const s = settings;
     if (!s) return;
     setDraft({
       provider: s.provider,
@@ -65,11 +84,11 @@ function AiForm({ view, path, onServer, changed }: { view: AiStatus | undefined;
       priceIn: s.prices && !aiModel(s.provider, s.model) ? String(s.prices[0]) : '',
       priceOut: s.prices && !aiModel(s.provider, s.model) ? String(s.prices[1]) : '',
     });
-  }, [view?.settings?.provider, view?.settings?.model]);
+  }, [settings?.provider, settings?.model]);
 
   const provider = aiProvider(draft.provider)!;
   const known = aiModel(draft.provider, draft.model);
-  const savedKey = view?.settings?.provider === draft.provider ? view.settings.keyEnding : null;
+  const savedKey = settings?.provider === draft.provider ? settings.keyEnding : null;
   const update = (patch: Partial<Draft>) => {
     setDraft((d) => ({ ...d, ...patch }));
     setResult(null);
@@ -111,7 +130,6 @@ function AiForm({ view, path, onServer, changed }: { view: AiStatus | undefined;
   });
 
   const canSave = draft.model.trim() !== '' && (draft.provider !== 'custom' || draft.baseUrl.trim() !== '') && (draft.provider === 'custom' || savedKey != null || draft.apiKey.trim() !== '');
-  const removeLabel = !onServer && view?.server ? 'Use your server’s AI' : view?.environment ? 'Use the server’s setting' : 'Turn off';
 
   return (
     <form
@@ -233,7 +251,7 @@ function AiForm({ view, path, onServer, changed }: { view: AiStatus | undefined;
         className={field}
       />
       <p className="mt-2 px-1 text-sm text-on-surface-variant">
-        {onServer ? 'It’s kept on your server, locked, and' : 'It stays on this device, and is'} only ever sent to {provider.id === 'custom' ? 'that address' : provider.name}.
+        {keyNote} only ever sent to {provider.id === 'custom' ? 'that address' : provider.name}.
       </p>
 
       <SectionTitle>How hard it thinks</SectionTitle>
@@ -254,7 +272,7 @@ function AiForm({ view, path, onServer, changed }: { view: AiStatus | undefined;
           className="min-w-0 flex-1 bg-transparent py-3 outline-none"
         />
       </label>
-      {onServer && <p className="mt-2 px-1 text-sm text-on-surface-variant">For the whole household together.</p>}
+      {capNote && <p className="mt-2 px-1 text-sm text-on-surface-variant">{capNote}</p>}
       {!known && (
         <>
           <div className="mt-2 flex gap-2">
@@ -318,7 +336,7 @@ function AiForm({ view, path, onServer, changed }: { view: AiStatus | undefined;
       </AnimatePresence>
 
       <div className="mt-5 flex items-center justify-end gap-2">
-        {view?.source === 'settings' && (
+        {removeLabel && (
           <button type="button" onClick={() => remove.mutate()} className="rounded-full px-4 py-2.5 text-sm font-medium text-primary hover:bg-surface-high">
             {removeLabel}
           </button>
@@ -336,35 +354,87 @@ function AiForm({ view, path, onServer, changed }: { view: AiStatus | undefined;
   );
 }
 
+const ON_DEVICE = 'It stays on this device, and is';
+
 /**
- * Which AI model smart add and the planner use: any provider's, with the admin's own key. With a
- * household server, that's the server's model for everyone, set here; a key on this device alone
- * waits under Advanced.
+ * Which AI model smart add and the planner use: any provider's, with the admin's own key. A
+ * household sets one for everyone: through its file in Google Drive, or on its own server. A key
+ * on this device alone then waits under Advanced.
  */
 export function AiSettings() {
   const me = useMe();
   const qc = useQueryClient();
   const { data: ai } = useAi();
   const admin = me?.role === 'admin';
-  const onServer = useDriveSync().status?.target?.kind === 'server';
+  const kind = useDriveSync().status?.target?.kind;
+  const onServer = kind === 'server';
+  // Just you across your devices, or a household, keeping in step through Google Drive.
+  const onDrive = kind === 'household' || kind === 'personal';
+  const personal = kind === 'personal';
   const server = useServerSettings(onServer);
   const fromServer = ai?.source === 'server';
-  // This device's own key, for a household with a server: open when it's the one in use.
+  const household = ai?.source === 'household';
+  // This device's own key, when there's a shared one: open when it's the one in use.
   const [advanced, setAdvanced] = useState(false);
-  const ownInUse = onServer && ai?.source === 'settings';
+  const ownInUse = (onServer || onDrive) && ai?.source === 'settings';
 
   const changed = () => {
     void qc.invalidateQueries({ queryKey: ['ai'] });
     void qc.invalidateQueries({ queryKey: ['session'] });
     void qc.invalidateQueries({ queryKey: ['server-settings'] });
   };
-  // A change to the server's model reaches this device with its next round.
-  const serverChanged = () => {
+  // A change to the household's model reaches the others with this device's next round.
+  const sharedChanged = () => {
     changed();
     void syncNow()
       .then(changed)
       .catch(() => {});
   };
+
+  const source =
+    ai?.source === 'environment'
+      ? ', set in the server’s environment'
+      : fromServer
+        ? ', from your server'
+        : household
+          ? personal
+            ? ', on all your devices'
+            : ', your household’s'
+          : ownInUse
+            ? ', with a key on this device'
+            : '';
+
+  const ownKey = admin && (onServer || onDrive) && (
+    <>
+      <button
+        type="button"
+        onClick={() => setAdvanced(!(advanced || ownInUse))}
+        aria-expanded={advanced || ownInUse}
+        className="mt-8 flex w-full items-center gap-3 rounded-full px-4 py-3 text-left text-sm"
+      >
+        <span className="min-w-0 flex-1">
+          <span className="font-medium text-primary">Advanced</span>
+          <span className="block text-on-surface-variant">A key on this device only, instead of the shared one</span>
+        </span>
+        <ExpandMore className={`size-6 shrink-0 text-primary transition-transform ${advanced || ownInUse ? 'rotate-180' : ''}`} aria-hidden />
+      </button>
+      {(advanced || ownInUse) && (
+        <>
+          <p className="mt-2 px-1 text-sm text-on-surface-variant">
+            This device then asks its own model, with a key kept on it, and {personal ? 'your other devices keep' : 'everyone else keeps'} using the shared one.
+            Most {personal ? 'people' : 'households'} don't need this.
+          </p>
+          <AiForm
+            settings={ai?.settings}
+            path="/ai"
+            keyNote={ON_DEVICE}
+            removeLabel={ownInUse ? (onServer ? 'Use your server’s AI' : 'Use the shared model') : null}
+            changed={changed}
+          />
+        </>
+      )}
+    </>
+  );
 
   return (
     <>
@@ -381,13 +451,13 @@ export function AiSettings() {
             <p className="display mt-1 text-2xl font-medium">{ai.modelName}</p>
             <p className="mt-1 text-sm text-on-surface-variant">
               {ai.providerName}
-              {ai.source === 'environment' ? ', set in the server’s environment' : fromServer ? ', from your server' : onServer ? ', with a key on this device' : ''}
+              {source}
             </p>
             <p className="mt-3 text-sm">
               {fromServer
                 ? 'Your server keeps the key, and counts what it costs against its own monthly cap.'
                 : ai.priced
-                  ? `$${ai.monthSpendUsd.toFixed(2)} of the $${ai.monthlyCapUsd} cap this month. Past it, AI features pause until next month.`
+                  ? `$${ai.monthSpendUsd.toFixed(2)} of the $${ai.monthlyCapUsd} cap this month${household && !personal ? ', everyone together' : ''}. Past it, AI features pause until next month.`
                   : 'Spending isn’t counted for this model, so the monthly cap doesn’t apply.'}
             </p>
           </>
@@ -400,7 +470,11 @@ export function AiSettings() {
                 : admin
                   ? onServer
                     ? 'Set one up for the household below. Your server keeps the key.'
-                    : 'Pick a provider and paste a key below.'
+                    : onDrive
+                      ? personal
+                        ? 'Set one up below, and each of your devices uses it.'
+                        : 'Set one up below, and everyone in the household uses it.'
+                      : 'Pick a provider and paste a key below.'
                   : 'Ask the household admin to set one up.'}
             </p>
           </>
@@ -420,41 +494,52 @@ export function AiSettings() {
               Couldn’t reach your server just now{server.error instanceof Error ? `: ${server.error.message}` : '.'}
             </p>
           ) : server.data.me.role === 'admin' ? (
-            <AiForm view={server.data.ai} path="/sync/server/settings/ai" onServer changed={serverChanged} />
+            <AiForm
+              settings={server.data.ai.settings}
+              path="/sync/server/settings/ai"
+              onServer
+              keyNote="It’s kept on your server, locked, and"
+              capNote="For the whole household together."
+              removeLabel={server.data.ai.source === 'settings' ? (server.data.ai.environment ? 'Use the server’s setting' : 'Turn off') : null}
+              changed={sharedChanged}
+            />
           ) : (
             <p className="mt-3 px-1">
               {server.data.ai.available ? `${server.data.ai.modelName}, from ${server.data.ai.providerName}.` : 'None yet. The household admin sets one up here.'}
             </p>
           )}
-
-          {admin && (
-            <>
-              <button
-                type="button"
-                onClick={() => setAdvanced(!(advanced || ownInUse))}
-                aria-expanded={advanced || ownInUse}
-                className="mt-8 flex w-full items-center gap-3 rounded-full px-4 py-3 text-left text-sm"
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="font-medium text-primary">Advanced</span>
-                  <span className="block text-on-surface-variant">A key on this device only, instead of the household's</span>
-                </span>
-                <ExpandMore className={`size-6 shrink-0 text-primary transition-transform ${advanced || ownInUse ? 'rotate-180' : ''}`} aria-hidden />
-              </button>
-              {(advanced || ownInUse) && (
-                <>
-                  <p className="mt-2 px-1 text-sm text-on-surface-variant">
-                    This device then asks its own model, with a key kept on it, and everyone else keeps using the household's. Most households don't need
-                    this.
-                  </p>
-                  <AiForm view={ai} path="/ai" onServer={false} changed={changed} />
-                </>
-              )}
-            </>
+          {ownKey}
+        </>
+      ) : onDrive ? (
+        <>
+          <SectionTitle>{personal ? 'Your model, on all your devices' : 'Your household’s model'}</SectionTitle>
+          <p className="px-1 text-on-surface-variant">
+            {personal
+              ? 'Set it up once and each of your devices uses it. It syncs through Google Drive like everything else.'
+              : 'Set it up once and everyone’s devices use it. It syncs through your household’s file in Google Drive like everything else.'}
+          </p>
+          {admin ? (
+            <AiForm
+              settings={ai?.household?.settings}
+              path="/ai/household"
+              keyNote={
+                personal
+                  ? 'It’s kept in Amble’s own folder in your Google Drive, and is'
+                  : 'It’s kept in your household’s file in Google Drive, where anyone in the household could read it, and is'
+              }
+              capNote={personal ? 'For all your devices together.' : 'For the whole household together.'}
+              removeLabel={ai?.household ? 'Turn off' : null}
+              changed={sharedChanged}
+            />
+          ) : (
+            <p className="mt-3 px-1">
+              {ai?.household ? `${ai.household.modelName}, from ${ai.household.providerName}.` : 'None yet. The household admin sets one up here.'}
+            </p>
           )}
+          {ownKey}
         </>
       ) : (
-        admin && <AiForm view={ai} path="/ai" onServer={false} changed={changed} />
+        admin && <AiForm settings={ai?.settings} path="/ai" keyNote={ON_DEVICE} removeLabel={ai?.source === 'settings' ? 'Turn off' : null} changed={changed} />
       )}
     </>
   );

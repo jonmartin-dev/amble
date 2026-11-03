@@ -2,7 +2,7 @@
 // one: for a device that doesn't sync (whose only other backup is the phone's own), a new phone,
 // or a household syncing through Google Drive, where photos and files on tasks stay on the device
 // that added them. The copy is the whole database, with the files' bytes in a table of their own,
-// and without this device's sync sign-in or AI key.
+// and without this device's sync sign-in or any AI key.
 import type { Database } from 'better-sqlite3';
 import type { FileStore } from './files.ts';
 
@@ -34,6 +34,8 @@ export async function savedCopy(engine: CopyEngine, files: FileStore): Promise<U
   const copy = engine.open(engine.current());
   try {
     copy.client.exec(`DELETE FROM server_settings WHERE ${DEVICE_ONLY}`);
+    // The household's model has a key in it too, and comes back with the household anyway.
+    copy.client.exec(`DELETE FROM household_settings WHERE key = 'ai'`);
     copy.client.exec(`CREATE TABLE ${FILES} (sha256 TEXT PRIMARY KEY, bytes BLOB NOT NULL)`);
     const shas = copy.client.prepare(`SELECT sha256 AS sha FROM attachments UNION SELECT preview_sha256 FROM attachments WHERE preview_sha256 IS NOT NULL`).all() as { sha: string }[];
     const put = copy.client.prepare(`INSERT INTO ${FILES} (sha256, bytes) VALUES (?, ?)`);

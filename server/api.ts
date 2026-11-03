@@ -825,6 +825,18 @@ export function registerApi(
     return c.body(null, 204);
   });
 
+  // The household's model, for everyone's devices: it syncs with the household, key and all.
+  app.put('/api/ai/household', async (c) => {
+    if (me(c).role !== 'admin') return c.json({ error: 'Only an admin can change the AI model.' }, 403);
+    return c.json(await saveAiSettings(ai, await body(c, aiSettingsInput), 'household'));
+  });
+
+  app.delete('/api/ai/household', (c) => {
+    if (me(c).role !== 'admin') return c.json({ error: 'Only an admin can change the AI model.' }, 403);
+    ai.saveHousehold(null);
+    return c.body(null, 204);
+  });
+
   // Proposals to review, or { fallback } when the model can't help and the app should add it as typed.
   // Asked to stream, each proposal comes on a line of its own as the model writes it ({ proposal }),
   // then the whole answer ({ result }), or { fallback } or { error } instead.

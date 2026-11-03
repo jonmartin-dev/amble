@@ -1,9 +1,10 @@
 // The household's AI calls: one model, from whichever provider the admin set up, every call
 // metered, and a monthly cap so a self-hoster is never surprised by the bill. Anthropic is spoken
 // to through its own SDK; everyone else through the OpenAI-style chat completions API that most
-// providers offer (OpenAI, Gemini, Z.ai, OpenRouter, Ollama and the rest). A device that syncs
-// with the household's own server, and has no model of its own, asks the server's
-// (server/sync/hub.ts), which keeps the key and the cap.
+// providers offer (OpenAI, Gemini, Z.ai, OpenRouter, Ollama and the rest). A device with no model
+// of its own uses the household's: one an admin set for everyone, which syncs through Google Drive
+// with what each device spent on it, or the household's own server's, which it asks
+// (server/sync/hub.ts) and which keeps the key and the cap.
 import Anthropic from '@anthropic-ai/sdk';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { and, eq, gte, sql } from 'drizzle-orm';
@@ -12,7 +13,7 @@ import { aiModel, aiModelName, aiProvider, type AiEffort, type AiProviderId } fr
 import { isLines, readLines } from '../../shared/lines.ts';
 import type { Config } from '../config.ts';
 import type { Db } from '../db/index.ts';
-import { aiUsage, serverSettings } from '../db/schema.ts';
+import { aiUsage, householdAiSpend, householdSettings, serverSettings } from '../db/schema.ts';
 import { seal, unseal } from '../lib/seal.ts';
 
 export type Effort = 'low' | 'medium' | 'high';
@@ -32,8 +33,11 @@ export interface AiSetup {
   monthlyCapUsd: number;
   /** US dollars per million tokens, in and out, when Amble or the admin knows them. */
   prices: [number, number] | null;
-  /** Saved in Settings, read from the server's environment, or the household's server's, which a device asks. */
-  source: 'settings' | 'environment' | 'server';
+  /**
+   * Saved in Settings for this copy alone, read from the server's environment, set for the whole
+   * household and synced with it (on Google Drive), or the household's server's, which a device asks.
+   */
+  source: 'settings' | 'environment' | 'household' | 'server';
 }
 
 /** The household's server's model, for a device with none of its own: where to ask, and what it is. */
@@ -75,13 +79,19 @@ export interface AiAnswer<T> {
 }
 
 export interface Ai {
-  /** What's set up: from Settings, else from the environment, else nothing. */
+  /** What's in use: this copy's own, else the household's, else the household's server's, else nothing. */
   setup(): AiSetup | null;
+  /** This copy's own: from Settings, else from the environment. */
+  own(): AiSetup | null;
+  /** The one the household set for everyone, synced with it. */
+  household(): AiSetup | null;
   readonly available: boolean;
   /** One structured call. Throws when the provider can't be reached or refuses the request. */
   complete<T extends z.ZodType>(setup: AiSetup, req: AiRequest<T>): Promise<AiAnswer<z.output<T>>>;
   /** Keeps a model set up in the app, or with null goes back to the environment's. */
   save(settings: AiSettings | null): void;
+  /** Keeps the household's model, synced to everyone's devices, or with null takes it away. */
+  saveHousehold(settings: AiSettings | null): void;
   /** Whether a key saved in the app can still be opened, for Settings to say so. */
   keyState(): 'none' | 'saved' | 'unreadable';
   /** The household's server's model, which this device would use without one of its own. */
@@ -168,11 +178,23 @@ export function createAi(
     return { ...saved, apiKey, source: 'settings' };
   };
 
+  // The household's, as the last round of sync left it: read every time, since a round can change it.
+  const household = (): AiSetup | null => {
+    const saved = db?.select().from(householdSettings).where(eq(householdSettings.key, 'ai')).get()?.value as AiSettings | undefined;
+    // From another device's Amble, so only a shape this one knows.
+    if (!saved || !aiProvider(saved.provider) || !saved.model) return null;
+    return { ...saved, source: 'household' };
+  };
+
   const ai: Ai = {
     setup() {
-      cached ??= { setup: read() };
-      return cached.setup ?? fromServer();
+      return ai.own() ?? household() ?? fromServer();
     },
+    own() {
+      cached ??= { setup: read() };
+      return cached.setup;
+    },
+    household,
     get available() {
       return ai.setup() != null;
     },
@@ -197,10 +219,35 @@ export function createAi(
       const value: Stored = { ...rest, key };
       db.insert(serverSettings).values({ key: 'ai', value }).onConflictDoUpdate({ target: serverSettings.key, set: { value } }).run();
     },
+    // In the household's synced copy, key and all: everyone's devices call the model with it.
+    saveHousehold(settings) {
+      if (!db) throw new Error('No database to keep AI settings in.');
+      if (!settings) {
+        db.delete(householdSettings).where(eq(householdSettings.key, 'ai')).run();
+        return;
+      }
+      db.insert(householdSettings).values({ key: 'ai', value: settings }).onConflictDoUpdate({ target: householdSettings.key, set: { value: settings } }).run();
+    },
     keyState: () => (db ? savedKeyState(db, config, keys) : 'none'),
     server: fromServer,
   };
   return ai;
+}
+
+/**
+ * On a server: a model the household set while it synced through Google Drive becomes the server's
+ * own, sealed like any other (unless the server has one already), and leaves the household's synced
+ * copy, so the key stops travelling with it. Says whether anything changed.
+ */
+export function adoptHouseholdAi(ai: Ai) {
+  const household = ai.household();
+  if (!household) return false;
+  if (!ai.own()) {
+    const { source: _, ...settings } = household;
+    ai.save(settings);
+  }
+  ai.saveHousehold(null);
+  return true;
 }
 
 /** Whether a saved setup still has a key the server can open (for Settings to say so). */
@@ -564,6 +611,33 @@ export function monthSpendUsd(db: Db, timezone: string) {
   return (row?.micros ?? 0) / 1_000_000;
 }
 
+const monthKey = (timezone: string) => Temporal.Now.plainDateISO(timezone).toPlainYearMonth().toString();
+
+/** What everyone's devices spent this month with the household's model, as far as this copy has heard. */
+export function householdSpendUsd(db: Db, timezone: string) {
+  const [row] = db
+    .select({ micros: sql<number>`coalesce(sum(${householdAiSpend.micros}), 0)` })
+    .from(householdAiSpend)
+    .where(eq(householdAiSpend.month, monthKey(timezone)))
+    .all();
+  return (row?.micros ?? 0) / 1_000_000;
+}
+
+/** Adds a call with the household's model to this device's row, which syncs to the others. */
+function addHouseholdSpend(db: Db, timezone: string, micros: number) {
+  if (micros <= 0) return;
+  // This copy's id in sync (server/sync/service.ts), which only the household's model needs.
+  const site = (db.select().from(serverSettings).where(eq(serverSettings.key, 'sync')).get()?.value as { site?: string } | undefined)?.site ?? 'here';
+  db.insert(householdAiSpend)
+    .values({ site, month: monthKey(timezone), micros })
+    .onConflictDoUpdate({ target: [householdAiSpend.site, householdAiSpend.month], set: { micros: sql`${householdAiSpend.micros} + ${micros}` } })
+    .run();
+}
+
+/** This month's spending against the cap of the model in use: the household's together, or this copy's own. */
+export const spentAgainst = (setup: AiSetup, db: Db, timezone: string) =>
+  setup.source === 'household' ? householdSpendUsd(db, timezone) : monthSpendUsd(db, timezone);
+
 /** Millionths of a dollar; cached input at a tenth, roughly what providers charge. */
 export function costMicros(prices: [number, number] | null, usage: AiUsage) {
   if (!prices) return 0;
@@ -594,7 +668,7 @@ export function recordUsage(
 export function requireAi(ai: Ai, db: Db, timezone: string): AiSetup {
   const setup = ai.setup();
   if (!setup) throw new AiUnavailable('No AI model is set up on the server.');
-  if (monthSpendUsd(db, timezone) >= setup.monthlyCapUsd) {
+  if (spentAgainst(setup, db, timezone) >= setup.monthlyCapUsd) {
     throw new AiUnavailable(`This month's AI budget ($${setup.monthlyCapUsd}) is used up.`);
   }
   return setup;
@@ -622,6 +696,7 @@ export async function ask<T extends z.ZodType>(
   }
   const ms = Math.round(performance.now() - started);
   recordUsage(db, { ...entry, usage: answer.usage, durationMs: ms, ok: answer.output != null });
+  if (setup.source === 'household') addHouseholdSpend(db, req.timezone, costMicros(setup.prices, answer.usage));
   if (answer.output == null) throw new AiUnavailable(`${name} ${answer.problem ?? 'gave no answer'}.`);
   return { output: answer.output, usage: answer.usage, ms, setup };
 }
@@ -648,8 +723,8 @@ export async function checkSetup(ai: Ai, setup: AiSetup): Promise<{ ok: true; ms
   }
 }
 
-/** Who the AI features send things to, for the privacy page: { provider, name }, or null. */
+/** Who the AI features send things to, and whose key, for the privacy page: { provider, name, source }, or null. */
 export function aiProviderFor(ai: Ai) {
   const setup = ai.setup();
-  return setup ? { provider: setup.provider, name: aiProvider(setup.provider)?.name ?? setup.provider } : null;
+  return setup ? { provider: setup.provider, name: aiProvider(setup.provider)?.name ?? setup.provider, source: setup.source } : null;
 }

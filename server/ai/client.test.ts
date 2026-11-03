@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { config, type Config } from '../config.ts';
 import { openDatabase, type Db } from '../db/index.ts';
-import { serverSettings } from '../db/schema.ts';
-import { ask, createAi, jsonIn, savedKeyState, shareRepeats, strictSchema, type AiSetup } from './client.ts';
+import { householdAiSpend, householdSettings, serverSettings } from '../db/schema.ts';
+import { adoptHouseholdAi, ask, createAi, householdSpendUsd, jsonIn, savedKeyState, shareRepeats, strictSchema, type AiSetup } from './client.ts';
 
 const testConfig: Config = {
   ...config,
@@ -325,5 +325,53 @@ describe('AI settings', () => {
     // 1000 in at $0.10, 200 cached at a tenth of that, 80 out at $0.50: $0.000142.
     await expect(ask(db, ai, { ...request, feature: 'test', memberId: null, timezone: 'America/Chicago' })).resolves.toBeTruthy();
     await expect(ask(db, ai, { ...request, feature: 'test', memberId: null, timezone: 'America/Chicago' })).rejects.toThrow(/budget/);
+  });
+});
+
+describe("the household's model", () => {
+  let db: Db;
+  const household = { provider: 'custom' as const, model: 'shared', baseUrl: 'https://llm.test/v1', apiKey: 'sk-household-4321', effort: 'default' as const, monthlyCapUsd: 0.0003, prices: [0.1, 0.5] as [number, number] };
+  const call = (ai: ReturnType<typeof createAi>) => ask(db, ai, { ...request, feature: 'test', memberId: null, timezone: 'America/Chicago' });
+  beforeEach(() => {
+    db = openDatabase(':memory:');
+  });
+
+  it('syncs with the household, key and all, and gives way to a key of this copy’s own', () => {
+    const ai = createAi(testConfig, db);
+    ai.saveHousehold(household);
+    expect(ai.setup()).toMatchObject({ model: 'shared', apiKey: 'sk-household-4321', source: 'household' });
+    // In the synced copy as it is, since everyone's devices call the model with it.
+    expect(JSON.stringify(db.select().from(householdSettings).all())).toContain('sk-household-4321');
+
+    ai.save({ ...household, model: 'mine', apiKey: 'sk-mine' });
+    expect(ai.setup()).toMatchObject({ model: 'mine', source: 'settings' });
+    ai.save(null);
+    expect(ai.setup()).toMatchObject({ model: 'shared', source: 'household' });
+    ai.saveHousehold(null);
+    expect(ai.setup()).toBeNull();
+  });
+
+  it("counts every device's spending against one cap", async () => {
+    db.insert(serverSettings).values({ key: 'sync', value: { site: 'this-phone' } }).run();
+    const { fetchImpl } = provider(answered(good), answered(good));
+    const ai = createAi(testConfig, db, fetchImpl);
+    ai.saveHousehold(household);
+    await call(ai);
+    const month = Temporal.Now.plainDateISO('America/Chicago').toPlainYearMonth().toString();
+    expect(db.select().from(householdAiSpend).all()).toEqual([{ site: 'this-phone', month, micros: 142 }]);
+    // Another phone's spending, from the last round of sync, takes the household past its cap.
+    db.insert(householdAiSpend).values({ site: 'their-phone', month, micros: 200 }).run();
+    expect(householdSpendUsd(db, 'America/Chicago')).toBeCloseTo(0.000342);
+    await expect(call(ai)).rejects.toThrow(/budget/);
+  });
+
+  it('becomes a server’s own, sealed, and leaves the household’s copy', () => {
+    const ai = createAi(testConfig, db);
+    ai.saveHousehold(household);
+    expect(adoptHouseholdAi(ai)).toBe(true);
+    expect(ai.setup()).toMatchObject({ model: 'shared', apiKey: 'sk-household-4321', source: 'settings' });
+    expect(ai.household()).toBeNull();
+    expect(JSON.stringify(db.select().from(serverSettings).all())).not.toContain('sk-household-4321');
+    expect(adoptHouseholdAi(ai)).toBe(false);
   });
 });

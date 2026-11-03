@@ -185,3 +185,26 @@ describe('sync through Google Drive', () => {
     expect(a.db.$client.prepare('SELECT count(*) AS n FROM sync_cells').get()).toEqual({ n: 0 });
   });
 });
+
+describe("the household's AI model through Google Drive", () => {
+  it('reaches every device, which use it unless they have their own', async () => {
+    const drive = createFakeDrive();
+    const sam = drive.user('sam@example.com', 'Sam Lee');
+    const phone = device(drive, sam);
+    await phone.call('POST', '/device/start', { name: 'Sam' });
+    await phone.connect({ mode: 'personal' });
+    const model = { provider: 'custom', model: 'shared', baseUrl: 'https://llm.test/v1', apiKey: 'sk-household', effort: 'default', monthlyCapUsd: 5, check: false };
+    expect((await phone.call('PUT', '/ai/household', model)).json).toMatchObject({ ok: true });
+    await phone.run();
+
+    const laptop = device(drive, sam);
+    await laptop.connect({ mode: 'personal' });
+    expect((await laptop.call('GET', '/ai')).json).toMatchObject({ available: true, model: 'shared', source: 'household', settings: null, household: { modelName: 'shared' } });
+
+    // Taken away on one, gone from the other with its next round.
+    expect((await laptop.call('DELETE', '/ai/household')).status).toBe(204);
+    await laptop.run();
+    await phone.run();
+    expect((await phone.call('GET', '/ai')).json).toMatchObject({ available: false, household: null });
+  });
+});

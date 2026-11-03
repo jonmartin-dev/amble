@@ -23,6 +23,8 @@ export function fakeAi(answer: (req: FakeRequest) => unknown): Ai & { requests: 
   return {
     requests,
     setup: () => fakeSetup,
+    own: () => fakeSetup,
+    household: () => null,
     available: true,
     async complete(_setup, req) {
       const r = { system: req.system, content: req.content };
@@ -36,6 +38,9 @@ export function fakeAi(answer: (req: FakeRequest) => unknown): Ai & { requests: 
       return { output: output as never, problem: null, usage: { input: 1000, output: 100, cached: 0 } };
     },
     save() {
+      throw new Error('fakeAi has no settings');
+    },
+    saveHousehold() {
       throw new Error('fakeAi has no settings');
     },
     keyState: () => 'none',

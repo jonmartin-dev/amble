@@ -3,6 +3,7 @@
 // sealed like calendar tokens, and syncs every minute and soon after each change, whoever made it:
 // the app, Claude or ChatGPT through the connector, or a background job.
 import { eq } from 'drizzle-orm';
+import { adoptHouseholdAi, type Ai } from '../ai/client.ts';
 import type { GoogleApi } from '../lib/google.ts';
 import type { Config } from '../config.ts';
 import type { Db } from '../db/open.ts';
@@ -24,7 +25,22 @@ interface Stored {
   refreshToken: string;
 }
 
-export function createServerSync({ db, config, google, schema, fetchImpl = fetch }: { db: Db; config: Config; google: GoogleApi; schema: string; fetchImpl?: typeof fetch }) {
+export function createServerSync({
+  db,
+  config,
+  google,
+  schema,
+  ai,
+  fetchImpl = fetch,
+}: {
+  db: Db;
+  config: Config;
+  google: GoogleApi;
+  schema: string;
+  /** For taking over a model the household set on Drive (server/ai/client.ts). */
+  ai?: Ai;
+  fetchImpl?: typeof fetch;
+}) {
   const secret = config.oidc.clientSecret;
   // Joining a household the server's own groups might already be in by name: they fold into it.
   // Devices can sync with the server directly too (server/sync/hub.ts), so it always records changes.
@@ -79,7 +95,10 @@ export function createServerSync({ db, config, google, schema, fetchImpl = fetch
     async run() {
       if (!service.status().on) return { merged: 0, uploaded: false, error: null };
       try {
-        return await service.run(await token());
+        const result = await service.run(await token());
+        // A model the household set on Drive becomes the server's own, and leaves the file next round.
+        if (ai && adoptHouseholdAi(ai)) server.soon();
+        return result;
       } catch (err) {
         return { merged: 0, uploaded: false, error: err instanceof Error ? err.message : String(err) };
       }

@@ -38,7 +38,7 @@ export function createApp({
   oidc,
   fetchImpl,
   ai = createAi(config, db),
-  sync = createServerSync({ db, config, google: createGoogle(config), schema: SCHEMA }),
+  sync = createServerSync({ db, config, google: createGoogle(config), schema: SCHEMA, ai }),
   files = createFileStore(config.dataDir),
 }: {
   db: Db;

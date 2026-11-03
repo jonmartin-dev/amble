@@ -7,7 +7,7 @@
 // Everything is a bearer token, never a cookie, so any address the app is served from may call it.
 import { createHash, randomBytes } from 'node:crypto';
 import { eq, or } from 'drizzle-orm';
-import { AiUnavailable, ask, effortFor, type Ai } from '../ai/client.ts';
+import { adoptHouseholdAi, AiUnavailable, ask, effortFor, type Ai } from '../ai/client.ts';
 import { linesResponse } from '../../shared/lines.ts';
 import type { Context, Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
@@ -129,6 +129,8 @@ export function registerSyncHub(
       if (err instanceof NewerSchema) return c.json({ error: 'Your server runs an older Amble than this device. Update the server to keep syncing.' }, 409);
       throw err;
     }
+    // A model the household set while it was on Google Drive becomes the server's own.
+    if (adoptHouseholdAi(ai)) service.stamp();
     const { state, etag } = current();
     return answer(c, state, etag);
   });

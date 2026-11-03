@@ -80,8 +80,13 @@ export function Privacy() {
         <h2>AI features</h2>
         {auth?.ai ? (
           <p>
-            This copy uses an AI model from {aiName}, with a key you entered that stays on this device. Task titles and related details
-            go straight from this device to {aiName}'s API to turn what you type into tasks, estimate how long tasks take, word the
+            This copy uses an AI model from {aiName},{' '}
+            {auth.ai.source === 'household'
+              ? "with a key your household's admin set up for everyone, kept in your household's file in Google Drive. Task titles and related details go straight from this device"
+              : auth.ai.source === 'server'
+                ? "through your household's server, which keeps the key. Task titles and related details go through the server"
+                : 'with a key you entered that stays on this device. Task titles and related details go straight from this device'}{' '}
+            to {aiName}'s API to turn what you type into tasks, estimate how long tasks take, word the
             morning's suggestions, plan your week and suggest tidying the backlog. With Calendars on, the titles and times of your
             own events that day or week go along for the morning's suggestions and planning your week.{' '}
             {AI_TRAINING[auth.ai.provider] ?? `${aiName}'s own terms say what it keeps and whether it learns from it.`}

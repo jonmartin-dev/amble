@@ -28,9 +28,9 @@ A reminder you set is handed to your phone, which shows it at its time. With syn
 
 ## AI features
 
-The AI features are off until you set one up. You can enter your own key for an AI provider such as Anthropic, OpenAI, Google or OpenRouter, and the key stays on your phone. You can also use a model on your own computer, or, if your phone syncs with your household's own server, the model its owner set up there.
+The AI features are off until you set one up. You can enter your own key for an AI provider such as Anthropic, OpenAI, Google or OpenRouter, and the key stays on your phone. You can also use a model on your own computer. If your household syncs through Google Drive, its admin can set up one model for everyone instead: that key goes into the household's file in Google Drive, where anyone in the household could read it, and each phone calls the provider with it. If your phone syncs with your household's own server, you can use the model its owner set up there, and the key stays on the server.
 
-The text they need goes to that provider when you use them: what you type into quick add, task titles and related details, and with Calendars on, the titles and times of your own events that day or week for the morning's suggestions and planning your week. With your own key it goes straight from your phone to the provider's API. Through your household's server it goes to the server, which sends it on. Each provider handles it under its own terms.
+The text they need goes to that provider when you use them: what you type into quick add, task titles and related details, and with Calendars on, the titles and times of your own events that day or week for the morning's suggestions and planning your week. With your own key or the household's it goes straight from your phone to the provider's API. Through your household's server it goes to the server, which sends it on. Each provider handles it under its own terms.
 
 ## Claude and ChatGPT
 

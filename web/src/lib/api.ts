@@ -86,7 +86,7 @@ export interface Session {
     oidc: boolean;
     devEmails: string[];
     privacyContact: string;
-    ai: { provider: AiProviderId; name: string } | null;
+    ai: { provider: AiProviderId; name: string; source: AiStatus['source'] } | null;
     /** `device`: Amble runs on this device, with no server and no sign-in. */
     mode?: 'device';
   };
@@ -311,6 +311,17 @@ export interface ListItem {
   checkedAt: string | null;
 }
 
+/** A model as an admin changes it: what's set, without the key. */
+export interface AiEditable {
+  provider: AiProviderId;
+  model: string;
+  baseUrl: string;
+  effort: AiEffort;
+  monthlyCapUsd: number;
+  prices: [number, number] | null;
+  keyEnding: string | null;
+}
+
 export interface AiStatus {
   available: boolean;
   /** Available and switched on for this person. */
@@ -320,25 +331,22 @@ export interface AiStatus {
   model: string | null;
   modelName: string | null;
   effort: AiEffort | null;
-  /** Set up in the app, in the server's environment, or the household's server's model, which this device asks. */
-  source: 'settings' | 'environment' | 'server' | null;
+  /**
+   * This device's own (set up in the app), the server's environment, the household's model synced
+   * through Google Drive, or the household's server's, which this device asks.
+   */
+  source: 'settings' | 'environment' | 'household' | 'server' | null;
   /** The server's environment sets a model too. */
   environment: boolean;
   /** Spending is counted, so the cap applies. */
   priced: boolean;
   monthSpendUsd: number;
   monthlyCapUsd: number;
-  /** For the admin: what's set, without the key. */
-  settings: {
-    provider: AiProviderId;
-    model: string;
-    baseUrl: string;
-    effort: AiEffort;
-    monthlyCapUsd: number;
-    prices: [number, number] | null;
-    keyEnding: string | null;
-  } | null;
+  /** For the admin: this device's own, without the key. */
+  settings: AiEditable | null;
   keyUnreadable: boolean;
+  /** The household's model, synced through Google Drive, which this device uses unless it has its own. */
+  household: { providerName: string; modelName: string; settings: AiEditable | null } | null;
   /** On a device syncing with the household's server: the server's model, used unless this device has its own. */
   server: { providerName: string; modelName: string } | null;
 }

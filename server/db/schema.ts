@@ -287,6 +287,27 @@ export const serverSettings = sqliteTable('server_settings', {
   createdAt: createdAt(),
 });
 
+// What a household sets once for everyone, synced with it: its AI model ('ai'), which an admin sets
+// on a household that syncs through Google Drive. A server keeps its own model, sealed, instead.
+export const householdSettings = sqliteTable('household_settings', {
+  key: text('key').primaryKey(),
+  value: text('value', { mode: 'json' }).$type<unknown>().notNull(),
+  createdAt: createdAt(),
+});
+
+// What each device spent with the household's model in a month ("2026-11"), so every copy counts the
+// household's month against one cap. Each device writes only its own row, so no two ever clash.
+export const householdAiSpend = sqliteTable(
+  'household_ai_spend',
+  {
+    site: text('site').notNull(),
+    month: text('month').notNull(),
+    // Millionths of a dollar.
+    micros: integer('micros').notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.site, t.month] })],
+);
+
 // A device where someone turned on notifications. Their reminders go to every one of them.
 export const pushSubscriptions = sqliteTable(
   'push_subscriptions',
