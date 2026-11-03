@@ -139,12 +139,25 @@ describe('getting into a server with a code', () => {
     const home = server();
     const login = await home.app.request(`${HOME}/auth/login?return=/server`, { redirect: 'manual' });
     expect(login.headers.get('location')).toBe('/auth/signin?return=%2Fserver');
-    expect(await (await home.app.request(`${HOME}/auth/signin`)).text()).toContain('ABCD-EFGH');
+    const signin = await home.app.request(`${HOME}/auth/signin`);
+    expect(await signin.text()).toContain('ABCD-EFGH');
+    expect(signin.headers.get('content-security-policy')).toContain("default-src 'none'");
 
     const p = phone(home);
     for (let i = 0; i < 10; i++) expect((await p.pair('WRNG-CODE', 'X')).status).toBe(400);
     // Even the right code waits now.
     expect((await p.pair(adminCode(home), 'X')).json.error).toMatch(/Too many/);
+
+    // Through a proxy, the address it saw counts, not one the caller made up for each guess.
+    const guess = (claimed: string, real: string) =>
+      home.app.request(`${HOME}/sync/pair`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-forwarded-for': `${claimed}, ${real}` },
+        body: JSON.stringify({ code: 'WRNG-CODE', name: 'X' }),
+      });
+    for (let i = 0; i < 10; i++) expect((await guess(`203.0.113.${i}`, '100.64.0.9')).status).toBe(400);
+    expect((await guess('203.0.113.99', '100.64.0.9')).status).toBe(429);
+    expect((await guess('203.0.113.99', '100.64.0.10')).status).toBe(400);
   });
 
   it('runs out', async () => {

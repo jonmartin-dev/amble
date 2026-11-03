@@ -124,6 +124,24 @@ describe('syncing with the household’s own server', () => {
     expect(await alis.titles()).toEqual(['Buy lightbulbs', 'Call the plumber', 'Clean the gutters', 'Renew the passport']);
   });
 
+  it("keeps who's an admin when someone else's phone changes it", async () => {
+    const home = server();
+    const alis = phone(home);
+    await alis.call('POST', '/sync/server/connect', { url: HOME, ...(await signIn(home, home.ali.id)) });
+    // Ali's own copy, edited by hand: Ali an admin, Sam not, and a new admin brought in.
+    alis.db.$client.prepare(`UPDATE members SET role = CASE id WHEN ? THEN 'admin' ELSE 'member' END`).run(home.ali.id);
+    alis.db.$client.prepare(`INSERT INTO members (id, email, name, timezone, role) VALUES ('m-new', 'new@example.com', 'New', 'America/Chicago', 'admin')`).run();
+    await alis.call('POST', '/tasks', { title: 'Water the plants' });
+    expect((await alis.call('POST', '/sync/run', {})).json).toMatchObject({ error: null });
+
+    const roles = (db: typeof home.db) => Object.fromEntries(db.select({ email: members.email, role: members.role }).from(members).all().map((m) => [m.email, m.role]));
+    // The task made it; the roles didn't, and Ali's phone has the server's back.
+    expect(listTasks(home.db, home.sam, {}).map((t) => t.title)).toContain('Water the plants');
+    expect(roles(home.db)).toEqual({ 'sam@example.com': 'admin', 'ali@example.com': 'member', 'new@example.com': 'member' });
+    await alis.call('POST', '/sync/run', {});
+    expect(roles(alis.db)).toEqual({ 'sam@example.com': 'admin', 'ali@example.com': 'member', 'new@example.com': 'member' });
+  });
+
   it('lets a sign-in be used once, by the device that started it, going back only where it may', async () => {
     const home = server();
     const p = phone(home);

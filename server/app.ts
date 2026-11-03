@@ -2,6 +2,7 @@
 // Android app wraps), keeps one more copy of the household, and adds what only an always-on
 // address can: the Claude and ChatGPT connector, devices syncing straight with it, background
 // work, and a few plain pages for signing in and its own settings (server/site.ts).
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,7 +24,7 @@ import type { FileStore } from './domain/files.ts';
 import { createFileStore } from './lib/disk-files.ts';
 import { html, page } from './pages.ts';
 import { createGoogle } from './lib/google.ts';
-import { registerSite, safeReturnTo } from './site.ts';
+import { CONFIRM_STOP, registerSite, safeReturnTo } from './site.ts';
 import { registerServerSettings } from './settings.ts';
 import { codeGuesses, registerSyncHub, requestFrom } from './sync/hub.ts';
 import { createServerSync, type ServerSync } from './sync/server.ts';
@@ -69,6 +70,16 @@ export function createApp({
   });
 
   app.use(secureHeaders({ crossOriginEmbedderPolicy: false }));
+  // The server's own pages (signing in, letting a device or an assistant in, its settings) run no
+  // scripts but one confirm and load nothing from elsewhere, so they say so: whatever got into one
+  // couldn't run.
+  const pagePolicy = `default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; script-src-attr 'unsafe-hashes' 'sha256-${createHash('sha256').update(CONFIRM_STOP).digest('base64')}'; base-uri 'none'; frame-ancestors 'none'`;
+  for (const p of ['/auth/*', '/server', '/server/*', '/oauth/*']) {
+    app.use(p, async (c, next) => {
+      await next();
+      if (c.res.headers.get('content-type')?.startsWith('text/html')) c.header('Content-Security-Policy', pagePolicy);
+    });
+  }
 
   // The address the app used to live at (AMBLE_REDIRECT_FROM) sends links and requests on here.
   // An app installed from there gets a service worker that steps aside and moves its window over,

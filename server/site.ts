@@ -20,6 +20,9 @@ import { TOO_MANY_CODES, WRONG_CODE } from './sync/hub.ts';
 import type { ServerSync } from './sync/server.ts';
 import { SyncSetupError } from './sync/service.ts';
 
+/** The one script these pages run, asking first before the server stops syncing with Drive (its hash is in their CSP, server/app.ts). */
+export const CONFIRM_STOP = "return confirm('Stop syncing this server with Google Drive? Its data stays, and so does the file in Drive.')";
+
 const SIGN_IN_ERRORS: Record<string, string> = {
   'not-allowed': "That account isn't on this household's list. Ask whoever runs Amble to add it.",
   expired: 'That sign-in took too long. Try again.',
@@ -103,7 +106,7 @@ ${status.error ? html`<p class="warn">${status.error}</p>` : ''}</div>
 <p>This server keeps in step with the household's file in Google Drive, so devices still syncing there see the same things. Each of them is offered a move here in Settings, Sync and backup. Once they've all moved, stop syncing with Drive.</p>
 <div class="actions">
 <form method="post" action="${url('/server/drive/run')}"><button class="quiet">Sync now</button></form>
-<form method="post" action="${url('/server/drive/stop')}" onsubmit="return confirm('Stop syncing this server with Google Drive? Its data stays, and so does the file in Drive.')"><button class="quiet">Stop syncing</button></form>
+<form method="post" action="${url('/server/drive/stop')}" onsubmit="${CONFIRM_STOP}"><button class="quiet">Stop syncing</button></form>
 </div>`;
       } else if (!google) {
         drive = html`<p>If your household already keeps Amble in Google Drive, connect it here to bring everything onto this server. Then each device moves here from Settings, Sync and backup.</p>

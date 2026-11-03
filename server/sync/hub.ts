@@ -11,6 +11,7 @@ import { eq, or } from 'drizzle-orm';
 import { adoptHouseholdAi, AiUnavailable, ask, effortFor, type Ai } from '../ai/client.ts';
 import { linesResponse } from '../../shared/lines.ts';
 import type { Context, Hono } from 'hono';
+import { getConnInfo } from '@hono/node-server/conninfo';
 import { bodyLimit } from 'hono/body-limit';
 import { cors } from 'hono/cors';
 import { z } from 'zod';
@@ -42,8 +43,21 @@ interface Pending {
 
 const s256 = (verifier: string) => createHash('sha256').update(verifier).digest('base64url');
 
-/** Where a request came from, as the proxy in front says, for turning away a run of wrong codes. */
-export const requestFrom = (c: Context<Env>) => c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || c.req.header('x-real-ip') || 'direct';
+/**
+ * Where a request came from, for turning away a run of wrong codes: the address the proxy in front
+ * saw, which it adds last to X-Forwarded-For (anything before it is what the caller claimed, so a
+ * caller could make up a new one for every guess), or the connection's own without a proxy.
+ */
+export function requestFrom(c: Context<Env>) {
+  const forwarded = c.req.header('x-forwarded-for')?.split(',').at(-1)?.trim() || c.req.header('x-real-ip');
+  if (forwarded) return forwarded;
+  try {
+    return getConnInfo(c).remote.address ?? 'direct';
+  } catch {
+    // Not from a socket (the tests ask the app directly).
+    return 'direct';
+  }
+}
 
 /** Wrong codes from one place, and from everywhere together, before they're turned away for a while. */
 export function codeGuesses() {
@@ -56,6 +70,18 @@ export function codeGuesses() {
       all.missed('*');
     },
   };
+}
+
+/**
+ * Puts back who's an admin after a round from someone else's device: a role it changed goes back,
+ * and someone new it brought in is a member. Changed here, so the server's is the later change and
+ * wins on every device, the one that sent it included.
+ */
+function keepRoles(db: Db, before: Map<string, Member['role']>) {
+  for (const m of db.select({ id: members.id, role: members.role }).from(members).all()) {
+    const was = before.get(m.id) ?? 'member';
+    if (m.role !== was) db.update(members).set({ role: was }).where(eq(members.id, m.id)).run();
+  }
 }
 
 export const WRONG_CODE = "That code doesn't work. Codes work once and last 10 minutes, so make a new one and try again.";
@@ -170,19 +196,23 @@ export function registerSyncHub(
   });
 
   app.put('/sync/state', bodyLimit({ maxSize: MAX_STATE_BYTES, onError: (c) => c.json({ error: 'That is too much to sync at once.' }, 413) }), async (c) => {
-    if (!deviceMember(c)) return c.json({ error: 'Sign in again.' }, 401);
+    const member = deviceMember(c);
+    if (!member) return c.json({ error: 'Sign in again.' }, 401);
     let remote: SyncState;
     try {
       remote = await unpack<SyncState>(new Uint8Array(await c.req.arrayBuffer()));
     } catch {
       return c.json({ error: "That isn't Amble's sync data." }, 400);
     }
+    // Anyone in the household may change what it shares, but only an admin's device who's an admin.
+    const roles = member.role === 'admin' ? null : new Map(db.select({ id: members.id, role: members.role }).from(members).all().map((m) => [m.id, m.role]));
     try {
       mergeState(db, service.clock, remote, schema);
     } catch (err) {
       if (err instanceof NewerSchema) return c.json({ error: 'Your server runs an older Amble than this device. Update the server to keep syncing.' }, 409);
       throw err;
     }
+    if (roles) keepRoles(db, roles);
     // A model the household set while it was on Google Drive becomes the server's own.
     if (adoptHouseholdAi(ai)) service.stamp();
     const { state, etag } = current();
