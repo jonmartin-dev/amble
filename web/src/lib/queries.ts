@@ -191,8 +191,8 @@ export function useCalendars() {
   return useQuery({ queryKey: ['calendars'], queryFn: () => get<Calendars>('/calendars') });
 }
 
-export function useBriefing() {
-  return useQuery({ queryKey: ['briefing'], queryFn: () => get<Briefing>('/briefing') });
+export function useBriefing(enabled = true) {
+  return useQuery({ queryKey: ['briefing'], queryFn: () => get<Briefing>('/briefing'), enabled });
 }
 
 /** A day for each unplanned task with a deadline coming up. */

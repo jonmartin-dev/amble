@@ -37,12 +37,14 @@ export function FloatingToolbar({ onAdd, label, away = false }: { onAdd: () => v
       style={{ bottom: 'max(1.25rem, env(safe-area-inset-bottom))', viewTransitionName: 'toolbar' }}
       inert={away}
     >
-      <nav aria-label="Main" className="relative flex items-center gap-1 rounded-full bg-surface-container p-2 shadow-lg">
+      {/* Material's vibrant toolbar: a color the pages' cards don't use, so it stands off whatever
+          scrolls under it, and the + in the accent nothing else on a page wears. */}
+      <nav aria-label="Main" className="relative flex items-center gap-1 rounded-full bg-primary-container p-2 shadow-lg">
         {/* One pill that slides between tabs. A CSS transition keeps it on the GPU, so it glides
             the moment a tab is tapped, even while the new page is still being built. */}
         <span
           aria-hidden
-          className="toolbar-pill absolute top-2 left-2 size-12 rounded-full bg-primary-container"
+          className="toolbar-pill absolute top-2 left-2 size-12 rounded-full bg-surface-container"
           style={{ transform: `translateX(${last.current * STEP}px) scale(${active >= 0 ? 1 : 0.6})`, opacity: active >= 0 ? 1 : 0 }}
         />
         {NAV_ITEMS.map(({ to, label, Icon, ActiveIcon }) => {
@@ -54,14 +56,14 @@ export function FloatingToolbar({ onAdd, label, away = false }: { onAdd: () => v
               to={to}
               aria-label={label}
               aria-current={active ? 'page' : undefined}
-              className="relative grid size-12 place-items-center rounded-full text-on-surface-variant"
+              className="relative grid size-12 place-items-center rounded-full text-on-primary-container"
             >
-              <Glyph className={`relative size-6 ${active ? 'text-on-primary-container' : ''}`} aria-hidden />
+              <Glyph className={`relative size-6 ${active ? 'text-on-surface' : ''}`} aria-hidden />
             </Link>
           );
         })}
       </nav>
-      <button type="button" aria-label={label} onClick={onAdd} data-morph="add" className="grid size-14 place-items-center rounded-2xl bg-primary text-on-primary shadow-lg">
+      <button type="button" aria-label={label} onClick={onAdd} data-morph="add" className="grid size-14 place-items-center rounded-2xl bg-tertiary-container text-on-tertiary-container shadow-lg">
         <Add className="size-6" aria-hidden />
       </button>
     </div>

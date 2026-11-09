@@ -24,6 +24,11 @@ export function briefingShown(date: string) {
   }
 }
 
+/** Whether the briefing opens by itself: today's, not seen on any device, and not shown here yet. */
+export function briefingDue(b: BriefingData | undefined) {
+  return !!b && !b.seen && !briefingShown(b.date);
+}
+
 function rememberShown(date: string) {
   try {
     sessionStorage.setItem(SHOWN_KEY, date);

@@ -14,7 +14,7 @@ import { firstName, longDate, planningDate } from '../lib/dates.ts';
 import { expressive } from '../lib/motion.ts';
 import { useTaskActions } from '../lib/mutations.ts';
 import { useBriefing, useEvents, useMe, useMembers, useToday } from '../lib/queries.ts';
-import { briefingShown } from './Briefing.tsx';
+import { briefingDue } from './Briefing.tsx';
 
 const sections: { key: TimeOfDay | 'anytime'; title: string }[] = [
   { key: 'morning', title: 'Morning' },
@@ -113,10 +113,10 @@ export function Today() {
   const briefing = useBriefing();
   const { data: events } = useEvents(data?.today ?? '', data?.today ?? '', !!data && who === 'me');
 
-  // The first open of the day starts with the briefing, once it's fresh from the server.
+  // The first open of the day starts with the briefing, which the app usually opens before Today
+  // shows at all (main.tsx). This catches the rest: a slow start, or the app brought back on a new day.
   useEffect(() => {
-    const b = briefing.data;
-    if (b && !b.seen && briefing.isFetchedAfterMount && !briefingShown(b.date)) void navigate({ to: '/briefing' });
+    if (briefing.isFetchedAfterMount && briefingDue(briefing.data)) void navigate({ to: '/briefing' });
   }, [briefing.data, briefing.isFetchedAfterMount, navigate]);
 
   const today = data?.today ?? '';

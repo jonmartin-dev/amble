@@ -16,7 +16,7 @@ export function NavRail({ current, settings, onAdd, label }: { current: string |
       className="fixed inset-y-0 left-0 z-10 hidden flex-col items-center overflow-y-auto pb-4 [scrollbar-width:none] medium:flex"
       style={{ width: 'var(--rail)', paddingTop: 'max(1.5rem, env(safe-area-inset-top))', paddingLeft: 'env(safe-area-inset-left)' }}
     >
-      <button type="button" aria-label={label} onClick={onAdd} data-morph="add" className="grid size-14 shrink-0 place-items-center rounded-2xl bg-primary text-on-primary shadow-md">
+      <button type="button" aria-label={label} onClick={onAdd} data-morph="add" className="grid size-14 shrink-0 place-items-center rounded-2xl bg-tertiary-container text-on-tertiary-container shadow-md">
         <Add className="size-6" aria-hidden />
       </button>
       <div className="mt-7 flex flex-col gap-2">

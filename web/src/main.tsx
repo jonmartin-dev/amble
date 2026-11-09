@@ -31,7 +31,8 @@ import { refreshViews } from './lib/mutations.ts';
 import { CACHE_MAX_AGE_MS, CACHE_VERSION, claimDevice, idbPersister, prefetchForOffline, shouldSave } from './lib/persist.ts';
 import { syncPhoneReminders } from './lib/push.ts';
 import { applyUpdate, registerServiceWorker, useUpdateReady } from './lib/pwa.ts';
-import { get, useSession } from './lib/queries.ts';
+import { get, useBriefing, useSession } from './lib/queries.ts';
+import { todayIso } from './lib/dates.ts';
 import { SnackbarProvider, useSnackbar } from './lib/snackbar.tsx';
 import { startSync } from './lib/sync.ts';
 import { applyTheme, loadLocalTheme } from './lib/theme.ts';
@@ -40,7 +41,7 @@ import { useSyncMemberTheme } from './lib/useTheme.ts';
 import { Activity } from './pages/Activity.tsx';
 import { Appearance } from './pages/Appearance.tsx';
 import { Backlog } from './pages/Backlog.tsx';
-import { Briefing } from './pages/Briefing.tsx';
+import { Briefing, briefingDue } from './pages/Briefing.tsx';
 import { CalendarsPage } from './pages/Calendars.tsx';
 import { Household } from './pages/Household.tsx';
 import { ADD_TO_LIST, ListPage } from './pages/ListPage.tsx';
@@ -147,6 +148,9 @@ const SUBPAGES = ['/settings', '/appearance', '/connections', '/household', '/ac
 // tapped further down or off the screen.
 let morphing = false;
 
+// When the app opened. Data read since then is fresh, not the copy saved from the last time.
+const opened = Date.now();
+
 function Root() {
   const qc = useQueryClient();
   const session = useSession();
@@ -171,6 +175,28 @@ function Root() {
   }, []);
   const memberId = session.data?.member?.id;
   useSyncMemberTheme();
+
+  // Opened at Today on the day's first open, the briefing comes first. Which one is settled before
+  // either shows, so Today doesn't flash up and then give way to it. The answer comes from this
+  // device and is quick, and a briefing already seen today needs none. If it's slow anyway, Today
+  // shows after a moment and the briefing follows it there (Today.tsx).
+  const [opening, setOpening] = useState(pathname === '/');
+  const briefing = useBriefing(!!memberId && opening);
+  // isFetchedAfterMount can't tell here: restoring the saved copy counts as a read after this mounts.
+  const fresh = briefing.dataUpdatedAt >= opened || briefing.errorUpdatedAt >= opened;
+  const due = fresh && briefingDue(briefing.data);
+  const settled = fresh || (!!briefing.data?.seen && briefing.data.date === todayIso());
+  useEffect(() => {
+    if (!opening || !memberId) return;
+    if (shown !== '/') setOpening(false);
+    else if (due) void navigate({ to: '/briefing' });
+    else if (settled) setOpening(false);
+  }, [opening, memberId, shown, due, settled, navigate]);
+  useEffect(() => {
+    if (!opening || !memberId) return;
+    const t = setTimeout(() => setOpening(false), 2000);
+    return () => clearTimeout(t);
+  }, [opening, memberId]);
 
   const tab = shown in TABS ? shown : null;
   // On a wide screen a task or list opens beside the page it came from, which stays as it was.
@@ -277,6 +303,8 @@ function Root() {
   if (session.isPending) return <div className="min-h-dvh" />;
   if (!session.data && session.isError) return <StartFailed error={session.error} />;
   if (!session.data?.member) return <Welcome />;
+  // Settling which page comes first (above).
+  if (opening && shown === '/') return <div className="min-h-dvh" />;
 
   // On a list (open on its own or beside a page), + adds to it.
   const onList = pathname.startsWith('/list/');
