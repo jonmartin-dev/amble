@@ -16,6 +16,7 @@ import { dayLabel, daysFrom, firstName, reminderLabel } from '../lib/dates.ts';
 import { swapsDetail } from '../lib/layout.ts';
 import { motionChoices, useMotion } from '../lib/motion-settings.ts';
 import { useTaskActions } from '../lib/mutations.ts';
+import { haptic } from '../lib/native.ts';
 import { TripBadge } from './TripList.tsx';
 import { Checkbox } from './ui.tsx';
 
@@ -76,7 +77,7 @@ export function TaskRow({ task, today, meId, onMove, showDay = false, showGroup 
     press.current = { handled: false, x: e.clientX, y: e.clientY };
     press.current.timer = setTimeout(() => {
       press.current.handled = true;
-      navigator.vibrate?.(10);
+      haptic('hold');
       onMove(task);
     }, 520);
   };
@@ -94,7 +95,7 @@ export function TaskRow({ task, today, meId, onMove, showDay = false, showGroup 
       past.current = side;
       const icon = (side === 'done' ? doneBg : moveBg).current?.firstElementChild;
       if (side && icon && motionChoices().swipePop) {
-        navigator.vibrate?.(12);
+        haptic('line');
         icon.animate({ transform: ['scale(1)', 'scale(1.45)', 'scale(1.15)'] }, { duration: 320, easing: 'cubic-bezier(0.2, 0, 0, 1)', fill: 'forwards' });
       } else if (!side) {
         for (const bg of [doneBg, moveBg]) bg.current?.firstElementChild?.getAnimations().forEach((a) => a.cancel());

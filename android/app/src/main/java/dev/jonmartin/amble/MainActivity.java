@@ -37,6 +37,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(CodeScannerPlugin.class);
         registerPlugin(SaveFilePlugin.class);
         registerPlugin(BackGesturePlugin.class);
+        registerPlugin(TouchFeedbackPlugin.class);
         super.onCreate(savedInstanceState);
         keyboardOverPage();
     }

@@ -63,6 +63,7 @@ import { takeGoogleReturn } from './lib/google.ts';
 import { takeServerReturn } from './lib/server-sync.ts';
 import { onDeviceChange, useDeviceState } from './lib/device.ts';
 import { native, QUICK_ADD, startPhone, updateTodayWidget } from './lib/native.ts';
+import { startTouch } from './lib/touch.ts';
 import { Stats } from './pages/Stats.tsx';
 import { Today } from './pages/Today.tsx';
 
@@ -476,6 +477,8 @@ const queryClient = new QueryClient({
 });
 // The API is on this device, so it's always reachable.
 onlineManager.setOnline(true);
+// A ripple under the finger and the phone's click, for every control.
+startTouch();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

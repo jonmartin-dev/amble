@@ -69,6 +69,23 @@ export function setBackGesture(enabled: boolean) {
 }
 
 /**
+ * A moment the hand should feel: something ticked off or unticked, a switch, one of a few choices,
+ * a long press, or a swipe past the point where letting go will act.
+ */
+export type Feel = 'done' | 'undone' | 'on' | 'off' | 'pick' | 'hold' | 'line';
+const TouchFeedback = registerPlugin<{ play(options: { kind: Feel }): Promise<void> }>('TouchFeedback');
+
+/**
+ * In the Android app, the phone's own click for it (TouchFeedbackPlugin.java), which follows its
+ * touch feedback setting. A browser that can vibrate only buzzes for a long press or a swipe, since
+ * a buzz on every tick would be too much.
+ */
+export function haptic(kind: Feel) {
+  if (native) void TouchFeedback.play({ kind }).catch(() => {});
+  else if (kind === 'hold' || kind === 'line') navigator.vibrate?.(10);
+}
+
+/**
  * Saves a file where the person picks, on Android's own save screen (SaveFilePlugin.java): Downloads,
  * Google Drive or anywhere else it offers. False when they back out. Where first, then the bytes:
  * they're too big to wait with the save screen.

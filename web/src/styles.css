@@ -449,6 +449,33 @@ body::before {
     background-image: none;
     text-decoration: underline;
   }
+  /* A touch that ripples (lib/touch.ts) shows the ripple instead, and the control around the one
+     pressed (a task's row around its checkbox) shows nothing. */
+  :where([data-ripple], :has([data-ripple])):active {
+    background-image: none;
+  }
+}
+
+/*
+ * The ripple: a circle of the control's own color spreading from the finger, clipped to the
+ * control's shape (lib/touch.ts moves it). A little stronger than the flat tint, since while it
+ * spreads it covers only part of the control.
+ */
+.ripple {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+  contain: strict;
+}
+.ripple > span {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border-radius: 50%;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  opacity: 0;
 }
 
 /* A row that scrolls sideways (ScrollRow): whatever runs past an edge fades out there. */
@@ -579,14 +606,13 @@ body::before {
 }
 
 /* A task row sinks in a little while it's pressed: a transform only, which the phone animates on
-   its own. Like Android's own pressed state it waits a moment first, so a finger that's starting
-   to scroll doesn't sink it. */
+   its own. The phone already waits about 100ms before a touch counts as a press, so a finger
+   that's starting to scroll doesn't sink it, and a quick tap's press shows as the finger lifts. */
 .press-row {
   transition: transform 350ms var(--spring-fast);
 }
 .press-row:active {
   transform: scale(0.975);
-  transition-delay: 90ms;
 }
 
 /* Opening a task or list, the row it was on grows into the page (Material's container transform)

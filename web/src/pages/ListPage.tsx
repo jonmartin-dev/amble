@@ -24,6 +24,7 @@ import { dayLabel, todayIso } from '../lib/dates.ts';
 import { addListItem, checkListItem, editListItem, resetListItems } from '../lib/local.ts';
 import { expressive } from '../lib/motion.ts';
 import { useSend, useTaskActions } from '../lib/mutations.ts';
+import { haptic } from '../lib/native.ts';
 import { useGroups, useList, useListHistory, useTasks } from '../lib/queries.ts';
 import { useSnackbar } from '../lib/snackbar.tsx';
 
@@ -54,7 +55,7 @@ function ItemRow({ item, template, showStore, onCheck, onOpen }: { item: ListIte
   const open = () => {
     press.current.held = true;
     clearTimeout(press.current.timer);
-    navigator.vibrate?.(10);
+    haptic('hold');
     onOpen();
   };
   const details = [
@@ -83,7 +84,12 @@ function ItemRow({ item, template, showStore, onCheck, onOpen }: { item: ListIte
         }}
         onPointerUp={() => clearTimeout(press.current.timer)}
         onPointerCancel={() => clearTimeout(press.current.timer)}
-        onClick={() => !press.current.held && tick()}
+        onClick={() => {
+          if (press.current.held || ticked) return;
+          // A tap on the checkbox itself clicks like any other (lib/touch.ts); one on the row, here.
+          haptic('done');
+          tick();
+        }}
         onContextMenu={(e) => {
           e.preventDefault();
           if (!press.current.held) open();
