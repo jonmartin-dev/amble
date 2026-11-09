@@ -12,7 +12,8 @@ import { ChipRow } from './fields.tsx';
 import { GROUP_ICON_NAMES, GroupIcon, tone } from './icons.tsx';
 import { ButtonGroup, Chip, Sheet, Switch } from './ui.tsx';
 
-const colors = ['green', 'teal', 'lime', 'blue', 'violet', 'orange', 'rose'];
+// In the order they sit in the theme (lib/theme.ts), cool to warm. The names are only ids.
+const colors = ['blue', 'teal', 'green', 'violet', 'rose', 'orange', 'lime'];
 
 /** Make a group or list, or, given one, rename, recolor or archive it. */
 export function GroupSheet({ open, onClose, group }: { open: boolean; onClose: () => void; group?: Group | null }) {
@@ -118,7 +119,7 @@ export function GroupSheet({ open, onClose, group }: { open: boolean; onClose: (
       </div>
       <div className="mt-3 flex flex-wrap gap-2" role="radiogroup" aria-label="Color">
         {colors.map((c) => (
-          <button key={c} type="button" role="radio" aria-checked={color === c} aria-label={c} onClick={() => setColor(c)} className={`grid size-10 place-items-center rounded-full ${tone(c)}`}>
+          <button key={c} type="button" role="radio" aria-checked={color === c} aria-label={`Color ${colors.indexOf(c) + 1}`} onClick={() => setColor(c)} className={`grid size-10 place-items-center rounded-full ${tone(c)}`}>
             {color === c && <Check className="size-5" aria-hidden />}
           </button>
         ))}

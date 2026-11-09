@@ -162,22 +162,32 @@ const roles: Record<string, DynamicColor> = {
   'outline-variant': C.outlineVariant,
 };
 
-/** Fixed hues for groups and members. Harmonized toward the seed so they sit well with any theme. */
-const groupHues: Record<string, string> = {
-  green: '#4c9a6a',
-  teal: '#2a9d9d',
-  lime: '#8bb33a',
-  blue: '#4a78d6',
-  violet: '#8a63d2',
-  orange: '#e07b2e',
-  rose: '#d4537e',
+/**
+ * Group, list and member colors, as places in the theme rather than fixed hues, so a household's
+ * groups look like the theme they picked instead of a rainbow over it: the cool names sit around
+ * its primary hue and the warm ones around its tertiary, a step of hue apart, as soft as the
+ * theme's own accents. The names stay as they were saved; they're only ids now.
+ */
+const groupSlots: Record<string, ['primary' | 'tertiary', number]> = {
+  blue: ['primary', -1.5],
+  teal: ['primary', -0.5],
+  green: ['primary', 0.5],
+  violet: ['primary', 1.5],
+  rose: ['tertiary', -1],
+  orange: ['tertiary', 0],
+  lime: ['tertiary', 1],
 };
+// Degrees of hue between neighboring slots: enough to tell groups apart, close enough to stay in the theme.
+const SLOT_STEP = 24;
 
 // Amber for busy days, harmonized like the group colors.
 const WARM = '#c98a12';
 
 function customTones(source: number, seed: number, dark: boolean) {
-  const palette = TonalPalette.fromInt(Blend.harmonize(source, seed));
+  return tonesOf(TonalPalette.fromInt(Blend.harmonize(source, seed)), dark);
+}
+
+function tonesOf(palette: TonalPalette, dark: boolean) {
   return dark
     ? { base: palette.tone(80), container: palette.tone(30), on: palette.tone(90) }
     : { base: palette.tone(40), container: palette.tone(90), on: palette.tone(10) };
@@ -192,8 +202,11 @@ export function themeVariables(prefs: ThemePrefs, dark: boolean): Record<string,
   vars['--md-warm'] = hexFromArgb(warm.base);
   vars['--md-warm-container'] = hexFromArgb(warm.container);
   vars['--md-on-warm-container'] = hexFromArgb(warm.on);
-  for (const [name, hex] of Object.entries(groupHues)) {
-    const t = customTones(argbFromHex(hex), seed, dark);
+  for (const [name, [role, at]] of Object.entries(groupSlots)) {
+    const accent = role === 'primary' ? scheme.primaryPalette : scheme.tertiaryPalette;
+    // A little more color than the accent itself, so a group's swatch reads as a color, but no
+    // louder than a vivid wallpaper's own.
+    const t = tonesOf(TonalPalette.fromHueAndChroma((accent.hue + at * SLOT_STEP + 360) % 360, Math.min(accent.chroma + 8, 48)), dark);
     vars[`--tone-${name}`] = hexFromArgb(t.container);
     vars[`--tone-${name}-on`] = hexFromArgb(t.on);
     // The strong shade, for chart bars and other fills that sit on a surface.
