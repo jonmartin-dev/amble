@@ -56,7 +56,11 @@ const shots: Shot[] = [
     // Scrolled to the day's list, below the load card and calendar; the listing's first shot shows the top.
     open: async (page) => {
       await go('/')(page);
-      if (!play) await page.getByRole('heading', { name: 'From earlier' }).evaluate((el) => window.scrollBy(0, el.getBoundingClientRect().top - 24));
+      if (play) return;
+      await page.getByRole('heading', { name: 'From earlier' }).evaluate((el) => window.scrollBy(0, el.getBoundingClientRect().top - 24));
+      // Scrolling down shrinks the toolbar out of the way (FloatingToolbar). The shot shows it full size.
+      await page.waitForTimeout(100);
+      await page.locator('.toolbar-body').evaluate((el) => el.removeAttribute('data-compact'));
     },
   },
   { name: 'calendar', theme: light, open: go('/calendar') },
