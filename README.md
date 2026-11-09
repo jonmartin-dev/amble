@@ -1,8 +1,8 @@
 # Amble
 
-**A simple planner for you and your household.** Amble knows how full each day already is, from your tasks and your phone's calendar, so it can tell you what fits today and which day has room for the rest. It never nags.
+Amble is a free planner for you and your household. It knows how full each day already is from your tasks and your phone's calendar, so it shows what fits today and finds a day with room for the rest. It never nags and it's free, with no account or ads or subscription.
 
-**Free, for you, forever.** Every feature, with no account, no ads and no subscription. There's no paid tier waiting down the road and nothing to sign up for. Your tasks stay on your phone.
+[Website](https://amble-planner.vercel.app) · [Get it](#get-it) · [Set it up with an AI agent](#set-it-up-with-an-ai-agent) · [Privacy policy](docs/privacy-policy.md)
 
 <p align="center">
   <img src="docs/screenshots/briefing.png" width="200" alt="Here's today: the day's load, a task worth doing today, and Start my day">
@@ -10,84 +10,77 @@
   <img src="docs/screenshots/calendar.png" width="200" alt="Calendar: a week of load bars, with tasks due soon and the day that has room for each">
   <img src="docs/screenshots/groceries.png" width="200" alt="Groceries in dark mode, sorted by aisle with quantities">
 </p>
-<p align="center">
-  <img src="docs/screenshots/quick-add.png" width="200" alt="Quick add: what's typed in large type, with a row of chips for the day, group and person">
-  <img src="docs/screenshots/lists.png" width="200" alt="A new list: eleven templates, from groceries and packing to gift ideas and a meal plan">
-  <img src="docs/screenshots/task.png" width="200" alt="A task's page: group, notes and steps">
-  <img src="docs/screenshots/appearance.png" width="200" alt="Appearance: Material You colors and styles, light, dark or automatic">
-</p>
 
-## Why it's different
+I got really tired of paying for planners and of figuring out which flaky app connectors would actually work. So I made my own, and I made it free for everyone.
 
-Most planners show you everything you haven't done yet. Amble starts from a different question: how much room does today actually have?
+Jon
 
-- **It knows when you're busy.** Amble reads the phone calendars you pick and learns how much you usually get done, so a busy day gets fewer tasks. Only how many minutes of each day are busy ever leaves your phone.
-- **Today stays light.** Your day is split into morning, afternoon and evening with a meter for how full it is. Each morning asks how the day is looking and shows what's on your calendar, what someone handed you and a few backlog tasks worth pulling in. Nothing moves until you tap Add.
-- **Things due later land on a good day.** A task with a deadline shows the day with the most room before it, and Plan my week lays out the next seven days around your calendar.
-- **No guilt.** No red overdue counts, no badges, no streaks to keep up, and no notifications except the reminders you ask for. Anything you didn't get to comes back quietly as a suggestion.
+## What it does
 
-## Lists that do some of the work
+- It plans around your real day. Amble reads the phone calendars you pick and learns how much you usually get done, so a busy day gets fewer tasks. Only how many minutes of each day are busy ever leaves your phone.
+- Each morning it shows what's on your calendar, what someone handed you and a few tasks worth pulling in. Nothing moves until you tap Add.
+- A task with a deadline shows the day with the most room before it, and Plan my week lays out the next 7 days around your calendar.
+- No red overdue counts, no badges, no streaks, and no notifications except the reminders you ask for. Anything you didn't get to comes back quietly as a suggestion.
+- Lists do some of the work. Groceries sort themselves by aisle as you type, a meal plan sends each dinner's ingredients to Groceries in one tap, and Start over resets a packing list for next time. All 11 list templates are small files in an [open format](templates/README.md).
+- It's built for a household. Hand a task to someone with a note or leave it open to anyone, and keep any group or list private.
+- AI is optional. Add a model and smart add turns "call mom tomorrow evening, out of milk and eggs" into a task and grocery items for you to check before anything is saved. It works with Claude, OpenAI, Gemini, GLM, anything on OpenRouter, or a model on your own computer through Ollama or LM Studio. Gemini and GLM have free tiers.
 
-- Groceries sort themselves by aisle as you type, and the whole list plans as one grocery run on the day with room.
-- A meal plan sends each dinner's ingredients to Groceries in one tap.
-- Packing lists and routines start from a kit, and Start over unchecks everything for next time.
-- Gift ideas go under who they're for and start out private, so nobody sees their own.
-- Errands group by place and plan as one run.
-- There are also lists for shopping with links and prices, the hardware store, things to watch and read, places to try, and plain checklists.
+## Your data stays yours
 
-Each of the 11 templates is one small file in an [open format](templates/README.md), so anyone can write a new one or use them in another app.
-
-## AI when you want it
-
-Amble works fully without AI. Add a model and it takes on the fiddly parts:
-
-- **Smart add.** Type "call mom tomorrow evening, out of milk and eggs, Alex mows every Saturday" and it becomes tasks, grocery items and a repeating chore, each one for you to check before anything is saved.
-- **Plan my week** listens to what you tell it ("keep Saturday free"), and **Tidy up** suggests merging duplicates and splitting tasks that are really several.
-- Tasks you didn't size get a guess, so the day's meter stays honest.
-
-Bring your own key for Claude, OpenAI, Gemini, GLM or anything on OpenRouter (Gemini and GLM have free tiers), or run a model on your own computer through Ollama or LM Studio, and set a monthly cap. One person sets it up for the whole household with one cap: through the household's Google Drive file, or on the household's own server, which keeps the key locked there. A server also lets Claude or ChatGPT add, plan and finish tasks from a chat ([docs/assistants.md](docs/assistants.md)).
-
-## Made to feel good
-
-Amble is built on Google's Material 3 Expressive, springs and all. A task grows out of the row you tapped and shrinks back into it when you pull it down, and sheets ride up with the keyboard. Pick any color or your wallpaper's own and Amble builds a full palette from it, in five styles, light or dark. Today's tasks can sit on your home screen in a widget, and on a foldable or tablet a task opens beside its list.
-
-## Everything else
-
-- A household: hand a task to someone with a note, or leave it open to anyone. Any group or list can be private.
-- Repeating tasks on a schedule (every Sunday, the 2nd Thursday, only in some months) or a set time after the last one was done.
-- Reminders only when you ask for one. They show at their time even with Amble closed, with Done and Snooze on them.
-- Photos, receipts and manuals on tasks.
-- Works offline from the first open, since everything is on your phone.
-- Sync your devices and your household through a file in your own Google Drive. Copies merge field by field when they meet again.
-- Save everything to one file whenever you like, and start a new phone from it.
+Amble has no account and no servers of its own, so its developer never receives your data. Your tasks stay on your phone and work offline. Sync goes only to your own Google Drive or a server your household runs, and AI features talk only to the provider you set up. The [privacy policy](docs/privacy-policy.md) has the details.
 
 ## Get it
 
 Start with the app. Most households never need more.
 
-1. **The app.** Install it on Android and start, with no account to make. Sign in with Google to sync your other devices and your household through one file in your own Drive. One person can add an AI model for everyone: a key from Claude, OpenAI, Gemini, GLM or OpenRouter, or a model on their own computer, for smart add, Plan my week, Tidy up and a guess for tasks you didn't size. Android is coming to Google Play; until then you can [build it yourself](docs/android.md).
-2. **A household server**, for what only a server can do: Claude and ChatGPT, photos and files shared between phones, the web app for iPhones and computers, and syncing without Google. It's one Docker container on a computer that stays on, and a script sets it up on Linux, a Mac or Windows, Tailscale included. Phones and computers join with a short code from one that's already in, so there's nothing to set up with Google. [docs/self-hosting.md](docs/self-hosting.md) walks through it, and it's written so an AI assistant can take you through it.
+On Android, Amble is in a closed test on Google Play before it opens to everyone. [Email to join](mailto:jonmartin721@gmail.com?subject=Amble%20Android%20test) and you'll get the link, or [build it yourself](docs/android.md). To sync your other devices and your household, sign in with Google and Amble keeps one file in your own Drive.
 
-A native iPhone app is [wanted](CONTRIBUTING.md#help-wanted). Until then an iPhone uses the web app from a household server.
+iPhones and computers use the web app from a household server for now. A native iPhone app is [wanted](CONTRIBUTING.md#help-wanted).
 
-## Your data stays yours
+A household server is optional. It's one Docker container on a computer that stays on. A script sets it all up on Linux, a Mac or Windows, Tailscale included. It adds what only a server can do:
 
-Amble has no account and no servers of its own, so its developer never receives your data. Sync goes only to your own Google Drive or a server your household runs, and AI features talk only to the provider you set up. The [privacy policy](docs/privacy-policy.md) has the details.
+- Claude adding, planning and finishing your tasks from a chat ([docs/assistants.md](docs/assistants.md)). ChatGPT should work the same way, but nobody has tried it with a real account yet.
+- Photos and files on tasks, shared between phones
+- The web app for iPhones and computers
+- Syncing without Google, with the AI key kept on the server
+
+[docs/self-hosting.md](docs/self-hosting.md) walks through it.
+
+## Set it up with an AI agent
+
+The setup is written so an AI agent can do it for you. Open Claude Code, Codex or Gemini CLI in a terminal on the computer that will run the server, and paste this:
+
+```text
+Set up an Amble household server on this computer. Clone https://github.com/jonmartin-dev/amble if it isn't here yet, then follow AGENTS.md in it.
+```
+
+[AGENTS.md](AGENTS.md) tells the agent what to ask you, what to run and how to check each step. It asks one question at a time, and it has you save any key to a file yourself instead of pasting it into the chat.
+
+## Work on the code
+
+You need Node 26 or newer and pnpm.
+
+```sh
+pnpm install
+cp .env.example .env
+pnpm dev
+```
+
+That opens the app on http://127.0.0.1:5174. For something to look at, `pnpm demo` runs the built app on a made-up household at http://localhost:8787 (choose Use my own server and sign in as Sam). [CONTRIBUTING.md](CONTRIBUTING.md) has the layout, the checks to run before a pull request and how the code is written.
 
 ## Help make it better
 
-Amble is made in the open, and help of any size is welcome.
-
-- **Ideas and bug reports:** [open an issue](https://github.com/jonmartin-dev/amble/issues/new/choose).
-- **A new list template:** one JSON file, and a good first pull request ([templates/README.md](templates/README.md)).
-- **Code:** [CONTRIBUTING.md](CONTRIBUTING.md) covers setup, the layout and the checks to run. A native iPhone app tops the [help wanted](CONTRIBUTING.md#help-wanted) list.
+- [Open an issue](https://github.com/jonmartin-dev/amble/issues/new/choose) for ideas and bug reports.
+- A new list template is one JSON file and a good first pull request ([templates/README.md](templates/README.md)).
+- A native iPhone app tops the [help wanted](CONTRIBUTING.md#help-wanted) list.
+- Report security problems privately, as [SECURITY.md](SECURITY.md) says.
 
 ## Docs
 
 - [Running your own server](docs/self-hosting.md)
-- [Getting in, and sign-in providers](docs/sign-in.md)
-- [Google Drive sync](docs/google-drive.md)
 - [The Android app](docs/android.md)
+- [Google Drive sync](docs/google-drive.md)
+- [Getting in, and sign-in providers](docs/sign-in.md)
 - [Claude and ChatGPT](docs/assistants.md)
 - [List templates](templates/README.md)
 - [Privacy policy](docs/privacy-policy.md)
