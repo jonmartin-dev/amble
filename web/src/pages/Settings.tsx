@@ -10,6 +10,7 @@ import Bell from '~icons/material-symbols/notifications-outline-rounded';
 import CloudSync from '~icons/material-symbols/cloud-sync-outline-rounded';
 import Dns from '~icons/material-symbols/dns-outline';
 import Palette from '~icons/material-symbols/palette-outline-rounded';
+import TouchIcon from '~icons/material-symbols/touch-app-outline-rounded';
 import Policy from '~icons/material-symbols/policy-outline-rounded';
 import Timer from '~icons/material-symbols/timer-outline-rounded';
 import Trophy from '~icons/material-symbols/trophy-outline-rounded';
@@ -71,7 +72,8 @@ export function Settings() {
       <ListGroup
         rows={[
           { icon: <Palette className="size-6" />, title: 'Appearance', subtitle: 'Color, style, light and dark', to: '/appearance' },
-          { icon: <AnimationIcon className="size-6" />, title: 'Motion', subtitle: 'Gestures and little touches', to: '/settings/motion' },
+          { icon: <AnimationIcon className="size-6" />, title: 'Motion', subtitle: 'How pages and rows move', to: '/settings/motion' },
+          { icon: <TouchIcon className="size-6" />, title: 'Touch', subtitle: 'Haptics, ripples and gestures', to: '/settings/touch' },
           { icon: <Timer className="size-6" />, title: 'Daily capacity', subtitle: capacitySummary(me), to: '/settings/capacity' },
           { icon: <CalendarMonth className="size-6" />, title: 'Calendars', subtitle: calendarSummary, to: '/settings/calendars' },
           { icon: <Bell className="size-6" />, title: 'Notifications', subtitle: notificationSummary(push.state), to: '/settings/notifications' },

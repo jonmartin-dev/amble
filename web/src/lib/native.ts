@@ -9,6 +9,7 @@ import { LocalNotifications } from '@capacitor/local-notifications';
 import { loadRatio, loadWord } from '../components/ui.tsx';
 import { api, type Task, type Today, type UpcomingReminder } from './api.ts';
 import { stageGesture } from './morph.ts';
+import { motionChoices } from './motion-settings.ts';
 import { acceptServerReturn } from './server-sync.ts';
 import { applyTheme, loadLocalTheme, setPhoneColors, themeVariables, type PhoneColors } from './theme.ts';
 
@@ -78,9 +79,10 @@ const TouchFeedback = registerPlugin<{ play(options: { kind: Feel }): Promise<vo
 /**
  * In the Android app, the phone's own click for it (TouchFeedbackPlugin.java), which follows its
  * touch feedback setting. A browser that can vibrate only buzzes for a long press or a swipe, since
- * a buzz on every tick would be too much.
+ * a buzz on every tick would be too much. Off with Haptics in Settings, Touch.
  */
 export function haptic(kind: Feel) {
+  if (!motionChoices().haptics) return;
   if (native) void TouchFeedback.play({ kind }).catch(() => {});
   else if (kind === 'hold' || kind === 'line') navigator.vibrate?.(10);
 }

@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
 import { findRow, radiusOf, setStageGesture, spring, springEasing, stageGesture, type StageGesture } from '../lib/morph.ts';
 import { reduced } from '../lib/motion-settings.ts';
-import { setBackGesture } from '../lib/native.ts';
+import { haptic, setBackGesture } from '../lib/native.ts';
 import { typingWithKeyboard } from '../lib/viewport.ts';
 
 /**
@@ -35,6 +35,8 @@ interface Props {
 // The same layout as the page column in main (main.tsx), so floating and in place look the same.
 const COLUMN = 'mx-auto max-w-xl px-4 pb-36 medium:max-w-2xl medium:px-6 medium:pb-12';
 const SCRIM = 0.32;
+// How far a pull down from the top has to go for letting go to close the page.
+const CLOSE_PULL = 140;
 
 export function DetailStage({ overlay, setOverlay, building, inSheet, path, onBack, backGesture, pull, children }: Props) {
   const box = useRef<HTMLDivElement>(null);
@@ -216,6 +218,8 @@ export function DetailStage({ overlay, setOverlay, building, inSheet, path, onBa
     let x0 = 0;
     let y0 = 0;
     let last = { y: 0, t: 0, v: 0 };
+    // Past the line where letting go closes it, which clicks once as it's crossed.
+    let past = false;
     const atTop = () => (floating.current ? b.scrollTop : window.scrollY) <= 0;
     const onPage = (target: Element) => {
       if (floating.current ? !b.contains(target) : target.closest('[role="dialog"], nav, .toolbar')) return false;
@@ -229,6 +233,7 @@ export function DetailStage({ overlay, setOverlay, building, inSheet, path, onBa
       if (e.touches.length !== 1 || !t || phase.current !== 'still' || !atTop()) return void (mode = 'idle');
       if (!(e.target instanceof Element) || !onPage(e.target)) return void (mode = 'idle');
       mode = 'maybe';
+      past = false;
       x0 = t.clientX;
       y0 = t.clientY;
       last = { y: t.clientY, t: e.timeStamp, v: 0 };
@@ -252,12 +257,16 @@ export function DetailStage({ overlay, setOverlay, building, inSheet, path, onBa
       const dt = e.timeStamp - last.t;
       if (dt > 0) last = { y: t.clientY, t: e.timeStamp, v: (t.clientY - last.y) / dt };
       g()?.move((dy - 12) / (window.innerHeight * 0.55), dy - 12);
+      if (dy > CLOSE_PULL !== past) {
+        past = !past;
+        if (past) haptic('line');
+      }
     };
     const onEnd = (e: TouchEvent) => {
       if (mode !== 'drag') return void (mode = 'idle');
       mode = 'idle';
       const dy = (e.changedTouches[0]?.clientY ?? y0) - y0;
-      g()?.end(dy > 140 || (last.v > 0.6 && dy > 40));
+      g()?.end(dy > CLOSE_PULL || (last.v > 0.6 && dy > 40));
     };
     const g = stageGesture;
     document.addEventListener('touchstart', onStart, { passive: true });

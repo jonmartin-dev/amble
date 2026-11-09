@@ -1,18 +1,23 @@
-// Settings, Motion: the gestures and touches each person can turn off on this device. All start on.
+// Settings, Motion (how things move) and Settings, Touch (what a finger sees and feels): what
+// each person can turn off on this device. All start on.
 import { useSyncExternalStore } from 'react';
 
-export const TOGGLES = [
-  ['pull', 'Pull down to close', 'Drag an open task or list down to put it away'],
+export const MOTION_TOGGLES = [
   ['back', 'Back swipe shrinks the page', "The page follows your finger as you swipe back, and springs back if you don't"],
   ['morphAdd', '+ grows into the add sheet', 'The button opens out into the sheet'],
-  ['press', 'Rows sink when pressed', 'A row gives a little under your finger'],
-  ['ripple', 'Taps ripple', 'A ripple spreads from your finger over what you pressed'],
   ['finish', 'Finishing sweeps the row', 'Color sweeps across a task as you tick it off, and a line draws through it'],
-  ['swipePop', 'Swipes pop at the line', 'A swipe’s icon pops, and the phone ticks, once letting go will act'],
+  ['swipePop', 'Swipes pop at the line', 'A swipe’s icon pops once letting go will act'],
   ['cascade', 'Rows cascade in', 'A page’s rows arrive one after another'],
 ] as const;
 
-export type Motion = { [K in (typeof TOGGLES)[number][0]]: boolean };
+export const TOUCH_TOGGLES = [
+  ['haptics', 'Haptics', 'The phone clicks as you tick something off, flip a switch, change tabs, pick a choice, hold a row or swipe past the line'],
+  ['ripple', 'Taps ripple', 'A ripple spreads from your finger over what you pressed'],
+  ['press', 'Rows sink when pressed', 'A row gives a little under your finger'],
+  ['pull', 'Pull down to close', 'Drag an open task or list down to put it away'],
+] as const;
+
+export type Motion = { [K in (typeof MOTION_TOGGLES | typeof TOUCH_TOGGLES)[number][0]]: boolean };
 
 const DEFAULTS: Motion = {
   pull: true,
@@ -20,6 +25,7 @@ const DEFAULTS: Motion = {
   morphAdd: true,
   press: true,
   ripple: true,
+  haptics: true,
   finish: true,
   swipePop: true,
   cascade: true,

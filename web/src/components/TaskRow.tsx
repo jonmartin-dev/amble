@@ -94,8 +94,8 @@ export function TaskRow({ task, today, meId, onMove, showDay = false, showGroup 
     if (side !== past.current) {
       past.current = side;
       const icon = (side === 'done' ? doneBg : moveBg).current?.firstElementChild;
+      if (side) haptic('line');
       if (side && icon && motionChoices().swipePop) {
-        haptic('line');
         icon.animate({ transform: ['scale(1)', 'scale(1.45)', 'scale(1.15)'] }, { duration: 320, easing: 'cubic-bezier(0.2, 0, 0, 1)', fill: 'forwards' });
       } else if (!side) {
         for (const bg of [doneBg, moveBg]) bg.current?.firstElementChild?.getAnimations().forEach((a) => a.cancel());

@@ -8,6 +8,7 @@ import ListOutline from '~icons/material-symbols/list-alt-outline-rounded';
 import ListFilled from '~icons/material-symbols/list-alt-rounded';
 import SunOutline from '~icons/material-symbols/wb-sunny-outline-rounded';
 import SunFilled from '~icons/material-symbols/wb-sunny-rounded';
+import { haptic } from '../lib/native.ts';
 
 /** The app's four pages, in the toolbar on a phone and down the rail on a wider screen. */
 export const NAV_ITEMS = [
@@ -77,6 +78,7 @@ export function FloatingToolbar({ onAdd, label, away = false }: { onAdd: () => v
                 to={to}
                 aria-label={label}
                 aria-current={active ? 'page' : undefined}
+                onClick={() => !active && haptic('pick')}
                 className="relative grid size-12 place-items-center rounded-full text-on-primary-container"
               >
                 <Glyph className={`relative size-6 ${active ? 'text-on-surface' : ''}`} aria-hidden />
