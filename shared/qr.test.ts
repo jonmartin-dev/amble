@@ -18,7 +18,7 @@ describe('codes to join a server', () => {
   });
 
   it('draws the code with a margin around it', () => {
-    const { d, size } = qrPath(joinLink('https://media-server.tail3cfc4a.ts.net/amble'));
+    const { d, size } = qrPath(joinLink('https://house-server.tail1234ab.ts.net/amble'));
     // Version 3 or 4 for a link this long, plus four modules each side.
     expect(size).toBeGreaterThanOrEqual(29 + 8);
     expect(d.startsWith('M4 4h7v1h-7z')).toBe(true);
