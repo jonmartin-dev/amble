@@ -1,6 +1,8 @@
 ---
 name: amble
 description: Manage household tasks, chores, errands, calls, shopping and grocery lists, and day plans in Amble through its connector. Use when someone mentions something they need to do, asks what's on today or this week, wants a day planned or time found for something, hands a task to someone, or adds to or checks off a list.
+metadata:
+  status: active
 ---
 
 <!-- Source: skill/amble/ in the Amble repo. Edit it there, then copy it out with scripts/sync-skill.ts. -->
